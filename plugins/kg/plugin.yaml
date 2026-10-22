@@ -1,0 +1,3 @@
+name: kg
+version: 1.0.0
+description: "Neo4j memory with profile-scoped recall, structured writes and durable SQLite session extraction."

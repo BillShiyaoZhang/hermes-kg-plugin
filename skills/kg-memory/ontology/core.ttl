@@ -1,0 +1,228 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix hermesont: <urn:hermes:ontology:> .
+
+# KG Memory storage contract. Legacy data uses explicit migration aliases.
+# Changelog: 1.0.0 - unified entity/relationship/property mapping and typed values.
+<urn:hermes:ontology> a owl:Ontology ;
+    owl:versionInfo "1.0.0" ;
+    owl:versionIRI <urn:hermes:ontology:v1.0.0> ;
+    rdfs:label "Hermes KG Memory Ontology" ;
+    rdfs:comment "Canonical KGEntity labels, typed properties and relationships used by the independent KG plugin." .
+
+hermesont:neo4jLabel a owl:AnnotationProperty .
+hermesont:neo4jProperty a owl:AnnotationProperty .
+hermesont:neo4jRelationship a owl:AnnotationProperty .
+
+hermesont:Person a owl:Class ;
+    rdfs:label "Person" ;
+    rdfs:comment "A named person; the configured user is an explicit Person anchor." ;
+    hermesont:neo4jLabel "Person" .
+
+hermesont:Event a owl:Class ;
+    rdfs:label "Event" ;
+    rdfs:comment "A dated event; participants are Person to Event relationships." ;
+    hermesont:neo4jLabel "Event" .
+
+hermesont:Preference a owl:Class ;
+    rdfs:label "Preference" ;
+    rdfs:comment "A preference key and value owned by a Person." ;
+    hermesont:neo4jLabel "Preference" .
+
+hermesont:Decision a owl:Class ;
+    rdfs:label "Decision" ;
+    rdfs:comment "A recorded decision and optional context owned by a Person." ;
+    hermesont:neo4jLabel "Decision" .
+
+hermesont:Location a owl:Class ;
+    rdfs:label "Location" ;
+    rdfs:comment "A named place with optional numeric coordinates." ;
+    hermesont:neo4jLabel "Location" .
+
+hermesont:Concept a owl:Class ;
+    rdfs:label "Concept" ;
+    rdfs:comment "A named domain concept with validated primitive properties." ;
+    hermesont:neo4jLabel "Concept" .
+
+hermesont:knows a owl:ObjectProperty ;
+    rdfs:label "knows" ;
+    rdfs:comment "Canonical HERMES_knows relationship; aliases are normalized before storage." ;
+    rdfs:domain hermesont:Person ; rdfs:range hermesont:Person ;
+    hermesont:neo4jRelationship "HERMES_knows" .
+
+hermesont:participant a owl:ObjectProperty ;
+    rdfs:label "participant" ;
+    rdfs:comment "Canonical HERMES_participant relationship; aliases are normalized before storage." ;
+    rdfs:domain hermesont:Person ; rdfs:range hermesont:Event ;
+    hermesont:neo4jRelationship "HERMES_participant" .
+
+hermesont:hasPreference a owl:ObjectProperty ;
+    rdfs:label "hasPreference" ;
+    rdfs:comment "Canonical HERMES_hasPreference relationship; aliases are normalized before storage." ;
+    rdfs:domain hermesont:Person ; rdfs:range hermesont:Preference ;
+    hermesont:neo4jRelationship "HERMES_hasPreference" .
+
+hermesont:hasDecision a owl:ObjectProperty ;
+    rdfs:label "hasDecision" ;
+    rdfs:comment "Canonical HERMES_hasDecision relationship; aliases are normalized before storage." ;
+    rdfs:domain hermesont:Person ; rdfs:range hermesont:Decision ;
+    hermesont:neo4jRelationship "HERMES_hasDecision" .
+
+hermesont:locatedAt a owl:ObjectProperty ;
+    rdfs:label "locatedAt" ;
+    rdfs:comment "Canonical HERMES_locatedAt relationship; aliases are normalized before storage." ;
+    rdfs:domain owl:Thing ; rdfs:range hermesont:Location ;
+    hermesont:neo4jRelationship "HERMES_locatedAt" .
+
+hermesont:linkedTo a owl:ObjectProperty ;
+    rdfs:label "linkedTo" ;
+    rdfs:comment "Canonical LINKED_TO relationship; aliases are normalized before storage." ;
+    rdfs:domain owl:Thing ; rdfs:range owl:Thing ;
+    hermesont:neo4jRelationship "LINKED_TO" .
+
+hermesont:causedBy a owl:ObjectProperty ;
+    rdfs:label "causedBy" ;
+    rdfs:comment "Canonical CAUSED_BY relationship; aliases are normalized before storage." ;
+    rdfs:domain owl:Thing ; rdfs:range owl:Thing ;
+    hermesont:neo4jRelationship "CAUSED_BY" .
+
+hermesont:relatedTo a owl:ObjectProperty ;
+    rdfs:label "relatedTo" ;
+    rdfs:comment "Canonical RELATED_TO relationship; aliases are normalized before storage." ;
+    rdfs:domain owl:Thing ; rdfs:range owl:Thing ;
+    hermesont:neo4jRelationship "RELATED_TO" .
+
+hermesont:sameAs a owl:ObjectProperty ;
+    rdfs:label "sameAs" ;
+    rdfs:comment "Canonical owl_sameAs relationship; aliases are normalized before storage." ;
+    rdfs:domain owl:Thing ; rdfs:range owl:Thing ;
+    hermesont:neo4jRelationship "owl_sameAs" .
+
+hermesont:name a owl:DatatypeProperty ;
+    rdfs:label "name" ;
+    rdfs:comment "Storage property hermes_name. Values are validated by the plugin schema before writing." ;
+    rdfs:domain owl:Thing ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_name" .
+
+hermesont:personName a owl:DatatypeProperty ;
+    rdfs:label "personName" ;
+    rdfs:comment "Storage property foaf_name. Values are validated by the plugin schema before writing." ;
+    rdfs:domain hermesont:Person ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "foaf_name" .
+
+hermesont:description a owl:DatatypeProperty ;
+    rdfs:label "description" ;
+    rdfs:comment "Storage property hermes_description. Values are validated by the plugin schema before writing." ;
+    rdfs:domain owl:Thing ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_description" .
+
+hermesont:note a owl:DatatypeProperty ;
+    rdfs:label "note" ;
+    rdfs:comment "Storage property hermes_note. Values are validated by the plugin schema before writing." ;
+    rdfs:domain owl:Thing ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_note" .
+
+hermesont:eventTime a owl:DatatypeProperty ;
+    rdfs:label "eventTime" ;
+    rdfs:comment "Storage property hermes_eventTime. Values are validated by the plugin schema before writing." ;
+    rdfs:domain hermesont:Event ; rdfs:range xsd:dateTime ;
+    hermesont:neo4jProperty "hermes_eventTime" .
+
+hermesont:eventType a owl:DatatypeProperty ;
+    rdfs:label "eventType" ;
+    rdfs:comment "Storage property hermes_eventType. Values are validated by the plugin schema before writing." ;
+    rdfs:domain hermesont:Event ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_eventType" .
+
+hermesont:timePrecision a owl:DatatypeProperty ;
+    rdfs:label "timePrecision" ;
+    rdfs:comment "Event time evidence precision: day or datetime. Midnight for day precision is a normalized date boundary, not a claimed occurrence time." ;
+    rdfs:domain hermesont:Event ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_timePrecision" .
+
+hermesont:timeYearInferred a owl:DatatypeProperty ;
+    rdfs:label "timeYearInferred" ;
+    rdfs:comment "True when a yearless month/day was assigned the year of its cited source message in the configured timezone. Exposed as time_year_inferred in queries. An absent value means no inference annotation, not proof of an explicit year." ;
+    rdfs:domain hermesont:Event ; rdfs:range xsd:boolean ;
+    hermesont:neo4jProperty "hermes_timeYearInferred" .
+
+hermesont:preferenceKey a owl:DatatypeProperty ;
+    rdfs:label "preferenceKey" ;
+    rdfs:comment "Storage property hermes_preferenceKey. Values are validated by the plugin schema before writing." ;
+    rdfs:domain hermesont:Preference ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_preferenceKey" .
+
+hermesont:preferenceValue a owl:DatatypeProperty ;
+    rdfs:label "preferenceValue" ;
+    rdfs:comment "Storage property hermes_preferenceValue. Values are validated by the plugin schema before writing." ;
+    rdfs:domain hermesont:Preference ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_preferenceValue" .
+
+hermesont:decisionText a owl:DatatypeProperty ;
+    rdfs:label "decisionText" ;
+    rdfs:comment "Storage property hermes_decisionText. Values are validated by the plugin schema before writing." ;
+    rdfs:domain hermesont:Decision ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_decisionText" .
+
+hermesont:decisionContext a owl:DatatypeProperty ;
+    rdfs:label "decisionContext" ;
+    rdfs:comment "Storage property hermes_decisionContext. Values are validated by the plugin schema before writing." ;
+    rdfs:domain hermesont:Decision ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_decisionContext" .
+
+hermesont:latitude a owl:DatatypeProperty ;
+    rdfs:label "latitude" ;
+    rdfs:comment "Storage property geo_lat. Values are validated by the plugin schema before writing." ;
+    rdfs:domain hermesont:Location ; rdfs:range xsd:double ;
+    hermesont:neo4jProperty "geo_lat" .
+
+hermesont:longitude a owl:DatatypeProperty ;
+    rdfs:label "longitude" ;
+    rdfs:comment "Storage property geo_long. Values are validated by the plugin schema before writing." ;
+    rdfs:domain hermesont:Location ; rdfs:range xsd:double ;
+    hermesont:neo4jProperty "geo_long" .
+
+hermesont:shared a owl:DatatypeProperty ;
+    rdfs:label "shared" ;
+    rdfs:comment "Storage property shared. Own namespace is readable; external entities require boolean true." ;
+    rdfs:domain owl:Thing ; rdfs:range xsd:boolean ;
+    hermesont:neo4jProperty "shared" .
+
+hermesont:updatedAt a owl:DatatypeProperty ;
+    rdfs:label "updatedAt" ;
+    rdfs:comment "Storage property hermes_updatedAt. Values are validated by the plugin schema before writing." ;
+    rdfs:domain owl:Thing ; rdfs:range xsd:dateTime ;
+    hermesont:neo4jProperty "hermes_updatedAt" .
+
+hermesont:createdAt a owl:DatatypeProperty ;
+    rdfs:label "createdAt" ;
+    rdfs:comment "Storage property hermes_createdAt. Values are validated by the plugin schema before writing." ;
+    rdfs:domain owl:Thing ; rdfs:range xsd:dateTime ;
+    hermesont:neo4jProperty "hermes_createdAt" .
+
+hermesont:sourceSession a owl:DatatypeProperty ;
+    rdfs:label "sourceSession" ;
+    rdfs:comment "Storage property hermes_sourceSession. Values are validated by the plugin schema before writing." ;
+    rdfs:domain owl:Thing ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_sourceSession" .
+
+hermesont:sourceSessions a owl:DatatypeProperty ;
+    rdfs:label "sourceSessions" ;
+    rdfs:comment "Storage property hermes_sourceSessions. Stored as a primitive string array." ;
+    rdfs:domain owl:Thing ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_sourceSessions" .
+
+hermesont:extractionIds a owl:DatatypeProperty ;
+    rdfs:label "extractionIds" ;
+    rdfs:comment "Storage property hermes_extractionIds. Stored as a primitive string array." ;
+    rdfs:domain owl:Thing ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_extractionIds" .
+
+hermesont:relLabel a owl:DatatypeProperty ;
+    rdfs:label "relLabel" ;
+    rdfs:comment "Storage property hermes_relLabel. Values are validated by the plugin schema before writing." ;
+    rdfs:domain owl:Thing ; rdfs:range xsd:string ;
+    hermesont:neo4jProperty "hermes_relLabel" .

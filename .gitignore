@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Vendored locked dependencies (restored from requirements.lock, never committed)
+plugins/kg/_vendor/
+.cache/
+cache/
+
+# Local profile state and secrets — never commit
+kg.json
+kg.json.*
+*.db
+*.db-shm
+*.db-wal
+kg-sync/sync-state*.db
+kg-sync/*.json
+kg-sync/runner.lock
+state.db
+.env
+.env.*
+
+# Hermes core checkout used by the test suite (see README)
+hermes-agent/
+
+# Test / probe output
+reports/
+*.log

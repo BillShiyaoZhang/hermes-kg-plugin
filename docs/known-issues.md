@@ -1,0 +1,51 @@
+# Known issues
+
+## 1. Prompt-template drift against the Hermes core (open)
+
+**Test:** `plugins/kg/tests/test_provenance.py::ProvenanceTests::test_review_prefixes_match_installed_core_templates`
+
+**Status:** failing on `hermes-agent` `main` as of commit `0e427d78` (2026-10-22). The
+same test passes against the core revision this plugin was written against.
+
+**What happened.** The Hermes core changed the wording of its background
+memory-review prompt in commit `f02be54d73` (2026-09-19, *"fix(review): route
+memory facts to USER.md vs MEMORY.md and forbid dual-store writes"*):
+
+| | before `f02be54d73` | after `f02be54d73` |
+|---|---|---|
+| `_MEMORY_REVIEW_PROMPT` | `Review the conversation above and consider saving to memory if appropriate.\n\nFocus on:\n1. Has the user revealed things about themselves …` | `Review the conversation above and consider saving to memory if appropriate.\n\nMemory has TWO distinct stores — pick the right one for each fact: …` |
+| `_SKILL_REVIEW_PROMPT` | unchanged | unchanged |
+
+`plugins/kg/provenance.py` still carries the pre-change text in
+`MEMORY_REVIEW_PREFIX`. The test compares the plugin's prefix against the
+core's current template and fails — it is a drift detector doing its job, not
+a broken test.
+
+**Impact.** The core's new background memory-review prompt is no longer
+recognised as synthetic. It is a user-role row in the transcript, so it
+survives the provenance filter and reaches the extraction model as if it were
+something the user said. It can also be quoted as evidence, because the
+evidence validator uses the same projection.
+
+The skill-review prompt is unaffected — `_SKILL_REVIEW_PROMPT` did not change,
+and `SKILL_REVIEW_PREFIX` still matches.
+
+**Fix.** Update `MEMORY_REVIEW_PREFIX` in `plugins/kg/provenance.py` to the
+current core template's opening, keeping the same "long, exact opening"
+rule the other prefixes follow: a prefix has to be long enough that an
+ordinary request like *"请回顾对话整理记忆"* or *"Review the conversation above
+and consider saving to memory if appropriate."* is still retained as human
+text. A one-line prefix would swallow real user requests, which is why the
+plugin matches on the long template openings rather than on the first
+sentence.
+
+The core can change again, so the test is the thing that has to keep passing
+against `main`, not against a pinned core revision.
+
+## 2. `agent.memory_provider` is a core import
+
+`plugins/kg/provider.py` imports `MemoryProvider`, `RecallStatus` and
+`is_trivial_prompt` from `agent.memory_provider` in the Hermes core. The
+plugin therefore cannot be imported outside a Hermes installation, and its
+tests need a core checkout (see the README's Tests section). This is
+intentional — the plugin is a Hermes user plugin, not a standalone library.

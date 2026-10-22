@@ -1,0 +1,36 @@
+# Ready-to-submit plugin-catalog entry for the upstream hermes-agent catalog.
+#
+# The upstream catalog lives in NousResearch/hermes-agent under plugin-catalog/.
+# Copy this file there as plugin-catalog/kg.yaml once the plugin is published
+# at a public URL, and pin `sha` to the commit that is being submitted.
+#
+# The catalog schema (scripts/validate_plugin_catalog.py) requires:
+#   name, repo, sha, description, maintainer
+# and accepts: version, subdir, requires_hermes, docs_url, tier, category,
+# capabilities, readme, platforms, ...
+#
+# `sha` must be a full 40-character commit SHA, not a branch name.
+#
+# Validate before submitting:
+#   python scripts/validate_plugin_catalog.py
+
+name: kg
+repo: https://github.com/BillShiyaoZhang/hermes-kg-plugin.git
+sha: 0000000000000000000000000000000000000000
+subdir: plugins/kg
+version: "1.0.0"
+requires_hermes: ">=0.21.0"
+maintainer: BillShiyaoZhang
+tier: community
+category: memory
+readme: true
+docs_url: https://github.com/BillShiyaoZhang/hermes-kg-plugin
+description: "Neo4j knowledge-graph memory for Hermes — recall, remember, and typed entities (Person, Event, Preference, Decision, Location, Concept) with profile-scoped visibility, evidence-grounded extraction from session snapshots, and durable SQLite-backed sync receipts. Disclosure — the plugin stores memories in the Neo4j instance you configure in $HERMES_HOME/kg.json; it does not bundle a database or any credential. Scheduled extraction sends conversation text to the auxiliary LLM route you configure (auxiliary.kg_sync, defaulting to the main model) and writes the returned entities and relations to that database. The provider itself is local and read-only until a write tool call is made."
+capabilities:
+  provides_tools:
+    - kg_search
+    - kg_write
+    - kg_status
+  provides_hooks: []
+  provides_middleware: []
+  requires_env: []
