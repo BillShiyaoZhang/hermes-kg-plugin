@@ -36,12 +36,27 @@ class FakeTransaction:
     def run(self, query, params=None):
         assert isinstance(query, str), "Transaction.run must receive strings"
         params = params or {}
+        if "MERGE (w:KGWorkspace" in query:
+            return Result()
+        if "AS candidate_uri" in query:
+            return Result([{"candidate_uri": uri, "candidate_name": node["properties"].get("foaf_name"),
+                "candidate_aliases": node["properties"].get("hermes_aliasNames", [])}
+                for uri, node in self.state["nodes"].items() if "Person" in node["labels"]
+                and not set(node["labels"]) & {"KGQuarantined", "KGLegacyAlias", "KGLegacyUnresolved"}])
+        if "MATCH (a {uri:$uri})-[r]->(b)" in query:
+            return Result()
+        if "RETURN properties(r) AS properties" in query:
+            return Result()
+        if "SET n.hermes_revision=coalesce(n.hermes_revision,0)+1" in query:
+            node = self.state["nodes"][params["uri"]]
+            node["properties"]["hermes_revision"] = node["properties"].get("hermes_revision", 0) + 1
+            return Result()
         if "MERGE (r:KGSyncReceipt" in query:
             receipt = self.state["receipts"].setdefault(params["snapshot_id"], {**params, "complete": False})
             return Result([{"receipt": copy.deepcopy(receipt)}])
-        if query.startswith("MATCH (n {uri:$uri}) RETURN labels"):
+        if query.lstrip().startswith("MATCH (n {uri:$uri})") and "RETURN labels(n) AS labels" in query:
             node = self.state["nodes"].get(params["uri"])
-            return Result([{"labels": node["labels"], "alias_confirmed": node["properties"].get("hermes_aliasConfirmed"),
+            return Result([{"labels": node["labels"], "properties": copy.deepcopy(node["properties"]), "alias_confirmed": node["properties"].get("hermes_aliasConfirmed"),
                             **{key: node["properties"].get(prop) for key, prop in {
                                 "event_time": "hermes_eventTime", "event_end_time": "hermes_eventEndTime",
                                 "time_precision": "hermes_timePrecision", "event_status": "hermes_eventStatus"}.items()}}]) if node else Result()
@@ -50,6 +65,9 @@ class FakeTransaction:
             node = self.state["nodes"].setdefault(params["uri"], {"labels": [], "properties": {}})
             node["labels"] = list(set(node["labels"]) | {"KGEntity", label})
             node["properties"].update(params["props"])
+            node["properties"].update({"uri": params["uri"], "hermes_revision": params["revision"],
+                "hermes_origin": params["origin"], "hermes_userConfirmed": params["user_confirmed"],
+                "hermes_evidenceJson": params["evidence_json"]})
             if "REMOVE n:KGLegacyUnresolved" in query:
                 node["labels"].remove("KGLegacyUnresolved")
                 node["properties"].pop("hermes_repairReason", None)
@@ -58,6 +76,9 @@ class FakeTransaction:
                 node["properties"].pop("hermes_eventEndTime", None)
             if "SET n.hermes_timePrecision=CASE" in query and node["properties"].get("hermes_timePrecision") == "unknown":
                 node["properties"]["hermes_timePrecision"] = "datetime"
+            return Result()
+        if "MERGE (v:KGMemoryRevision" in query:
+            self.state.setdefault("revisions", {}).setdefault(params["revision_id"], copy.deepcopy(params))
             return Result()
         if "RETURN labels(a) AS source_labels" in query:
             a, b = self.state["nodes"].get(params["from"]), self.state["nodes"].get(params["to"])

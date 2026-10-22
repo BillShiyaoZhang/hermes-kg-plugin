@@ -225,7 +225,14 @@ class GroundingReplayTests(unittest.TestCase):
             snapshot = state.discover()[0]
             legacy_payload = {"session_id": snapshot["session_id"], "snapshot_id": snapshot["snapshot_id"],
                               "entities": [{"type": "Person", "urn": "urn:hermes:kg:person-ada", "name": "Ada", "props": {}}], "relations": []}
-            state.stage_extraction(snapshot["snapshot_id"], legacy_payload)
+            # Simulate bytes persisted by the old release, rather than asking
+            # today's stricter staging entrypoint to accept invalid evidence.
+            with self.assertRaises(ValueError):
+                state.stage_extraction(snapshot["snapshot_id"], legacy_payload)
+            import hashlib
+            raw = json.dumps(legacy_payload, sort_keys=True, separators=(",", ":"))
+            with state.transaction() as connection:
+                connection.execute("UPDATE snapshots SET payload_json=?,extraction_hash=?,status='extracted' WHERE snapshot_id=?", (raw, hashlib.sha256(raw.encode()).hexdigest(), snapshot["snapshot_id"]))
             def forbidden_model(**kwargs):
                 self.fail("Durable extraction must not be silently recomputed")
             def forbidden_writer(*args, **kwargs):
@@ -256,7 +263,12 @@ class GroundingReplayTests(unittest.TestCase):
                       "entities": [{"type": "Event", "urn": "urn:hermes:kg:event-precision-fixture", "name": "Meeting Ada",
                                     "props": {"event_time": "2026-09-12"}, "evidence": {"message_id": 1, "quote": quote}}],
                       "relations": []}
-            state.stage_extraction(snapshot["snapshot_id"], staged)
+            # Legacy staging did not normalize date precision. Inject that old
+            # durable representation to exercise replay migration protection.
+            import hashlib
+            raw = json.dumps(staged, sort_keys=True, separators=(",", ":"))
+            with state.transaction() as connection:
+                connection.execute("UPDATE snapshots SET payload_json=?,extraction_hash=?,status='extracted' WHERE snapshot_id=?", (raw, hashlib.sha256(raw.encode()).hexdigest(), snapshot["snapshot_id"]))
             with closing(sqlite3.connect(state.path)) as connection:
                 original = connection.execute("SELECT payload_json,extraction_hash FROM snapshots WHERE snapshot_id=?", (snapshot["snapshot_id"],)).fetchone()
             # The source is adequate; the only incompatibility is a newer

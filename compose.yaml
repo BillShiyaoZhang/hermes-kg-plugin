@@ -1,0 +1,46 @@
+name: hermes-kg-dev
+services:
+  neo4j:
+    image: neo4j:5.26-community
+    ports:
+      - "127.0.0.1:17474:7474"
+      - "127.0.0.1:17687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/local-development-password
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p local-development-password 'RETURN 1' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+  console:
+    build: .
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      HERMES_HOME: /data/profile
+      HERMES_KG_BOLT_URL: bolt://neo4j:7687
+      HERMES_KG_USER: neo4j
+      HERMES_KG_PASSWORD: local-development-password
+      HERMES_KG_URN_PREFIX: "urn:hermes-demo:kg:"
+      HERMES_KG_USER_PERSON_URN: urn:hermes-demo:kg:person-owner
+      HERMES_KG_DEMO_MODE: "1"
+      HERMES_KG_CONSOLE_TOKEN: ${KG_CONSOLE_TOKEN:-local-development-only}
+      HERMES_KG_MODEL_CACHE: /data/models
+      PYTHONPATH: /app/plugins:/app
+    volumes:
+      - console-data:/data
+      - ./plugins:/app/plugins:ro
+      - ./scripts:/app/scripts:ro
+      - ./skills:/app/skills:ro
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    command: ["python", "-m", "kg.console_cli", "serve", "--host", "0.0.0.0", "--port", "8765", "--container"]
+volumes:
+  neo4j-data:
+  console-data:

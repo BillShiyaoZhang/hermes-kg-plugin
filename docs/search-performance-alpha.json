@@ -1,0 +1,249 @@
+{
+  "started_at_utc": "2026-10-22T16:31:55.852345+00:00",
+  "complete": true,
+  "dataset": {
+    "memories": 10000,
+    "chunks": 10000,
+    "relations": 0,
+    "namespace": "urn:kgbench8cedf217dd0545e499c4384e3236c6f2:kg:",
+    "shared": false,
+    "synthetic_vectors": true,
+    "quality_test": false,
+    "description": "Short synthetic memories; all chunks reuse one real E5 passage vector. No quality conclusions."
+  },
+  "environment": {
+    "platform": "Linux-6.12.76-linuxkit-aarch64-with-glibc2.41",
+    "architecture": "aarch64",
+    "python": "3.11.17",
+    "app_cpu_cap": 2,
+    "app_memory_cap_bytes": 4294967296,
+    "database_cpu_cap": 2,
+    "database_memory_cap_bytes": 4294967296,
+    "combined_caps": "4 CPU / 8 GiB across two independent benchmark containers",
+    "docker_host": "CPUs=6 MemoryBytes=16748396544 Architecture=aarch64 OS=Docker Desktop",
+    "image": "hermes-kg-dev-tests",
+    "routine_schema_warning_logging": "suppressed in benchmark runner",
+    "packages": {
+      "fastembed": "0.9.0",
+      "onnxruntime": "1.23.2",
+      "neo4j": "5.28.1"
+    },
+    "database": [
+      {
+        "name": "Neo4j Kernel",
+        "versions": [
+          "5.26.31"
+        ],
+        "edition": "community"
+      }
+    ]
+  },
+  "warmup_queries": 3,
+  "requested_timed_queries": 30,
+  "memory_before_model": {
+    "process_peak_rss_bytes": 28278784,
+    "memory.current": 19820544,
+    "memory.peak": 19927040,
+    "memory.max": 4294967296,
+    "cpu.max": "200000 100000"
+  },
+  "cleanup_complete": true,
+  "model": {
+    "model": "intfloat/multilingual-e5-small",
+    "model_revision": "ccc66d3bcd826f577e26b9a4072cc5fe3a7ad6a3",
+    "embedding_revision": "e5-small-onnx-mean-l2-query-passage-v1",
+    "dimensions": 384,
+    "ready": true,
+    "cached": true,
+    "error": null
+  },
+  "memory_after_model": {
+    "process_peak_rss_bytes": 1245126656,
+    "memory.current": 1134493696,
+    "memory.peak": 1210834944,
+    "memory.max": 4294967296,
+    "cpu.max": "200000 100000"
+  },
+  "indexes": [
+    {
+      "name": "kg_search_chunk_id",
+      "type": "RANGE",
+      "state": "ONLINE",
+      "populationPercent": 100.0,
+      "properties": [
+        "id"
+      ]
+    },
+    {
+      "name": "kg_search_fulltext_v1",
+      "type": "FULLTEXT",
+      "state": "ONLINE",
+      "populationPercent": 100.0,
+      "properties": [
+        "text"
+      ]
+    },
+    {
+      "name": "kg_search_source_v1",
+      "type": "RANGE",
+      "state": "ONLINE",
+      "populationPercent": 100.0,
+      "properties": [
+        "namespace",
+        "source_uri"
+      ]
+    },
+    {
+      "name": "kg_search_vector_v1",
+      "type": "VECTOR",
+      "state": "ONLINE",
+      "populationPercent": 100.0,
+      "properties": [
+        "embedding"
+      ]
+    }
+  ],
+  "source_index_plan": {
+    "args": {
+      "planner-impl": "IDP",
+      "Details": "`c.id`",
+      "planner-version": "5.26.31",
+      "string-representation": "Cypher 5\n\nPlanner COST\n\nRuntime SLOTTED\n\nRuntime version 5.26.31\n\n+-----------------+----+----------------------------------------------------------------------------------------------------+----------------+\n| Operator        | Id | Details                                                                                            | Estimated Rows |\n+-----------------+----+----------------------------------------------------------------------------------------------------+----------------+\n| +ProduceResults |  0 | `c.id`                                                                                             |              1 |\n| |               +----+----------------------------------------------------------------------------------------------------+----------------+\n| +Projection     |  1 | c.id AS `c.id`                                                                                     |              1 |\n| |               +----+----------------------------------------------------------------------------------------------------+----------------+\n| +NodeIndexSeek  |  2 | RANGE INDEX c:KGSearchChunk(namespace, source_uri) WHERE namespace = $prefix AND source_uri = $uri |              1 |\n+-----------------+----+----------------------------------------------------------------------------------------------------+----------------+\n\nTotal database accesses: ?\n",
+      "runtime-version": "5.26.31",
+      "runtime": "SLOTTED",
+      "Id": 0,
+      "runtime-impl": "SLOTTED",
+      "EstimatedRows": 0.9999999999999999,
+      "planner": "COST",
+      "version": "5"
+    },
+    "children": [
+      {
+        "args": {
+          "Details": "c.id AS `c.id`",
+          "Id": 1,
+          "EstimatedRows": 0.9999999999999999
+        },
+        "children": [
+          {
+            "args": {
+              "Details": "RANGE INDEX c:KGSearchChunk(namespace, source_uri) WHERE namespace = $prefix AND source_uri = $uri",
+              "Id": 2,
+              "EstimatedRows": 0.9999999999999999
+            },
+            "identifiers": [
+              "c"
+            ],
+            "operatorType": "NodeIndexSeek@neo4j"
+          }
+        ],
+        "identifiers": [
+          "c",
+          "`c.id`"
+        ],
+        "operatorType": "Projection@neo4j"
+      }
+    ],
+    "identifiers": [
+      "c",
+      "`c.id`"
+    ],
+    "operatorType": "ProduceResults@neo4j"
+  },
+  "seed_and_index_seconds": 5.302,
+  "index_status": {
+    "state": "ready",
+    "indexes": {
+      "kg_search_fulltext_v1": {
+        "state": "ONLINE",
+        "population_percent": 100.0
+      },
+      "kg_search_source_v1": {
+        "state": "ONLINE",
+        "population_percent": 100.0
+      },
+      "kg_search_vector_v1": {
+        "state": "ONLINE",
+        "population_percent": 100.0
+      }
+    },
+    "pending_count": 0,
+    "indexed_count": 10000,
+    "model_ready": true,
+    "mode": "hybrid",
+    "model": {
+      "model": "intfloat/multilingual-e5-small",
+      "model_revision": "ccc66d3bcd826f577e26b9a4072cc5fe3a7ad6a3",
+      "embedding_revision": "e5-small-onnx-mean-l2-query-passage-v1",
+      "dimensions": 384,
+      "ready": true,
+      "cached": true,
+      "error": null
+    }
+  },
+  "memory_after_indexing": {
+    "process_peak_rss_bytes": 1245126656,
+    "memory.current": 1185349632,
+    "memory.peak": 1210834944,
+    "memory.max": 4294967296,
+    "cpu.max": "200000 100000"
+  },
+  "hybrid_search": {
+    "count": 30,
+    "p50_ms": 432.563,
+    "p95_ms": 505.211,
+    "min_ms": 300.017,
+    "max_ms": 517.219
+  },
+  "status_lookup": {
+    "count": 10,
+    "p50_ms": 54.619,
+    "p95_ms": 55.254,
+    "min_ms": 54.156,
+    "max_ms": 55.254
+  },
+  "search_samples_ms": [
+    432.563,
+    517.219,
+    315.691,
+    499.157,
+    320.786,
+    488.237,
+    309.581,
+    499.15,
+    325.054,
+    485.837,
+    300.37,
+    478.566,
+    311.107,
+    505.128,
+    306.406,
+    491.758,
+    300.769,
+    479.456,
+    301.397,
+    479.616,
+    301.847,
+    489.468,
+    302.466,
+    478.187,
+    300.017,
+    480.449,
+    300.915,
+    505.211,
+    324.204,
+    485.133
+  ],
+  "memory_at_end": {
+    "process_peak_rss_bytes": 1245126656,
+    "memory.current": 1186549760,
+    "memory.peak": 1210834944,
+    "memory.max": 4294967296,
+    "cpu.max": "200000 100000"
+  },
+  "elapsed_seconds": 22.175,
+  "database_container_memory": {
+    "peak_bytes": 1969508352,
+    "current_bytes": 1968574464
+  }
+}

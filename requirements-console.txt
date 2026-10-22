@@ -1,0 +1,10 @@
+-r plugins/kg/requirements.in
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+httpx>=0.27,<1
+fastembed==0.9.0
+onnxruntime==1.23.2
+openai>=2,<4
+PyYAML>=6,<7
+rich>=14,<16
+python-dotenv==1.2.2

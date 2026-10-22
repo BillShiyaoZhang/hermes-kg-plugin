@@ -34,6 +34,8 @@ class SyncState:
         if readonly:
             conn = sqlite3.connect(self.path.as_uri()+"?mode=ro",uri=True,timeout=30)
         else:
+            from .maintenance import assert_not_restoring
+            assert_not_restoring(self.home)
             self.path.parent.mkdir(parents=True, exist_ok=True)
             conn = sqlite3.connect(self.path, timeout=30)
         conn.row_factory = sqlite3.Row
@@ -55,6 +57,7 @@ class SyncState:
             CREATE TABLE IF NOT EXISTS snapshots(snapshot_id TEXT PRIMARY KEY,session_id TEXT NOT NULL,source_version TEXT NOT NULL,after_message_id INTEGER NOT NULL,last_message_id INTEGER NOT NULL,snapshot_json TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',payload_json TEXT,extraction_hash TEXT,receipt_json TEXT,error TEXT,attempts INTEGER NOT NULL DEFAULT 0,lease_token TEXT,lease_until REAL,created_at REAL NOT NULL,updated_at REAL NOT NULL);
             CREATE UNIQUE INDEX IF NOT EXISTS one_active_snapshot ON snapshots(session_id,source_version) WHERE status!='committed';
             CREATE TABLE IF NOT EXISTS legacy_sources(session_id TEXT PRIMARY KEY,source_version TEXT NOT NULL,metadata_json TEXT NOT NULL,registered_at REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS history_seeds(session_id TEXT NOT NULL,source_version TEXT NOT NULL,last_message_id INTEGER NOT NULL,PRIMARY KEY(session_id,source_version));
         """)
         conn.execute("BEGIN IMMEDIATE")
         try:
@@ -76,6 +79,49 @@ class SyncState:
         with self.transaction() as conn:
             conn.execute("INSERT INTO queue VALUES(?,?,?) ON CONFLICT(session_id) DO UPDATE SET requested_at=excluded.requested_at,reason=excluded.reason", (session_id,time.time(),reason))
         return True
+
+    def seed_existing_history(self,cutoff=None):
+        """Explicit first-install boundary; never rewrites a real checkpoint."""
+        candidates=self.source.list_sessions(min_messages=1)
+        seeded=0
+        with self.transaction() as conn:
+            for item in candidates:
+                if cutoff is not None:
+                    with self.source.connect() as source:
+                        boundary=source.execute(f"SELECT max(id) FROM messages WHERE session_id=? AND {self.source._filter(source)} AND (typeof(timestamp) NOT IN ('integer','real') OR timestamp<=?)",(item['id'],cutoff)).fetchone()[0]
+                    if boundary is None: continue
+                    item={**item,'last_message_id':boundary}
+                key=(item['id'],item['source_version'])
+                if conn.execute('SELECT 1 FROM snapshots WHERE session_id=? AND source_version=?',key).fetchone():
+                    continue
+                if conn.execute('SELECT 1 FROM checkpoints WHERE session_id=? AND source_version=?',key).fetchone():
+                    continue
+                conn.execute('INSERT INTO checkpoints VALUES(?,?,?,?)',(*key,item['last_message_id'],time.time()))
+                conn.execute('INSERT INTO history_seeds VALUES(?,?,?)',(*key,item['last_message_id']))
+                seeded+=1
+        return seeded
+
+    def request_backfill(self,session_ids):
+        """Allow selected skipped history before any actual extraction of it."""
+        if not session_ids or len(session_ids)>20:
+            raise ValueError('Select between 1 and 20 sessions')
+        candidates={item['id']:item for item in self.source.list_sessions(min_messages=1)}
+        with self.transaction() as conn:
+            # Validate the entire request before changing any cursor.
+            for sid in session_ids:
+                if sid not in candidates:
+                    raise ValueError('Session is missing or excluded from extraction')
+                item=candidates[sid]; key=(sid,item['source_version'])
+                seed=conn.execute('SELECT last_message_id FROM history_seeds WHERE session_id=? AND source_version=?',key).fetchone()
+                cursor=conn.execute('SELECT last_message_id FROM checkpoints WHERE session_id=? AND source_version=?',key).fetchone()
+                if conn.execute('SELECT 1 FROM snapshots WHERE session_id=? AND source_version=?',key).fetchone() or (cursor and (not seed or seed[0]!=cursor[0])):
+                    raise ValueError('This session already has extraction history; refusing to reset its cursor')
+            for sid in session_ids:
+                key=(sid,candidates[sid]['source_version'])
+                conn.execute('DELETE FROM checkpoints WHERE session_id=? AND source_version=?',key)
+                conn.execute('DELETE FROM history_seeds WHERE session_id=? AND source_version=?',key)
+                conn.execute('INSERT INTO queue VALUES(?,?,?) ON CONFLICT(session_id) DO UPDATE SET reason=excluded.reason,requested_at=excluded.requested_at',(sid,time.time(),'explicit_backfill'))
+        return {'ok':True,'queued_sessions':list(session_ids)}
 
     @staticmethod
     def _legacy_candidates(conn,exclude_ids=()):
@@ -202,6 +248,8 @@ class SyncState:
         from .config import load_config
         from .schema import prepare_entity, prepare_relation
         config=load_config(home=self.home)
+        from .extraction import validate_extraction
+        payload = validate_extraction(_json(payload), snapshot, config)
         prepared=[prepare_entity(entity,config) for entity in payload["entities"]]
         if len({entity[0]["uri"] for entity in prepared})!=len(prepared):
             raise ValueError("Extraction repeats a canonical entity URI")
@@ -242,10 +290,17 @@ class SyncState:
                 self._legacy_reader(frozen).validate_snapshot(frozen)
             else:
                 self.source.validate_snapshot(frozen)
+            from .extraction import validate_extraction
+            from .config import load_config
+            config = load_config(home=self.home)
+            checked = validate_extraction(_json(payload), frozen, config)
+            if checked != payload:
+                raise ValueError("Staged extraction requires an explicit migration before replay")
             if writer is None:
-                from .store import write_batch
-                from .config import load_config
-                writer=lambda entities,relations,**kwargs:write_batch(entities,relations,config=load_config(home=self.home),**kwargs)
+                from .store import KGStore
+                def writer(entities, relations, **kwargs):
+                    with KGStore(config) as store:
+                        return store.write_batch(entities, relations, origin='auto', review_payload=payload, **kwargs)
             receipt=writer(payload["entities"],payload["relations"],source_session=row["session_id"],checkpoint=checkpoint)
             if not isinstance(receipt,dict) or receipt.get("ok") is not True or receipt.get("receipt_id")!=snapshot_id or receipt.get("extraction_hash")!=row["extraction_hash"]:
                 raise ValueError("Graph write returned no matching durable receipt; checkpoint remains pending")
@@ -294,7 +349,7 @@ class SyncState:
         with self.transaction(readonly=readonly) as conn:
             counts=dict(conn.execute("SELECT status,count(*) FROM snapshots GROUP BY status"))
             pending=[dict(r) for r in conn.execute("SELECT snapshot_id,session_id,status,attempts,error FROM snapshots WHERE status!='committed' ORDER BY created_at")]
-            checkpoints=conn.execute("SELECT count(*) FROM checkpoints").fetchone()[0]
+            checkpoints=conn.execute("SELECT count(*) FROM (SELECT DISTINCT session_id,source_version FROM snapshots WHERE status='committed')").fetchone()[0]
             queued=conn.execute("SELECT count(*) FROM queue").fetchone()[0]
         return {"format":2,"source":"state.db","snapshot_counts":counts,"committed_sessions":checkpoints,"queued_sessions":queued,"pending":pending}
 

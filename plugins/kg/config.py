@@ -10,7 +10,12 @@ from urllib.parse import urlparse
 
 def resolve_home(explicit=None) -> Path:
     value = explicit if explicit is not None else os.environ.get("HERMES_HOME")
-    return Path(value).expanduser().resolve() if value else Path(__file__).resolve().parents[2]
+    if value:
+        return Path(value).expanduser().resolve()
+    module=Path(__file__).resolve()
+    if module.parent.parent.name == "plugins":
+        return module.parents[2]
+    return (Path.home()/".hermes").resolve()
 
 
 def get_hermes_home(hermes_home=None) -> Path:
@@ -40,10 +45,13 @@ class KGConfig:
     query_timeout: float = 10
     query_limit: int = 10
     timezone: str = "Asia/Shanghai"
+    default_shared: bool = True
+    console_url: str = "http://127.0.0.1:8765"
 
     def __post_init__(self):
         object.__setattr__(self, "home", Path(self.home).expanduser().resolve())
         object.__setattr__(self, "enabled", _boolean(self.enabled, "enabled"))
+        object.__setattr__(self, "default_shared", _boolean(self.default_shared, "default_shared"))
         if urlparse(self.neo4j_url).scheme not in {"bolt", "bolt+s", "bolt+ssc", "neo4j", "neo4j+s", "neo4j+ssc"}:
             raise ValueError("KG URL must use a Neo4j Bolt scheme")
         if not self.urn_prefix.startswith("urn:") or not self.urn_prefix.endswith(":"):

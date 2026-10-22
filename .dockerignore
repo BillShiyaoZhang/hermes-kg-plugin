@@ -1,0 +1,16 @@
+.git
+.venv
+**/__pycache__
+**/node_modules
+**/dist
+**/_vendor
+**/*.db
+**/*.db-*
+**/kg.json
+**/.env*
+reports
+hermes-agent
+build
+dist
+**/*.egg-info
+core

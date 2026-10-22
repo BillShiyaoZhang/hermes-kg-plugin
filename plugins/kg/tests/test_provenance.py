@@ -3,6 +3,7 @@ import unittest
 import importlib.util
 import json
 import ast
+import os
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[3]/"plugins"))
 from kg.provenance import COMPACTION_PREFIX,LEGACY_SUMMARY_PREFIX,PRIOR_HEADER,MERGED_DELIMITER,SUMMARY_END,EXACT_NUDGES,SKILL_REVIEW_PREFIX,MEMORY_REVIEW_PREFIX,groundable_user_messages,provenance_summary,user_message_view
@@ -25,13 +26,15 @@ class ProvenanceTests(unittest.TestCase):
             self.assertEqual(user_message_view(self.row(text))["content"],text)
 
     def test_review_prefixes_match_installed_core_templates(self):
-        core=Path(__file__).resolve().parents[3]/"hermes-agent/agent/background_review.py"
+        core=Path(os.environ.get("HERMES_AGENT_HOME", Path(__file__).resolve().parents[3]/"hermes-agent"))/"agent/background_review.py"
         syntax=ast.parse(core.read_text(encoding="utf-8"))
         assignments={node.targets[0].id:node.value for node in syntax.body
                      if isinstance(node,ast.Assign) and isinstance(node.targets[0],ast.Name)}
         for name,prefix in (("_SKILL_REVIEW_PROMPT",SKILL_REVIEW_PREFIX),("_MEMORY_REVIEW_PROMPT",MEMORY_REVIEW_PREFIX)):
             values=[node.value for node in ast.walk(assignments[name]) if isinstance(node,ast.Constant) and isinstance(node.value,str)]
-            self.assertTrue(any(value.startswith(prefix) for value in values),name)
+            from kg.provenance import CURRENT_MEMORY_REVIEW_PREFIX
+            prefixes=(prefix,CURRENT_MEMORY_REVIEW_PREFIX) if name=='_MEMORY_REVIEW_PROMPT' else (prefix,)
+            self.assertTrue(any(value.startswith(candidate) for value in values for candidate in prefixes),name)
 
     def test_review_prompts_are_excluded_from_both_input_and_evidence(self):
         from kg.grounding import _evidence

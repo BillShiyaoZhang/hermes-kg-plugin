@@ -49,6 +49,10 @@ PROPERTY_ALIASES = {
     "label": "hermes_relLabel", "rel_label": "hermes_relLabel",
 }
 RESERVED_PROPERTIES = {"uri", "hermes_updatedAt", "hermes_createdAt", "hermes_sourceSession", "hermes_sourceSessions", "hermes_extractionIds", "hermes_aliasConfirmed", "hermes_canonicalUri"}
+RESERVED_PROPERTIES |= {
+    "hermes_revision", "hermes_userConfirmed", "hermes_origin", "hermes_evidenceJson",
+    "hermes_archivedByWorkbench", "hermes_lastOperationId", "hermes_archiveReason",
+}
 TEXT_PROPERTIES = {"foaf_name", "hermes_name", "hermes_description", "hermes_note", "hermes_preferenceKey", "hermes_preferenceValue", "hermes_decisionText", "hermes_decisionContext", "hermes_relLabel", "hermes_timePrecision", "hermes_eventStatus", "hermes_semanticScope", "hermes_status", "hermes_statusNote"}
 
 
@@ -97,6 +101,10 @@ def normalize_rel(value):
 
 
 def parse_time(value, tz="Asia/Shanghai"):
+    # Database reads return neo4j.time.DateTime/Date rather than stdlib objects.
+    # Corrections of an unrelated field must preserve those stored timestamps.
+    if callable(getattr(value, "to_native", None)):
+        value = value.to_native()
     if isinstance(value, datetime):
         parsed = value
     elif isinstance(value, date):

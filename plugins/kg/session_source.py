@@ -80,6 +80,12 @@ class SessionSource:
         return " AND ".join(terms)
 
     @staticmethod
+    def _message_columns(conn):
+        available={r[1] for r in conn.execute('PRAGMA table_info(messages)')}
+        optional=[name for name in ('active','_compressed_summary','_micro_compact_marker','display_kind') if name in available]
+        return ','.join(['id','role','content','timestamp',*optional])
+
+    @staticmethod
     def allowed(session: dict, exclude_ids=()) -> bool:
         sid = session["id"]
         source = (session.get("source") or "").lower()
@@ -122,7 +128,7 @@ class SessionSource:
             meta = dict(row)
             if not self.allowed(meta):
                 raise ValueError("Automated memory/cron sessions are excluded from KG extraction")
-            rows = conn.execute(f"SELECT id,role,content,timestamp FROM messages WHERE session_id=? AND id>? AND {self._filter(conn)} ORDER BY id", (session_id, after_message_id))
+            rows = conn.execute(f"SELECT {self._message_columns(conn)} FROM messages WHERE session_id=? AND id>? AND {self._filter(conn)} ORDER BY id", (session_id, after_message_id))
             messages, chars, last_id = [], 0, after_message_id
             for row in rows:
                 content = _text(row["content"])
@@ -133,7 +139,7 @@ class SessionSource:
                     continue
                 if messages and (len(messages) >= max_messages or chars + len(content) > max_chars):
                     break
-                messages.append({"id": row["id"], "role": row["role"], "content": content, "timestamp": row["timestamp"]})
+                messages.append({**dict(row),"content":content})
                 last_id = row["id"]
                 chars += len(content)
             if last_id == after_message_id:
@@ -148,11 +154,20 @@ class SessionSource:
             meta=conn.execute("SELECT id,source,started_at FROM sessions WHERE id=?",(snapshot["session_id"],)).fetchone()
             if meta is None or not self.allowed(dict(meta)) or _version(meta["id"],meta["started_at"])!=snapshot["source_version"]:
                 raise SourceChangedError("Source session was removed, replaced, or became an excluded automated session")
-            rows=conn.execute(f"SELECT id,role,content,timestamp FROM messages WHERE session_id=? AND id>? AND id<=? AND {self._filter(conn)} ORDER BY id",(snapshot["session_id"],snapshot["after_message_id"],snapshot["last_message_id"]))
+            rows=conn.execute(f"SELECT {self._message_columns(conn)} FROM messages WHERE session_id=? AND id>? AND id<=? AND {self._filter(conn)} ORDER BY id",(snapshot["session_id"],snapshot["after_message_id"],snapshot["last_message_id"]))
             actual=[]
             for row in rows:
                 content=_text(row["content"])
                 if content:
-                    actual.append({"id":row["id"],"role":row["role"],"content":content,"timestamp":row["timestamp"]})
+                    current={**dict(row),'content':content}
+                    frozen=next((m for m in snapshot['messages'] if m['id']==row['id']),{})
+                    from .provenance import user_message_view
+                    now_view=user_message_view(current)
+                    old_view=user_message_view(frozen)
+                    if (now_view is None)!=(old_view is None):
+                        raise SourceChangedError('Source provenance metadata changed')
+                    # Older snapshots did not include optional host metadata.
+                    # Compare their original shape after checking the boundary.
+                    actual.append({key:current.get(key) for key in frozen})
         if actual!=snapshot["messages"]:
             raise SourceChangedError("Frozen messages were edited, rewound, or removed; the extraction needs review and must not advance its checkpoint")

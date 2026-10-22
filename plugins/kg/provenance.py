@@ -33,10 +33,15 @@ MEMORY_REVIEW_PREFIX=(
     "1. Has the user revealed things about themselves — their persona, desires, preferences, or "
     "personal details worth remembering?"
 )
+CURRENT_MEMORY_REVIEW_PREFIX=(
+    "Review the conversation above and consider saving to memory if appropriate.\n\n"
+    "Memory has TWO distinct stores — pick the right one for each fact:"
+)
 
 PREFIX_REASONS=(
     (SKILL_REVIEW_PREFIX,"background_skill_review_prompt"),
     (MEMORY_REVIEW_PREFIX,"background_memory_review_prompt"),
+    (CURRENT_MEMORY_REVIEW_PREFIX,"background_memory_review_prompt"),
     ("[IMPORTANT: Background process ","background_process_notification"),
     ("[Your active task list was preserved across context compression]\n","preserved_todo_notice"),
     ("[System: Your previous tool call ","tool_continuation_notice"),

@@ -1,11 +1,12 @@
 # Known issues
 
-## 1. Prompt-template drift against the Hermes core (open)
+## 1. Prompt-template drift (original incident resolved in Alpha)
 
 **Test:** `plugins/kg/tests/test_provenance.py::ProvenanceTests::test_review_prefixes_match_installed_core_templates`
 
-**Status:** failing on `hermes-agent` `main` as of commit `0e427d78` (2026-10-22). The
-same test passes against the core revision this plugin was written against.
+**Status:** The Alpha now recognizes both historical and two-store review
+openings. This incident is retained as context for the compatibility test.
+The supported core revision and latest-upstream check are recorded in CI.
 
 **What happened.** The Hermes core changed the wording of its background
 memory-review prompt in commit `f02be54d73` (2026-09-19, *"fix(review): route
@@ -16,12 +17,12 @@ memory facts to USER.md vs MEMORY.md and forbid dual-store writes"*):
 | `_MEMORY_REVIEW_PROMPT` | `Review the conversation above and consider saving to memory if appropriate.\n\nFocus on:\n1. Has the user revealed things about themselves …` | `Review the conversation above and consider saving to memory if appropriate.\n\nMemory has TWO distinct stores — pick the right one for each fact: …` |
 | `_SKILL_REVIEW_PROMPT` | unchanged | unchanged |
 
-`plugins/kg/provenance.py` still carries the pre-change text in
+The original plugin only carried the pre-change text in
 `MEMORY_REVIEW_PREFIX`. The test compares the plugin's prefix against the
 core's current template and fails — it is a drift detector doing its job, not
 a broken test.
 
-**Impact.** The core's new background memory-review prompt is no longer
+**Impact.** Before the Alpha fix, the core's new background memory-review prompt was not
 recognised as synthetic. It is a user-role row in the transcript, so it
 survives the provenance filter and reaches the extraction model as if it were
 something the user said. It can also be quoted as evidence, because the
@@ -49,3 +50,16 @@ against `main`, not against a pinned core revision.
 plugin therefore cannot be imported outside a Hermes installation, and its
 tests need a core checkout (see the README's Tests section). This is
 intentional — the plugin is a Hermes user plugin, not a standalone library.
+
+## Alpha product boundaries
+
+- Core schema and quote validation do not prove semantic truth. Negation,
+  hypothetical statements and semantic duplicates still require evaluation.
+- The console is single-profile and loopback-only; remote use requires SSH
+  forwarding. No public multi-user account service is included.
+- Archive is reversible exclusion from recall, not erasure of the Hermes source.
+- Model download/index availability is reported explicitly; lexical fallback is
+  supported. Explicit smart query interpretation requires an installed Hermes
+  model route; the isolated Docker demo has no personal model credentials.
+- Native macOS/Windows checks are configured in CI. Local verification uses Linux
+  containers on this development host; the ten-user pilot is still required.

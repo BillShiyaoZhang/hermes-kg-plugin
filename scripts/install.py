@@ -37,6 +37,7 @@ TREES = (
 # Individual files rather than whole trees.
 FILES = (
     (Path("scripts") / "kg_sync_runner.py", Path("scripts") / "kg_sync_runner.py"),
+    (Path("scripts") / "kg_console.py", Path("scripts") / "kg_console.py"),
 )
 
 # Never copied into a profile home.
@@ -61,7 +62,8 @@ def _copy_tree(src: Path, dst: Path, dry_run: bool) -> list[str]:
             if not dry_run:
                 target.mkdir(parents=True, exist_ok=True)
             continue
-        target.parent.mkdir(parents=True, exist_ok=True)
+        if not dry_run:
+            target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists() and target.read_bytes() == item.read_bytes():
             continue
         if not dry_run:
@@ -75,7 +77,8 @@ def _copy_file(src: Path, dst: Path, dry_run: bool) -> list[str]:
         return []
     if dst.exists() and dst.read_bytes() == src.read_bytes():
         return []
-    dst.parent.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        dst.parent.mkdir(parents=True, exist_ok=True)
     if not dry_run:
         shutil.copy2(src, dst)
     return [str(dst)]
@@ -169,6 +172,10 @@ def main() -> int:
         copied = _copy_file(src, home / dst_rel, args.dry_run)
         changed.extend(copied)
         print(f"  {src_rel} -> {dst_rel}: {len(copied)} file(s)")
+
+    assets=REPO_ROOT/'console'/'dist'
+    if assets.is_dir():
+        changed.extend(_copy_tree(assets,home/'plugins'/'kg'/'static',args.dry_run))
 
     if not args.skip_deps:
         code = install_dependencies(home, args.dry_run)

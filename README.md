@@ -1,8 +1,29 @@
 # hermes-kg-plugin
 
+## Memory Console Alpha
+
+This repository now also includes a self-hosted web workbench: hybrid local
+semantic search, source evidence, revision history, protected corrections,
+archive/restore, review batches and portable backups. The existing Hermes plugin
+and tool names remain compatible.
+
+```bash
+docker compose up --build -d
+```
+
+Open [the local development workbench](http://127.0.0.1:8765/#token=local-development-only).
+It uses isolated Docker volumes and clearly labeled fictional examples, never
+your personal Hermes profile. See [Alpha setup, development and pilot guide](docs/alpha-development.md)
+for real-profile installation, Windows/macOS/Linux operation, models, recovery
+and verification. Docker ports are bound to loopback.
+The [implementation verification record](docs/alpha-validation.md) lists measured
+checks and the remaining release gates.
+
+---
+
 A Neo4j-backed knowledge-graph memory provider for [Hermes Agent](https://hermes-agent.nousresearch.com), plus the two skills and the scheduled sync runner that feed it.
 
-Hermes ships a `MemoryProvider` interface but no knowledge-graph provider. This repository is a self-contained implementation of one: it stores people, dated events, preferences, decisions, locations and concepts as typed graph entities, and exposes them to the agent through three tools — `kg_search`, `kg_write` and a read-only `kg_status`.
+Hermes exposes a `MemoryProvider` interface and an ecosystem of external memory providers. This repository implements a local knowledge-graph provider: it stores people, dated events, preferences, decisions, locations and concepts as typed graph entities, and exposes them to the agent through three tools — `kg_search`, `kg_write` and a read-only `kg_status`.
 
 > This is a **user plugin**, not part of the upstream `NousResearch/hermes-agent` repository. It installs into a Hermes profile home and is never touched by `hermes-agent` updates.
 
@@ -113,20 +134,20 @@ The runner never advances its cursor on a failed write, and a snapshot with no e
 
 ## Tests
 
-The suite is plain `unittest` and needs no database. One test file additionally reads the Hermes core source tree to assert that the plugin's synthetic-text filters still match the core's prompt templates, so the core has to be present.
+The suite uses `unittest`; database and real-model cases are optional and enabled by environment variables. The Hermes core source tree must be available for provider contracts and synthetic-text compatibility checks.
 
 ```bash
 git clone --depth 1 https://github.com/NousResearch/hermes-agent.git hermes-agent
 python scripts/run_tests.py
 ```
 
-`scripts/run_tests.py` locates a core checkout (via `HERMES_AGENT_HOME`, `./hermes-agent`, or a sibling install), links it into place if needed, and runs the suite.
+`scripts/run_tests.py` locates a core checkout (via `HERMES_AGENT_HOME`, `./hermes-agent`, or a sibling install) and passes its path to the suite without changing it. See the Alpha guide for Docker integration tests.
 
-### Known failure: prompt-template drift
+### Prompt-template compatibility
 
-`test_provenance.py::test_review_prefixes_match_installed_core_templates` fails against current `hermes-agent` `main`. The Hermes core changed the text of its background memory-review prompt in commit `f02be54d73` (2026-09-19); `plugins/kg/provenance.py` still carries the previous wording, so the plugin no longer recognises the new prompt as synthetic.
+The Alpha recognizes both the historical memory-review template and the two-store template introduced in `f02be54d73`. The provenance test remains a drift detector against the selected core checkout. A future unmatched upstream template must be reviewed before expanding the supported version set.
 
-The test is doing its job — it is a drift detector, not a broken test. The plugin prefixes need to be updated to the current core templates; until then, the newer background memory-review prompt is not filtered out of extraction input. See `docs/known-issues.md`.
+See [known limitations](docs/known-issues.md) and the Alpha guide for compatibility and release checks.
 
 ---
 

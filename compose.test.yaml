@@ -1,0 +1,19 @@
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    profiles: [tools]
+    environment:
+      HERMES_AGENT_HOME: /opt/hermes-agent
+      KG_TEST_BOLT_URL: bolt://neo4j:7687
+      KG_TEST_PASSWORD: local-development-password
+      KG_SEARCH_TEST_URL: bolt://neo4j:7687
+      KG_SEARCH_TEST_PASSWORD: local-development-password
+      PYTHONPATH: /app/plugins:/app:/opt/hermes-agent
+    volumes:
+      - .:/app
+      - ${HERMES_AGENT_HOME:?Set HERMES_AGENT_HOME to a Hermes core checkout}:/opt/hermes-agent:ro
+    depends_on:
+      neo4j:
+        condition: service_healthy

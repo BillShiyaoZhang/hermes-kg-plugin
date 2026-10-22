@@ -53,7 +53,7 @@ class SyncBehaviorTests(unittest.TestCase):
         self.db.commit()
 
     def payload(self,snapshot):
-        return {"snapshot_id":snapshot["snapshot_id"],"session_id":snapshot["session_id"],"entities":[{"type":"Concept","id":"fixture-fact","name":"Synthetic Fact","props":{"description":"Synthetic test data"}}],"relations":[],"summary":"synthetic"}
+        return {"snapshot_id":snapshot["snapshot_id"],"session_id":snapshot["session_id"],"entities":[{"type":"Concept","id":"fixture-fact","name":"Synthetic Fact","props":{"description":"Synthetic test data"},"evidence":{"message_id":snapshot["messages"][0]["id"],"quote":snapshot["messages"][0]["content"]}}],"relations":[]}
 
     def writer(self,entities,relations,source_session=None,checkpoint=None):
         key=checkpoint["snapshot_id"]
@@ -158,7 +158,7 @@ class SyncBehaviorTests(unittest.TestCase):
             self.state.stage_extraction(snapshot["snapshot_id"],bad)
         self.state.stage_extraction(snapshot["snapshot_id"],payload)
         with self.assertRaisesRegex(ValueError,"immutable"):
-            self.state.stage_extraction(snapshot["snapshot_id"],{**payload,"summary":"changed"})
+            self.state.stage_extraction(snapshot["snapshot_id"],{**payload,"entities":[{**payload["entities"][0],"name":"Changed fact"}]})
 
     def test_bad_schema_does_not_poison_staged_payload(self):
         self.session()
