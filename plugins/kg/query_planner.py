@@ -5,7 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from .schema import ENTITY_LABELS,parse_time
-from .hermes_runtime import prepare_runtime
+from .hermes_runtime import call_profile_llm
 
 
 def validate_plan(value,config):
@@ -29,9 +29,7 @@ def validate_plan(value,config):
 
 def interpret_query(question,config,*,llm=None):
     if llm is None:
-        prepare_runtime(config.home)
-        from agent.auxiliary_client import call_llm
-        llm=call_llm
+        llm=lambda **request:call_profile_llm(config.home,**request)
     now=datetime.now(ZoneInfo(config.timezone)).isoformat()
     response=llm(task='kg_query',messages=[
         {'role':'system','content':

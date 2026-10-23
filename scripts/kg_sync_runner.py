@@ -24,13 +24,13 @@ INSTALL_HOME = _profile_home
 
 
 def run(*, home=None, **kwargs):
-    if home is None and kwargs.get("config") is None and not os.environ.get("HERMES_HOME"):
+    if home is None and kwargs.get("config") is None and not (os.environ.get("KG_HOME") or os.environ.get("HERMES_HOME")):
         home = _profile_home
     return _runner.run(home=home, **kwargs)
 
 
 def main(argv=None):
-    default_home = None if os.environ.get("HERMES_HOME") else _profile_home
+    default_home = None if (os.environ.get("KG_HOME") or os.environ.get("HERMES_HOME")) else _profile_home
     return _runner.main(argv, default_home=default_home)
 
 

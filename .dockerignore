@@ -1,5 +1,10 @@
 .git
 .venv
+**/.venv*
+**/venv
+**/.cache
+**/cache
+**/.model-cache
 **/__pycache__
 **/node_modules
 **/dist
@@ -7,7 +12,15 @@
 **/*.db
 **/*.db-*
 **/kg.json
+**/kg.json.*
+**/kg-console.token
+**/kg-console*.json
+**/kg-console*.json.*
+**/kg-sync/*.json
+**/kg-sync/*.lock
+**/kg-sync/.restore-*
 **/.env*
+**/*.log
 reports
 hermes-agent
 build

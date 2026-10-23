@@ -161,7 +161,7 @@ class SchemaTests(unittest.TestCase):
             Path(one, "kg.json").write_text(json.dumps({"urn_prefix": "urn:one:kg:", "enabled": False}), encoding="utf-8")
             Path(two, "kg.json").write_text(json.dumps({"urn_prefix": "urn:two:kg:"}), encoding="utf-8")
             with patch.dict(os.environ, {}, clear=True):
-                self.assertEqual(load_config(home=one).user_person_urn, "urn:one:kg:person-bill")
+                self.assertEqual(load_config(home=one).user_person_urn, "urn:one:kg:person-self")
                 self.assertIs(load_config(home=one).enabled, False)
                 self.assertEqual(load_config(home=two).urn_prefix, "urn:two:kg:")
         for invalid in (1, "yes", "0"):
@@ -237,7 +237,7 @@ class TransactionTests(unittest.TestCase):
 class QueryTests(unittest.TestCase):
     def test_full_uris_bypass_natural_intent_and_time_keywords(self):
         for kind in ("person", "event", "preference", "decision", "location", "concept"):
-            uri = f"urn:hermes:kg:{kind}-today-memory-travel-Bill"
+            uri = f"urn:hermes:kg:{kind}-today-memory-travel-Morgan"
             with self.subTest(kind=kind):
                 store = CaptureStore()
                 result = query_natural(uri, store=store)
@@ -252,7 +252,7 @@ class QueryTests(unittest.TestCase):
                 self.assertEqual(params["uri"], uri)
 
     def test_exact_uri_lookup_preserves_identity_and_visibility(self):
-        for uri in ("urn:hermes:kg:person:bill", "urn:external:kg:person-Bill"):
+        for uri in ("urn:hermes:kg:person:legacy-owner", "urn:external:kg:person-Morgan"):
             with self.subTest(uri=uri):
                 store = CaptureStore()
                 query_entities(uri, store=store)
@@ -267,7 +267,7 @@ class QueryTests(unittest.TestCase):
                 self.assertIn("alias.hermes_canonicalUri=n.uri", query)
 
     def test_unstructured_search_phrases_remain_literal_keywords(self):
-        for phrase in ("Hermes knowledge graph connection test", "bill URN person"):
+        for phrase in ("Hermes knowledge graph connection test", "owner URN person"):
             with self.subTest(phrase=phrase):
                 store = CaptureStore()
                 result = query_natural(phrase, store=store)
@@ -287,7 +287,7 @@ class QueryTests(unittest.TestCase):
 
     def test_keyword_parameterization_and_owner_visibility(self):
         store = CaptureStore()
-        query_entities("O'Brien", "person", "urn:hermes:kg:person-bill", store=store)
+        query_entities("O'Brien", "person", "urn:hermes:kg:person-legacy-owner", store=store)
         query, params = store.calls[0]
         self.assertNotIn("O'Brien", query)
         self.assertEqual(params["keyword"], "o'brien")
@@ -301,10 +301,10 @@ class QueryTests(unittest.TestCase):
             {"uri": "urn:hermes:kg:event-day", "time": "2026-08-31T23:59:59.999+08:00"},
             {"uri": "urn:hermes:kg:event-next", "time": "2026-09-01T00:00:00+08:00"},
         ])
-        rows = query_events("2026-08-01", "2026-08-31", "urn:hermes:kg:person-bill", store=store)
+        rows = query_events("2026-08-01", "2026-08-31", "urn:hermes:kg:person-legacy-owner", store=store)
         self.assertEqual([row["uri"] for row in rows], ["urn:hermes:kg:event-day"])
         self.assertNotIn("datetime(", store.calls[0][0])
-        self.assertEqual(store.calls[0][1]["person"], "urn:hermes:kg:person-bill")
+        self.assertEqual(store.calls[0][1]["person"], "urn:hermes:kg:person-legacy-owner")
 
     def test_memory_query_does_not_use_cross_scope_union(self):
         store = CaptureStore()

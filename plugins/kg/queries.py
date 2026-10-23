@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .config import load_config
-from .schema import ENTITY_LABELS, EVENT_TYPES, canonical_urn, entity_type as normalize_entity_type, parse_time
+from .schema import ENTITY_LABELS, EVENT_TYPES, canonical_urn, entity_type as normalize_entity_type, parse_time, relationship_pattern
 from .store import KGStore
 
 
@@ -78,11 +78,12 @@ def query_entities(keyword="", entity_type=None, owner_urn=None, limit=20, *, co
         clauses.append(f"any(value IN [{_name('n')},n.hermes_description,n.hermes_note,n.hermes_preferenceKey,n.hermes_preferenceValue,n.hermes_decisionText,n.hermes_decisionContext,n.uri] + coalesce(n.hermes_aliasNames,[]) WHERE toLower(toString(value)) CONTAINS $keyword)")
     if owner_urn:
         params["owner"] = canonical_urn(owner_urn, "person", prefix=config.urn_prefix)
-        clauses.append(f"(n.uri=resolved_owner OR EXISTS {{ MATCH (owner:Person {{uri:resolved_owner}})-[:HERMES_participant|HERMES_hasPreference|HERMES_hasDecision]->(n) WHERE {_visible('owner')} }})")
+        owned = relationship_pattern('HERMES_participant', 'HERMES_hasPreference', 'HERMES_hasDecision')
+        clauses.append(f"(n.uri=resolved_owner OR EXISTS {{ MATCH (owner:Person {{uri:resolved_owner}})-[:{owned}]->(n) WHERE {_visible('owner')} }})")
     query = f"""
         {_owner_lookup('owner') if owner_urn else ''}
         MATCH (n) WHERE {' AND '.join(clauses)}
-        OPTIONAL MATCH (p:Person)-[:HERMES_participant]->(n)
+        OPTIONAL MATCH (p:Person)-[:{relationship_pattern('HERMES_participant')}]->(n)
         WHERE {_visible('p')}
         WITH n, collect(DISTINCT {_name('p')}) AS linked_persons
         ORDER BY n.hermes_updatedAt DESC, n.uri
@@ -130,16 +131,16 @@ def query_events(from_date=None, to_date=None, person_urn=None, event_type=None,
         clauses.append("e.hermes_eventType=$event_type")
     if person_urn:
         params["person"] = canonical_urn(person_urn, "person", prefix=config.urn_prefix)
-        clauses.append(f"EXISTS {{ MATCH (owner:Person {{uri:resolved_owner}})-[:HERMES_participant]->(e) WHERE {_visible('owner')} }}")
+        clauses.append(f"EXISTS {{ MATCH (owner:Person {{uri:resolved_owner}})-[:{relationship_pattern('HERMES_participant')}]->(e) WHERE {_visible('owner')} }}")
     # Some external/legacy events have invalid dates or time-only strings. Read only
     # visible/person-filtered candidates and parse in Python, where failures can be
     # handled per row. Cypher datetime() would abort the whole query on one bad row.
     query = f"""
         {_owner_lookup('person') if person_urn else ''}
         MATCH (e:Event) WHERE {' AND '.join(clauses)}
-        OPTIONAL MATCH (p:Person)-[:HERMES_participant]->(e)
+        OPTIONAL MATCH (p:Person)-[:{relationship_pattern('HERMES_participant')}]->(e)
         WHERE {_visible('p')}
-        OPTIONAL MATCH (e)-[:HERMES_locatedAt]->(loc:Location)
+        OPTIONAL MATCH (e)-[:{relationship_pattern('HERMES_locatedAt')}]->(loc:Location)
         WHERE {_visible('loc')}
         WITH e, collect(DISTINCT {_name('p')}) AS participants,
             collect(DISTINCT {_name('loc')}) AS locations
@@ -248,7 +249,7 @@ def parse_natural_query(question, schema=None, *, config=None, now=None):
     elif not keyword and intent == "query_general":
         keyword = q
     event_type = next((kind for kind in EVENT_TYPES if re.search(r"\b" + re.escape(kind) + r"\b", lower)), None)
-    person = config.user_person_urn if re.search(r"我|\b(?:i|my|me|bill|user)\b", lower) else None
+    person = config.user_person_urn if re.search(r"我|\b(?:i|my|me|user)\b", lower) else None
     return {"intent": intent, "entity_type": kind, "person_urn": person,
             "time_range": {"from": start.isoformat() if start else None, "to": end.isoformat() if end else None, "end_exclusive": True},
             "event_type": event_type, "keywords": [keyword] if keyword else []}

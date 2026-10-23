@@ -6,7 +6,7 @@
 
 ## Overview
 
-The Morning Briefing is a daily cron job that pulls data from external APIs (Microsoft Graph), writes to KG, and delivers a digest to Bill via Feishu.
+This example daily briefing pulls data from external APIs (Microsoft Graph), writes confirmed events to KG, and delivers a digest through a configured messaging channel. It does not describe a particular user's installed job.
 
 **Schedule:** `0 7 * * *` (07:00 Asia/Shanghai)  
 **Skills attached:** `microsoft-graph-calendar`, `microsoft-graph-todo`, `knowledge-graph`

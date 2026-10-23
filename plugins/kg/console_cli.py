@@ -5,20 +5,21 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import sys
 import uuid
 import time
 from pathlib import Path
 
-from .config import load_config,resolve_home
+from .config import env_value,load_config,resolve_home
 
 
 def _core(home):
-    candidates=[os.environ.get('HERMES_AGENT_HOME'),str(home/'hermes-agent'),str(Path.home()/'.hermes'/'hermes-agent')]
-    for candidate in candidates:
-        if candidate and (Path(candidate)/'agent'/'memory_provider.py').exists():
-            sys.path.insert(0,str(Path(candidate).resolve()))
-            return str(Path(candidate).resolve())
+    from .hermes_runtime import discover_core
+    core=discover_core(home)
+    if core:
+        sys.path.insert(0,str(core))
+        return str(core)
     return None
 
 
@@ -30,22 +31,31 @@ def setup(home,*,name='我',skip_user=False,seed_history=True):
     path=home/'kg.json'
     fresh=not path.exists()
     marker=home/'kg-console.json'
-    onboarding=json.loads(marker.read_text()) if marker.exists() else {
+    onboarding=json.loads(marker.read_text(encoding='utf-8')) if marker.exists() else {
         'format':1,'new_install':fresh,'ready':False,'history_seeded':not fresh,'capture_started_at':time.time()}
     def save_marker():
         temporary=marker.with_suffix('.json.tmp')
-        temporary.write_text(json.dumps(onboarding,ensure_ascii=False,indent=2))
+        temporary.write_text(json.dumps(onboarding,ensure_ascii=False,indent=2),encoding='utf-8')
         os.replace(temporary,marker)
     save_marker()
     if fresh:
-        prefix=os.environ.get('HERMES_KG_URN_PREFIX','urn:hermes:kg:')
-        data={'enabled':False,'bolt_url':os.environ.get('HERMES_KG_BOLT_URL','bolt://127.0.0.1:17687'),
-              'user':os.environ.get('HERMES_KG_USER','neo4j'),'database':'neo4j',
-              'urn_prefix':prefix,'user_person_urn':os.environ.get('HERMES_KG_USER_PERSON_URN',prefix+'person-'+uuid.uuid4().hex[:12]),
-              'timezone':'Asia/Shanghai','default_shared':False}
+        # Independent fresh profiles must not claim each other's entities when
+        # they share a Neo4j database. Explicit and existing namespaces stay put.
+        prefix=env_value('urn_prefix')
+        owner=env_value('user_person_urn')
+        if prefix is None and owner:
+            match=re.fullmatch(r'(urn:.*:)person[-:][A-Za-z0-9][A-Za-z0-9_.-]*',owner)
+            if match:
+                prefix=match.group(1)
+        if prefix is None:
+            prefix='urn:kg-'+uuid.uuid4().hex+':kg:'
+        data={'enabled':False,'bolt_url':env_value('neo4j_url','bolt://127.0.0.1:17687'),
+              'user':env_value('user','neo4j'),'database':env_value('database','neo4j'),
+              'urn_prefix':prefix,'user_person_urn':owner or prefix+'person-'+uuid.uuid4().hex[:12],
+              'timezone':env_value('timezone','Asia/Shanghai'),'default_shared':False}
         # Keep credentials in the environment or the user's pre-existing file.
         fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
-        with os.fdopen(fd,'w') as file: json.dump(data,file,ensure_ascii=False,indent=2)
+        with os.fdopen(fd,'w',encoding='utf-8') as file: json.dump(data,file,ensure_ascii=False,indent=2)
     seeded=0
     if onboarding['new_install'] and not onboarding.get('history_seeded'):
         if seed_history and (home/'state.db').exists():
@@ -69,10 +79,10 @@ def setup(home,*,name='我',skip_user=False,seed_history=True):
     from .console_web import console_token
     console_token(home)
     if onboarding['new_install']:
-        data=json.loads(path.read_text())
+        data=json.loads(path.read_text(encoding='utf-8'))
         data['enabled']=True
         temporary=path.with_suffix('.json.tmp')
-        temporary.write_text(json.dumps(data,ensure_ascii=False,indent=2))
+        temporary.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
         temporary.chmod(0o600)
         os.replace(temporary,path)
     onboarding['ready']=True
@@ -85,19 +95,22 @@ def doctor(home):
     config=load_config(home=home)
     from .store import KGStore
     from .health import check_health
+    required_packages=('neo4j','rdflib','fastapi')
+    semantic_packages=('fastembed','onnxruntime')
     result={'profile':str(home),'python':sys.version.split()[0],'hermes_core':_core(home),
             'transcript_present':(home/'state.db').exists(),'packages':{name:importlib.util.find_spec(name) is not None for name in ('neo4j','rdflib','fastapi','fastembed','onnxruntime')}}
+    result['capabilities']={'semantic_dependencies_available':all(result['packages'][name] for name in semantic_packages)}
     try:
         with KGStore(config) as store: result['database']=check_health(config,store)
     except Exception as exc:
         result['database']={'connected':False,'error_type':type(exc).__name__}
-    result['ok']=result['database'].get('connected',False) and all(result['packages'].values())
+    result['ok']=result['database'].get('connected',False) and all(result['packages'][name] for name in required_packages)
     return result
 
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--home',help='Explicit Hermes profile home')
+    parser.add_argument('--home',help='Explicit memory profile home (or set KG_HOME / HERMES_HOME)')
     sub=parser.add_subparsers(dest='command',required=True)
     install=sub.add_parser('setup');install.add_argument('--name',default='我');install.add_argument('--skip-user',action='store_true')
     sub.add_parser('doctor')
@@ -109,12 +122,12 @@ def main(argv=None):
     backfill=sub.add_parser('backfill');backfill.add_argument('session_ids',nargs='+')
     args=parser.parse_args(argv)
     home=resolve_home(args.home)
+    os.environ['KG_HOME']=str(home)
     os.environ['HERMES_HOME']=str(home)
     core=_core(home)
     try:
-        if core:
-            from .hermes_runtime import prepare_runtime
-            prepare_runtime(home)
+        # Local maintenance and serving must not load the host agent runtime.
+        # Model adapters prepare the selected profile only when a model is used.
         if args.command not in {'restore','doctor'}:
             from .maintenance import assert_not_restoring
             assert_not_restoring(home)
@@ -126,22 +139,22 @@ def main(argv=None):
             if args.host not in {'127.0.0.1','localhost','::1'} and not args.container:
                 raise ValueError('Public serving is not supported; use loopback and SSH forwarding')
             marker=home/'kg-console.json'
-            if not marker.exists() or not json.loads(marker.read_text()).get('ready'):
+            if not marker.exists() or not json.loads(marker.read_text(encoding='utf-8')).get('ready'):
                 setup(home,seed_history=True)
-            if os.environ.get('HERMES_KG_DEMO_MODE')=='1':
+            if env_value('demo_mode')=='1':
                 from .demo import seed_demo
                 seed_demo(load_config(home=home))
             import uvicorn
             from .console_web import create_app
             print('Hermes Memory Console: http://127.0.0.1:'+str(args.port))
-            print('Access token: stored in <profile>/kg-console.token (or HERMES_KG_CONSOLE_TOKEN)')
+            print('Access token: stored in <profile>/kg-console.token (or KG_CONSOLE_TOKEN / HERMES_KG_CONSOLE_TOKEN)')
             uvicorn.run(create_app(load_config(home=home)),host=args.host,port=args.port,log_level='info')
             return 0
         elif args.command=='prepare-model':
             from .embedding import LocalEmbedder
             from .search import HybridSearch
             from .store import KGStore
-            embedder=LocalEmbedder(os.environ.get('HERMES_KG_MODEL_CACHE',str(home/'cache'/'kg-models')))
+            embedder=LocalEmbedder(env_value('model_cache',str(home/'cache'/'kg-models')))
             result=embedder.prepare(allow_download=True)
             with KGStore(load_config(home=home)) as store:
                 search=HybridSearch(store,embedder);search.ensure_indexes();result['indexing']=search.reindex()

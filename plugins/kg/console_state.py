@@ -9,6 +9,13 @@ from contextlib import contextmanager
 from pathlib import Path
 
 
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,kind TEXT NOT NULL,status TEXT NOT NULL,
+    created_at REAL NOT NULL,started_at REAL,finished_at REAL,result_json TEXT);
+"""
+
+
 class ConsoleState:
     def __init__(self, home):
         self.path = Path(home) / "kg-sync" / "console.db"
@@ -25,11 +32,11 @@ class ConsoleState:
             if readonly:
                 conn.execute('PRAGMA query_only=ON')
             else:
-                conn.executescript("""
-              CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-              CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,kind TEXT NOT NULL,status TEXT NOT NULL,
-                created_at REAL NOT NULL,finished_at REAL,result_json TEXT);
-                """)
+                conn.executescript(SCHEMA_SQL)
+                # Preserve existing/restored ledgers while adding real running
+                # timestamps. Read-only status never performs a migration.
+                if 'started_at' not in {row[1] for row in conn.execute('PRAGMA table_info(jobs)')}:
+                    conn.execute('ALTER TABLE jobs ADD COLUMN started_at REAL')
             yield conn
             if not readonly: conn.commit()
         except BaseException:
@@ -59,6 +66,10 @@ class ConsoleState:
         with self.connect() as conn:
             conn.execute("UPDATE jobs SET status=?,finished_at=?,result_json=? WHERE id=?", (status,time.time(),json.dumps(result or {},ensure_ascii=False,default=str),job_id))
 
+    def start(self, job_id):
+        with self.connect() as conn:
+            conn.execute("UPDATE jobs SET status='running',started_at=? WHERE id=? AND status='queued'", (time.time(),job_id))
+
     def recover(self):
         with self.connect() as conn:
             conn.execute("UPDATE jobs SET status='interrupted',finished_at=? WHERE status IN ('running','queued')", (time.time(),))
@@ -67,5 +78,9 @@ class ConsoleState:
         if not self.path.exists():
             return []
         with self.connect(readonly=True) as conn:
+            # Early restores created a paused settings-only database. Reading
+            # status must work before the first writable job/schema upgrade.
+            if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='jobs'").fetchone():
+                return []
             rows = conn.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
         return [{**dict(row),"result":json.loads(row["result_json"] or "{}")} for row in rows]

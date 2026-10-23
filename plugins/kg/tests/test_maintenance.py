@@ -9,9 +9,49 @@ import unittest
 import uuid
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from kg.config import KGConfig
+
+
+class BackupValueTests(unittest.TestCase):
+    def test_nested_temporal_values_preserve_their_driver_type_and_precision(self):
+        from neo4j.time import DateTime, Date, Time, Duration
+        from kg.maintenance import encode, decode
+        times = [DateTime(2026, 10, 23, 11, 22, 33, 123456789),
+                 Date(2026, 10, 23), Time(11, 22, 33, 123456789),
+                 Duration(months=14, days=3, seconds=65, nanoseconds=123456789)]
+        original = {'props': {'times': times, 'duration': times[-1]}, 'empty': []}
+        encoded = encode(original)
+        self.assertEqual(encoded['props']['duration']['__kg_type__'], 'Duration')
+        restored = decode(json.loads(json.dumps(encoded)))
+        for expected, actual in zip(times, restored['props']['times']):
+            self.assertIs(type(actual), type(expected))
+            self.assertEqual(actual, expected)
+        self.assertIs(type(restored['props']['duration']), Duration)
+        self.assertEqual(restored, original)
+
+    def test_known_legacy_relationship_spellings_are_preserved_and_query_text_is_rejected(self):
+        from kg.maintenance import _validate_graph
+        prefix = 'urn:portable:kg:'
+        store = SimpleNamespace(config=SimpleNamespace(urn_prefix=prefix))
+        graph = {'nodes': [
+            {'id': 'person', 'labels': ['Person'], 'props': {'uri': prefix + 'person-owner'}},
+            {'id': 'event', 'labels': ['Event'], 'props': {'uri': prefix + 'event-legacy'}},
+        ], 'relations': []}
+        for spelling in ('HERMES_PARTICIPANT', 'HERMES_participant', 'PARTICIPATED_IN',
+                         'HERMES_hasPreference', 'owl_sameAs', 'OWL:SAMEAS'):
+            with self.subTest(spelling=spelling):
+                graph['relations'] = [{'source': 'person', 'target': 'event',
+                                       'type': spelling, 'props': {}}]
+                _validate_graph(store, graph)
+                self.assertEqual(graph['relations'][0]['type'], spelling)
+        for spelling in ('UNKNOWN_TYPE', ':HERMES_participant', 'RELATED_TO`]->() //'):
+            with self.subTest(spelling=spelling):
+                graph['relations'][0]['type'] = spelling
+                with self.assertRaisesRegex(ValueError, 'Unsupported relationship'):
+                    _validate_graph(store, graph)
 
 
 @unittest.skipUnless(os.environ.get('KG_TEST_BOLT_URL'),'isolated Neo4j test URL not configured')
@@ -28,7 +68,9 @@ class MaintenanceTests(unittest.TestCase):
 
     def clear(self):
         with self.store.driver.session(database=self.config.database) as session:
-            session.run('MATCH (n) WHERE n.uri STARTS WITH $prefix OR n.namespace=$prefix DETACH DELETE n',{'prefix':self.prefix}).consume()
+            session.run('''MATCH (n) WHERE n.uri STARTS WITH $prefix OR n.namespace=$prefix
+                OR (n:KGSyncReceipt AND any(uri IN coalesce(n.entity_uris,[]) WHERE uri STARTS WITH $prefix))
+                DETACH DELETE n''',{'prefix':self.prefix}).consume()
 
     def destination(self, name='restored'):
         from dataclasses import replace
@@ -57,7 +99,7 @@ class MaintenanceTests(unittest.TestCase):
         self.store.write_batch([{'type':'Event','id':'test-meeting','name':'Synthetic meeting','props':{'event_time':'2026-10-23T10:00:00+08:00'}}],[])
         uri=self.prefix+'event-test-meeting'
         service=MemoryService(self.config,self.store)
-        service.correct(uri,{'name':'Corrected meeting'},expected_version=1,operation_id='fixture-correction')
+        service.correct(uri,{'name':'Corrected meeting'},expected_version=1,operation_id=self.prefix+'fixture-correction')
         ConsoleState(self.home).set('fixture','retained')
         path=Path(self.tmp.name)/'backup.zip'
         self.assertTrue(backup(self.store,path)['ok'])
@@ -77,6 +119,46 @@ class MaintenanceTests(unittest.TestCase):
             self.assertEqual(len(MemoryService(destination,target).revisions(uri)),2)
         self.assertEqual(ConsoleState(restored_home).get('fixture'),'retained')
         self.assertTrue(ConsoleState(restored_home).get('paused'))
+
+    def test_legacy_audit_nodes_relation_spellings_and_temporal_arrays_round_trip(self):
+        from neo4j.time import Date, Duration
+        from kg.maintenance import backup, restore
+        elapsed = Duration(months=1, days=2, seconds=3, nanoseconds=4)
+        dates = [Date(2026, 10, 22), Date(2026, 10, 23)]
+        with self.store.driver.session(database=self.config.database) as session:
+            session.run("""CREATE (p:Person {uri:$prefix+'person-owner',foaf_name:'Fixture owner'}),
+                (e:Event {uri:$prefix+'event-legacy',hermes_name:'Legacy fixture',elapsed:$elapsed,dates:$dates}),
+                (a:KGLegacyAlias {uri:$prefix+'person-alias',hermes_canonicalUri:$prefix+'person-owner'}),
+                (u:KGLegacyUnresolved {uri:$prefix+'legacy-unresolved',hermes_note:'Review evidence retained'}),
+                (q:KGQuarantined {uri:$prefix+'concept-held',hermes_name:'Held fixture'}),
+                (:KGSyncReceipt {snapshot_id:$prefix+'legacy-fixture',entity_uris:[$prefix+'person-owner']}),
+                (p)-[:HERMES_PARTICIPANT {hermes_note:'Original spelling'}]->(e),
+                (p)-[:HERMES_participant]->(e),
+                (a)-[:OWL_SAMEAS]->(p),
+                (u)-[:RELATED_TO]->(q)""",
+                {'prefix': self.prefix, 'elapsed': elapsed, 'dates': dates}).consume()
+        path = Path(self.tmp.name) / 'legacy-audit.zip'
+        self.assertEqual(backup(self.store, path)['entities_and_metadata'], 6)
+        # URI-only legacy audit nodes must also make a namespace nonempty.
+        self.clear()
+        with self.store.driver.session(database=self.config.database) as session:
+            session.run('CREATE (:KGLegacyUnresolved {uri:$uri})',
+                        {'uri': self.prefix + 'legacy-existing'}).consume()
+        target = self.destination()
+        with self.assertRaisesRegex(ValueError, 'empty destination namespace'):
+            restore(target, path)
+        self.clear()
+        result = restore(target, path)
+        self.assertEqual((result['nodes'], result['relations']), (6, 4))
+        with self.store.driver.session(database=self.config.database) as session:
+            node = session.run('MATCH (e:Event {uri:$uri}) RETURN e.elapsed AS elapsed,e.dates AS dates',
+                               {'uri': self.prefix + 'event-legacy'}).single()
+            self.assertIs(type(node['elapsed']), Duration)
+            self.assertEqual(node['elapsed'], elapsed)
+            self.assertEqual(node['dates'], dates)
+            spellings = session.run('MATCH (a)-[r]->(b) WHERE a.uri STARTS WITH $prefix RETURN collect(type(r)) AS types',
+                                    {'prefix': self.prefix}).single()['types']
+            self.assertCountEqual(spellings, ['HERMES_PARTICIPANT', 'HERMES_participant', 'OWL_SAMEAS', 'RELATED_TO'])
 
     def test_cross_namespace_entities_metadata_and_duplicate_ids_are_rejected_before_writing(self):
         from kg.maintenance import restore, restore_in_progress

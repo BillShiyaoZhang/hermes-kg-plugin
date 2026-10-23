@@ -7,7 +7,7 @@ import logging
 from threading import RLock
 
 from agent.memory_provider import MemoryProvider, RecallStatus, is_trivial_prompt
-from .config import load_config
+from .config import env_value, load_config
 from .tool_schemas import SEARCH_SCHEMA, WRITE_SCHEMA
 from .health import STATUS_SCHEMA, check_health
 
@@ -92,13 +92,12 @@ class KGMemoryProvider(MemoryProvider):
         # A stopped console never prevents the existing provider from working.
         from urllib.parse import urlparse
         from urllib.request import Request, urlopen
-        import os
         url=getattr(self._config,'console_url','http://127.0.0.1:8765')
         parsed=urlparse(url)
-        token=os.environ.get('HERMES_KG_CONSOLE_TOKEN','')
+        token=env_value('console_token','')
         path=self._config.home/'kg-console.token'
         if not token and path.is_file():
-            token=path.read_text().strip()
+            token=path.read_text(encoding='utf-8').strip()
         if token and parsed.scheme=='http' and parsed.hostname in {'localhost','127.0.0.1','::1'}:
             try:
                 body=json.dumps({'question':question,'limit':limit,'scope':'shared'}).encode()

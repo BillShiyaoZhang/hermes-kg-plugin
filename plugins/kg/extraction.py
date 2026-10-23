@@ -45,6 +45,9 @@ def validate_extraction(text, snapshot, config):
         try:
             prepared, linked = prepare_entity(entity, config)
             validate_entity_evidence(entity, snapshot, config)
+            if any(link['from']!=config.user_person_urn for link in linked
+                   if link['type'] in {'HERMES_hasPreference','HERMES_hasDecision'}):
+                raise ValueError('Automatic preferences and decisions must belong to the current user, never a third party')
         except ValueError as exc:
             raise ValueError(f'entities[{index}]: {exc}') from exc
         if prepared["uri"] in seen:
@@ -59,6 +62,8 @@ def validate_extraction(text, snapshot, config):
             raise ValueError(f'relations[{index}]: {exc}') from exc
     for index, relation in enumerate(relations + implicit):
         prepared = prepare_relation(relation, config)
+        if prepared['type'] in {'HERMES_hasPreference','HERMES_hasDecision'} and prepared['from']!=config.user_person_urn:
+            raise ValueError('Automatic preferences and decisions must belong to the current user, never a third party')
         if prepared["from"] not in known or prepared["to"] not in known:
             raise ValueError("An extraction relationship references an unknown endpoint")
         expected = RELATION_ENDPOINTS.get(prepared["type"])

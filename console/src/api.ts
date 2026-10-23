@@ -1,3 +1,4 @@
+import type { GraphQuery, GraphSnapshot } from "./graphData";
 import type {
   ConsoleStatus,
   EntityType,
@@ -12,9 +13,15 @@ import type {
   SessionSummary,
   Version,
 } from "./types";
+import type {
+  OntologySchema,
+  OntologyEntityPage,
+  OntologyRelationPage,
+} from "./ontologyTypes";
 
 export const API_ROOT = "/api/v1";
 export const TOKEN_KEY = "hermes-memory-console-token";
+export const API_REQUEST_TIMEOUT_MS = 30_000;
 
 export class ApiError extends Error {
   constructor(
@@ -235,6 +242,10 @@ export function normalizePage(
     offset: numberValue(r.offset) ?? offset,
     limit: numberValue(r.limit) ?? limit,
     mode: stringValue(r.mode),
+    warnings: array(r.warnings).filter(
+      (value): value is string => typeof value === "string",
+    ),
+    truncated: r.truncated === true,
   };
 }
 
@@ -265,7 +276,9 @@ export function normalizeJob(input: unknown): SyncJob {
     id: String(r.id ?? r.job_id ?? r.snapshot_id ?? ""),
     status: stringValue(r.status) ?? "unknown",
     createdAt: dateValue(r.created_at, r.started_at),
+    startedAt: dateValue(r.started_at),
     finishedAt: dateValue(r.finished_at, r.completed_at),
+    kind: stringValue(r.kind),
     error: stringValue(
       r.error,
       r.detail,
@@ -324,6 +337,11 @@ export function normalizeStatus(input: unknown): ConsoleStatus {
     counts,
     paused: boolValue(sync.paused),
     pendingCount: numberValue(sync.pending_count),
+    queuedCount: numberValue(sync.queued_count, sync.queued_sessions),
+    failedCount: numberValue(sync.failed_count),
+    schedulerEnabled: boolValue(sync.scheduler_enabled),
+    sourceAvailable: boolValue(sync.source_available),
+    syncAvailable: boolValue(sync.available),
     lastRun: dateValue(
       sync.last_run,
       lastRun.finished_at,
@@ -334,8 +352,10 @@ export function normalizeStatus(input: unknown): ConsoleStatus {
     jobs: array(sync.jobs).map(normalizeJob),
     search: {
       mode:
-        stringValue(search.mode) ??
-        (model.ready === false ? "keyword" : undefined),
+        search.state === "unavailable"
+          ? "unavailable"
+          : (stringValue(search.mode) ??
+            (model.ready === false ? "keyword" : undefined)),
       indexed: numberValue(search.indexed, search.indexed_count),
       pending: numberValue(search.pending, search.pending_count),
       modelReady: boolValue(search.model_ready, model.ready),
@@ -356,6 +376,8 @@ export function normalizeStatus(input: unknown): ConsoleStatus {
 export function createApi(
   getToken: () => string,
   fetcher: typeof fetch = fetch,
+  onUnauthorized?: () => void,
+  requestTimeoutMs = API_REQUEST_TIMEOUT_MS,
 ) {
   async function request(
     path: string,
@@ -366,42 +388,92 @@ export function createApi(
     if (token) headers.set("Authorization", `Bearer ${token}`);
     headers.set("Accept", "application/json");
     if (init.body) headers.set("Content-Type", "application/json");
-    let response: Response;
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (init.signal?.aborted)
+      throw new DOMException("Request cancelled", "AbortError");
+    init.signal?.addEventListener("abort", abort, { once: true });
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let rejectCancelled: ((reason: unknown) => void) | undefined;
+    const cancelled = () =>
+      rejectCancelled?.(new DOMException("Request cancelled", "AbortError"));
+    init.signal?.addEventListener("abort", cancelled, { once: true });
     try {
-      response = await fetcher(API_ROOT + path, {
-        ...init,
-        headers,
-        credentials: "same-origin",
-      });
+      const work = async () => {
+        const response = await fetcher(API_ROOT + path, {
+          ...init,
+          signal: controller.signal,
+          headers,
+          credentials: "same-origin",
+        });
+        if (
+          response.status === 401 &&
+          !controller.signal.aborted &&
+          getToken() === token
+        )
+          onUnauthorized?.();
+        const text = await response.text();
+        let data: unknown;
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          throw new ApiError(
+            response.status === 401
+              ? "访问令牌无效或已过期，请重新连接。"
+              : "服务返回了无法读取的响应。请确认 API 地址与服务版本。",
+            response.status,
+          );
+        }
+        const r = record(data);
+        if (!response.ok || r.ok === false) {
+          const detail = r.detail ?? r.error ?? r.message;
+          const message =
+            response.status === 401
+              ? "访问令牌无效或已过期，请重新连接。"
+              : response.status >= 500
+                ? "记忆服务暂不可用。输入已保留，请检查连接与任务状态后重试。"
+                : typeof detail === "string"
+                  ? detail
+                  : response.status === 409
+                    ? "这条记录已发生变化。请刷新后重新核对，再提交操作。"
+                    : "请求未能完成，请稍后重试。";
+          throw new ApiError(
+            message,
+            response.status,
+            response.status >= 500 || response.status === 401
+              ? undefined
+              : detail,
+          );
+        }
+        return data;
+      };
+      // Include body decoding in the timeout, and settle even if a transport
+      // fails to honour AbortSignal. Writes are never retried automatically.
+      return await Promise.race([
+        work(),
+        new Promise<never>((_, reject) => {
+          rejectCancelled = reject;
+          timeout = setTimeout(() => {
+            controller.abort();
+            reject(
+              new ApiError(
+                "请求等待超时。输入已保留；请先刷新核对操作状态，再重试。",
+                408,
+              ),
+            );
+          }, requestTimeoutMs);
+        }),
+      ]);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError")
         throw error;
+      if (error instanceof ApiError) throw error;
       throw new ApiError("无法连接记忆服务。请确认服务正在运行，然后重试。", 0);
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+      init.signal?.removeEventListener("abort", abort);
+      init.signal?.removeEventListener("abort", cancelled);
     }
-    const text = await response.text();
-    let data: unknown;
-    try {
-      data = text ? JSON.parse(text) : {};
-    } catch {
-      throw new ApiError(
-        "服务返回了无法读取的响应。请确认 API 地址与服务版本。",
-        response.status,
-      );
-    }
-    const r = record(data);
-    if (!response.ok || r.ok === false) {
-      const detail = r.detail ?? r.error ?? r.message;
-      const message =
-        typeof detail === "string"
-          ? detail
-          : response.status === 401
-            ? "访问令牌无效或已过期，请重新连接。"
-            : response.status === 409
-              ? "这条记录已发生变化。请刷新后重新核对，再提交操作。"
-              : "请求未能完成，请稍后重试。";
-      throw new ApiError(message, response.status, detail);
-    }
-    return data;
   }
   async function mutate(
     path: string,
@@ -418,8 +490,67 @@ export function createApi(
       );
     return result;
   }
+  async function memoryMutation(
+    path: string,
+    body: JsonRecord,
+  ): Promise<MutationReceipt> {
+    const result = await mutate(path, body);
+    if (
+      typeof result.receipt_id !== "string" ||
+      !result.receipt_id ||
+      !["applied", "rejected", "deferred"].includes(String(result.disposition))
+    ) {
+      throw new ApiError(
+        "服务未返回完整写入回执。请先刷新核对结果，再使用原操作重试。",
+        502,
+      );
+    }
+    return result;
+  }
   return {
-    status: async () => normalizeStatus(await request("/status")),
+    status: async (signal?: AbortSignal) =>
+      normalizeStatus(await request("/status", { signal })),
+    graph: async (
+      query: GraphQuery = {},
+      signal?: AbortSignal,
+    ): Promise<GraphSnapshot> =>
+      (await request("/graph/query", {
+        method: "POST",
+        body: JSON.stringify(query),
+        signal,
+      })) as GraphSnapshot,
+    ontologySchema: async (signal?: AbortSignal): Promise<OntologySchema> =>
+      (await request("/ontology", { signal })) as OntologySchema,
+    ontologyEntities: async (
+      query: {
+        type?: string;
+        q?: string;
+        offset?: number;
+        limit?: number;
+      } = {},
+      signal?: AbortSignal,
+    ): Promise<OntologyEntityPage> => {
+      return (await request("/ontology/entities/query", {
+        method: "POST",
+        body: JSON.stringify(query),
+        signal,
+      })) as OntologyEntityPage;
+    },
+    ontologyRelations: async (
+      query: {
+        relation?: string;
+        q?: string;
+        offset?: number;
+        limit?: number;
+      } = {},
+      signal?: AbortSignal,
+    ): Promise<OntologyRelationPage> => {
+      return (await request("/ontology/relations/query", {
+        method: "POST",
+        body: JSON.stringify(query),
+        signal,
+      })) as OntologyRelationPage;
+    },
     memories: async (
       query: {
         type?: string;
@@ -430,12 +561,12 @@ export function createApi(
       } = {},
       signal?: AbortSignal,
     ) => {
-      const params = new URLSearchParams();
-      Object.entries(query).forEach(([key, value]) => {
-        if (value !== undefined && value !== "") params.set(key, String(value));
-      });
       return normalizePage(
-        await request("/memories?" + params.toString(), { signal }),
+        await request("/memories/query", {
+          method: "POST",
+          body: JSON.stringify(query),
+          signal,
+        }),
         query.offset,
         query.limit,
       );
@@ -454,38 +585,72 @@ export function createApi(
         }),
       ),
     detail: async (uri: string) => {
-      const value = await request(
-        "/memories/detail?" + new URLSearchParams({ uri }),
-      );
+      const value = await request("/memories/detail", {
+        method: "POST",
+        body: JSON.stringify({ uri }),
+      });
       const r = record(value);
       return normalizeMemory(r.memory ?? value);
     },
-    reviews: async () => {
-      const value = await request("/reviews");
+    reviews: async (signal?: AbortSignal) => {
+      const value = await request("/reviews", { signal });
       return array(record(value).items ?? value).map(normalizeReview);
     },
+    reviewPage: async (
+      query: { q?: string; offset?: number; limit?: number } = {},
+      signal?: AbortSignal,
+    ) => {
+      const value = record(
+        await request("/reviews/query", {
+          method: "POST",
+          body: JSON.stringify(query),
+          signal,
+        }),
+      );
+      return {
+        items: array(value.items).map(normalizeReview),
+        total: Number(value.total),
+        total_pending: Number(value.total_pending),
+        offset: Number(value.offset),
+        limit: Number(value.limit),
+        has_more: value.has_more === true,
+      };
+    },
     review: (id: string, action: "approve" | "reject", body: JsonRecord) =>
-      mutate(`/reviews/${encodeURIComponent(id)}/${action}`, body),
-    correct: (memory: Memory, changes: JsonRecord, reason: string) =>
-      mutate("/memories/correct", {
+      memoryMutation(`/reviews/${encodeURIComponent(id)}/${action}`, body),
+    correct: (
+      memory: Memory,
+      changes: JsonRecord,
+      reason: string,
+      operationId: string = crypto.randomUUID(),
+    ) =>
+      memoryMutation("/memories/correct", {
         uri: memory.uri,
         changes,
         expected_version: memory.version,
-        operation_id: crypto.randomUUID(),
+        operation_id: operationId,
         reason,
       }),
-    archive: (memory: Memory, reason: string) =>
-      mutate("/memories/archive", {
+    archive: (
+      memory: Memory,
+      reason: string,
+      operationId: string = crypto.randomUUID(),
+    ) =>
+      memoryMutation("/memories/archive", {
         uri: memory.uri,
         expected_version: memory.version,
-        operation_id: crypto.randomUUID(),
+        operation_id: operationId,
         reason,
       }),
-    restore: (memory: Memory, reason: string) =>
-      mutate("/memories/restore", {
+    restore: (
+      memory: Memory,
+      reason: string,
+      operationId: string = crypto.randomUUID(),
+    ) =>
+      memoryMutation("/memories/restore", {
         uri: memory.uri,
         expected_version: memory.version,
-        operation_id: crypto.randomUUID(),
+        operation_id: operationId,
         reason,
       }),
     sync: () => mutate("/sync/run"),
@@ -495,8 +660,8 @@ export function createApi(
       request("/search/reindex", { method: "POST", body: "{}" }).then(record),
     pause: () => mutate("/sync/pause"),
     resume: () => mutate("/sync/resume"),
-    jobs: async () => {
-      const value = await request("/jobs");
+    jobs: async (signal?: AbortSignal) => {
+      const value = await request("/jobs", { signal });
       return array(record(value).items ?? value).map(normalizeJob);
     },
     sessions: async (): Promise<SessionSummary[]> => {
@@ -513,7 +678,8 @@ export function createApi(
     },
     backfill: (sessionIds: string[]) =>
       mutate("/sync/backfill", { session_ids: sessionIds }),
-    settings: async () => record(await request("/settings")),
+    settings: async (signal?: AbortSignal) =>
+      record(await request("/settings", { signal })),
   };
 }
 export type ConsoleApi = ReturnType<typeof createApi>;

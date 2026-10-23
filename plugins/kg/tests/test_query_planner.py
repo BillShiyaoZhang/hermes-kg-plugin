@@ -23,7 +23,7 @@ class QueryPlannerTests(unittest.TestCase):
             with self.assertRaises(ValueError): validate_plan(value,KGConfig())
 
     def test_injected_llm_does_not_prepare_or_read_profile_environment(self):
-        with patch('kg.query_planner.prepare_runtime') as prepare:
+        with patch('kg.query_planner.call_profile_llm') as prepare:
             interpret_query('Ada',KGConfig(),llm=lambda **kwargs:json.dumps(
                 {'text':'Ada','entity_type':None,'from':None,'to':None}))
         prepare.assert_not_called()
@@ -31,17 +31,15 @@ class QueryPlannerTests(unittest.TestCase):
     def test_real_llm_path_prepares_selected_profile_before_model_call(self):
         with TemporaryDirectory() as root:
             config=KGConfig(home=Path(root))
-            auxiliary=ModuleType('agent.auxiliary_client')
-            with patch('kg.query_planner.prepare_runtime') as prepare:
-                def call(**kwargs):
-                    prepare.assert_called_once_with(config.home)
+            with patch('kg.query_planner.call_profile_llm') as call:
+                def invoke(home,**kwargs):
+                    self.assertEqual(home,config.home)
                     self.assertEqual(kwargs['task'],'kg_query')
                     return json.dumps({'text':'Ada','entity_type':None,'from':None,'to':None})
-                auxiliary.call_llm=Mock(side_effect=call)
-                with patch.dict(sys.modules,{'agent.auxiliary_client':auxiliary}):
-                    result=interpret_query('Ada',config)
+                call.side_effect=invoke
+                result=interpret_query('Ada',config)
             self.assertEqual(result['text'],'Ada')
-            auxiliary.call_llm.assert_called_once()
+            call.assert_called_once()
 
 
 class HermesRuntimeTests(unittest.TestCase):
@@ -60,13 +58,16 @@ class HermesRuntimeTests(unittest.TestCase):
             def load(*,hermes_home):
                 self.assertEqual(hermes_home,root)
                 self.assertEqual(os.environ['HERMES_HOME'],str(root))
+                self.assertEqual(os.environ['KG_HOME'],str(root))
                 os.environ['HERMES_HOME']='legacy-env-file-home'
+                os.environ['KG_HOME']='legacy-kg-env-file-home'
             modules,loader=self.fake_loader(load)
             with patch.multiple(hermes_runtime,_bound_home=None,_loaded=False), \
                  patch.dict(os.environ,{'HERMES_HOME':'inherited-wrong-profile'}), \
                  patch.dict(sys.modules,modules):
                 self.assertEqual(hermes_runtime.prepare_runtime(root),root)
                 self.assertEqual(os.environ['HERMES_HOME'],str(root))
+                self.assertEqual(os.environ['KG_HOME'],str(root))
                 self.assertEqual(hermes_runtime.prepare_runtime(root),root)
                 loader.assert_called_once_with(hermes_home=root)
 
@@ -81,6 +82,7 @@ class HermesRuntimeTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,'One Hermes profile'):
                     hermes_runtime.prepare_runtime(second)
                 self.assertEqual(os.environ['HERMES_HOME'],str(first.resolve()))
+                self.assertEqual(os.environ['KG_HOME'],str(first.resolve()))
                 loader.assert_called_once_with(hermes_home=first.resolve())
 
     def test_failed_environment_load_is_retryable_for_selected_profile(self):

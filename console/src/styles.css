@@ -14,7 +14,7 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-size: 14px;
+  font-size: 100%;
   --paper: #fff;
   --ink: #27322e;
   --muted: #92978f;
@@ -101,7 +101,7 @@ select {
 .mono,
 code {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .text-muted {
   color: #a3a79e;
@@ -178,7 +178,7 @@ code {
   border-color: #3f5748;
 }
 .brand strong {
-  font-size: 17px;
+  font-size: 1.0625rem;
   letter-spacing: -0.6px;
   white-space: nowrap;
   font-weight: 650;
@@ -190,7 +190,7 @@ code {
 .brand small {
   display: block;
   margin-top: 5px;
-  font-size: 10px;
+  font-size: 0.625rem;
   letter-spacing: 2.3px;
   color: #858e81;
 }
@@ -211,7 +211,7 @@ code {
   display: grid;
   place-items: center;
   font-family: Georgia, serif;
-  font-size: 19px;
+  font-size: 1.1875rem;
   background: #e6eadf;
   color: #58684f;
   border-radius: 6px;
@@ -221,12 +221,12 @@ code {
   min-width: 0;
 }
 .workspace-label strong {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 550;
   display: block;
 }
 .workspace-label div span {
-  font-size: 6.5px;
+  font-size: 0.40625rem;
   letter-spacing: 0.65px;
   display: block;
   color: #9ba291;
@@ -238,7 +238,7 @@ code {
 .nav-label {
   text-transform: uppercase;
   letter-spacing: 1px;
-  font-size: 10px;
+  font-size: 0.625rem;
   margin: 0 13px 12px;
   color: #a0a598;
 }
@@ -255,7 +255,7 @@ code {
   text-align: left;
   padding: 12px 13px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: #737d70;
   position: relative;
   min-height: 43px;
@@ -287,7 +287,7 @@ code {
   background: #d0dcc5;
   display: grid;
   place-items: center;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-variant-numeric: tabular-nums;
 }
 .sidebar-note {
@@ -302,18 +302,18 @@ code {
 }
 .sidebar-note strong {
   display: block;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 550;
   color: #737e6a;
 }
 .sidebar-note p {
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.9;
   margin: 7px 0 19px;
   color: #a1a797;
 }
 .sidebar-note > span {
-  font-size: 8px;
+  font-size: 0.5rem;
   letter-spacing: 1.55px;
   display: flex;
   gap: 8px;
@@ -332,7 +332,7 @@ code {
   align-items: center;
   gap: 8px;
   border-top: 1px solid #e1e5da;
-  font-size: 10px;
+  font-size: 0.625rem;
   color: #8b9582;
   min-height: 53px;
 }
@@ -374,7 +374,7 @@ code {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 10px;
+  font-size: 0.625rem;
   color: #9aa192;
 }
 .breadcrumbs svg {
@@ -394,10 +394,10 @@ code {
   align-items: center;
   gap: 6px;
   color: #a0a695;
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 .alpha-pill {
-  font-size: 8px;
+  font-size: 0.5rem;
   letter-spacing: 1px;
   background: #eceee5;
   border: 1px solid #e2e5d9;
@@ -414,7 +414,7 @@ code {
   font-family: Georgia, serif;
   border: 2px solid #fff;
   box-shadow: 0 0 0 1px #e1e5d7;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .main-content {
   width: 100%;
@@ -433,21 +433,21 @@ code {
 }
 .eyebrow,
 .section-eyebrow {
-  font-size: 8px;
+  font-size: 0.5rem;
   font-weight: 550;
   letter-spacing: 2.2px;
   color: #a2a994;
   text-transform: uppercase;
 }
 .page-header h1 {
-  font-size: 29px;
+  font-size: 1.8125rem;
   font-weight: 550;
   letter-spacing: -1px;
   margin-top: 9px;
   color: #2a352b;
 }
 .page-header p {
-  font-size: 11px;
+  font-size: 0.6875rem;
   line-height: 1.8;
   color: #969f8d;
   margin-top: 9px;
@@ -467,7 +467,7 @@ code {
   min-height: 35px;
   padding: 8px 13px;
   border: 1px solid transparent;
-  font-size: 11px;
+  font-size: 0.6875rem;
   border-radius: 6px;
   white-space: nowrap;
   font-weight: 500;
@@ -546,7 +546,7 @@ code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 0.625rem;
   color: #859176;
 }
 .metric-top > svg {
@@ -554,7 +554,7 @@ code {
   stroke-width: 1.5;
 }
 .metric-value {
-  font-size: 31px;
+  font-size: 1.9375rem;
   font-weight: 500;
   letter-spacing: -1.2px;
   line-height: 1.2;
@@ -567,7 +567,7 @@ code {
   min-height: 37px;
 }
 .metric-value small {
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 400;
   letter-spacing: 0;
   color: #9ca58d;
@@ -579,12 +579,12 @@ code {
   stroke-width: 1.3;
 }
 .metric-value.metric-text {
-  font-size: 24px;
+  font-size: 1.5rem;
   letter-spacing: -0.6px;
   padding-top: 4px;
 }
 .metric-caption {
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #a2aa96;
   display: flex;
   gap: 6px;
@@ -635,7 +635,7 @@ code {
   gap: 6px;
   background: transparent;
   color: #9aa48c;
-  font-size: 10px;
+  font-size: 0.625rem;
   padding: 8px 10px;
   border-radius: 5px;
   white-space: nowrap;
@@ -654,14 +654,14 @@ code {
   gap: 6px;
   color: #9ba68e;
   position: relative;
-  font-size: 9px;
+  font-size: 0.5625rem;
   padding: 0 3px;
   flex-shrink: 0;
 }
 .lifecycle-select select {
   border: 0;
   background: transparent;
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #909c81;
   appearance: none;
   padding: 8px 16px 8px 0;
@@ -695,18 +695,18 @@ code {
   flex: 1;
   min-width: 0;
   color: #4b5e3e;
-  font-size: 10px;
+  font-size: 0.625rem;
   height: 27px;
   box-shadow: none !important;
   outline: none;
 }
 .search-form input::placeholder {
   color: #aeb7a0;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .search-form kbd {
   font:
-    9px Inter,
+    0.5625rem Inter,
     -apple-system,
     sans-serif;
   color: #b2bba5;
@@ -717,7 +717,7 @@ code {
 }
 .search-submit {
   background: transparent;
-  font-size: 9px;
+  font-size: 0.5625rem;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -731,7 +731,7 @@ code {
   display: flex;
   justify-content: space-between;
   color: #a2ac94;
-  font-size: 9px;
+  font-size: 0.5625rem;
   gap: 12px;
 }
 .list-caption > span {
@@ -741,7 +741,7 @@ code {
 }
 .list-caption em {
   font-style: normal;
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #a3ad95;
   background: #f2f5eb;
   padding: 2px 5px;
@@ -804,13 +804,13 @@ code {
   gap: 9px;
 }
 .memory-row h3 {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 550;
   color: #526344;
   line-height: 1.7;
 }
 .memory-row p {
-  font-size: 10px;
+  font-size: 0.625rem;
   color: #9da78f;
   line-height: 1.8;
   margin: 5px 0 9px;
@@ -826,7 +826,7 @@ code {
   flex-wrap: wrap;
   gap: 6px;
   color: #adb69f;
-  font-size: 8px;
+  font-size: 0.5rem;
   line-height: 1.6;
 }
 .memory-row-meta > span {
@@ -845,7 +845,7 @@ code {
   display: flex;
   align-items: center;
   gap: 17px;
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #b4bda6;
   padding-top: 4px;
   white-space: nowrap;
@@ -861,7 +861,7 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #9aa78b;
 }
 .pagination > div {
@@ -869,7 +869,7 @@ code {
   gap: 5px;
 }
 .pagination button {
-  font-size: 9px;
+  font-size: 0.5625rem;
   padding: 7px;
 }
 .subtle-note {
@@ -878,7 +878,7 @@ code {
   justify-content: center;
   gap: 7px;
   color: #a4ad98;
-  font-size: 9px;
+  font-size: 0.5625rem;
   line-height: 1.9;
   margin: 19px 0 0;
   text-align: center;
@@ -894,7 +894,7 @@ code {
   padding: 3px 6px;
   border-radius: 4px;
   line-height: 1.3;
-  font-size: 8px;
+  font-size: 0.5rem;
   font-weight: 400;
   white-space: nowrap;
   letter-spacing: 0.15px;
@@ -929,12 +929,12 @@ code {
   padding: 18px 0;
   border-top: 1px solid #e6eade;
   color: #b1b9a5;
-  font-size: 8px;
+  font-size: 0.5rem;
   letter-spacing: 0.15px;
   gap: 15px;
 }
 .page-footer span:first-child {
-  font-size: 8px;
+  font-size: 0.5rem;
   letter-spacing: 0.4px;
 }
 .page-footer span:last-child {
@@ -998,13 +998,13 @@ code {
   height: 2px;
 }
 .empty-state h3 {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 450;
   letter-spacing: 0.3px;
   color: #788966;
 }
 .empty-state p {
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 2.1;
   margin-top: 11px;
   color: #a8b29a;
@@ -1025,7 +1025,7 @@ code {
   flex-direction: column;
   gap: 13px;
   color: #a4b193;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .error-box {
   display: flex;
@@ -1047,17 +1047,17 @@ code {
   min-width: 0;
 }
 .error-box strong {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 550;
 }
 .error-box p {
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.9;
   margin-top: 5px;
   overflow-wrap: anywhere;
 }
 .error-box > .button {
-  font-size: 9px;
+  font-size: 0.5625rem;
   min-height: 26px;
   padding: 5px 8px;
   color: #a38b71;
@@ -1088,19 +1088,19 @@ code {
 }
 .connection-banner strong {
   display: block;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 550;
   color: #657e4e;
 }
 .connection-banner div span {
   display: block;
-  font-size: 9px;
+  font-size: 0.5625rem;
   line-height: 1.8;
   margin-top: 5px;
   color: #a2b18d;
 }
 .connection-banner .button {
-  font-size: 9px;
+  font-size: 0.5625rem;
   min-height: 31px;
 }
 .error-banner {
@@ -1116,7 +1116,7 @@ code {
   align-items: flex-start;
   gap: 8px;
   color: #a39473;
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.9;
   background: #faf7ef;
   border: 1px solid #eee8d6;
@@ -1137,7 +1137,7 @@ code {
   white-space: nowrap;
   background: none;
   color: #a39473;
-  font-size: 9px;
+  font-size: 0.5625rem;
   padding: 2px;
 }
 .section-heading {
@@ -1149,7 +1149,7 @@ code {
   gap: 10px;
 }
 .section-heading h2 {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   color: #748663;
   display: flex;
@@ -1157,14 +1157,14 @@ code {
   gap: 7px;
 }
 .section-heading h2 > span {
-  font-size: 8px;
+  font-size: 0.5rem;
   padding: 2px 5px;
   border-radius: 4px;
   background: #eff3e6;
   color: #a1af8e;
 }
 .section-heading > span {
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #aeb99d;
 }
 .review-intro {
@@ -1191,12 +1191,12 @@ code {
   flex: 1;
 }
 .review-intro strong {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   color: #82956c;
 }
 .review-intro p {
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.9;
   color: #a4b293;
   margin-top: 6px;
@@ -1242,12 +1242,12 @@ code {
   flex-wrap: wrap;
 }
 .review-card-top h3 {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   color: #6f855b;
 }
 .review-card-content > p {
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.9;
   margin: 7px 0 12px;
   color: #a6b394;
@@ -1262,7 +1262,7 @@ code {
   align-items: center;
   gap: 6px;
   max-width: 200px;
-  font-size: 8px;
+  font-size: 0.5rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1280,16 +1280,16 @@ code {
 .review-card-meta {
   display: flex;
   gap: 15px;
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #b6c0a9;
   margin-top: 13px;
   align-items: center;
 }
 .review-card-meta .mono {
-  font-size: 8px;
+  font-size: 0.5rem;
 }
 .review-open {
-  font-size: 9px;
+  font-size: 0.5625rem;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1334,26 +1334,26 @@ code {
   padding-left: 3px;
 }
 .sync-main .section-eyebrow {
-  font-size: 8px;
+  font-size: 0.5rem;
   letter-spacing: 1px;
   color: #a2b28e;
 }
 .sync-main h2 {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 450;
   color: #778c60;
   margin-top: 7px;
   line-height: 1.7;
 }
 .sync-main p {
-  font-size: 9px;
+  font-size: 0.5625rem;
   line-height: 1.9;
   color: #acb99b;
   margin-top: 7px;
   max-width: 530px;
 }
 .sync-main .button {
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 .sync-stats {
   display: grid;
@@ -1374,25 +1374,25 @@ code {
 }
 .sync-stats > div > span {
   display: block;
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #a8b797;
 }
 .sync-stats strong {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 23px;
+  font-size: 1.4375rem;
   font-weight: 400;
   color: #839a6a;
   margin-top: 10px;
   min-height: 28px;
 }
 .sync-stats strong small {
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #b5c1a5;
 }
 .sync-stats .sync-time {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 400;
 }
 .job-table {
@@ -1401,7 +1401,7 @@ code {
 .job-table-head {
   display: grid;
   grid-template-columns: 1fr 155px 80px;
-  font-size: 8px;
+  font-size: 0.5rem;
   letter-spacing: 0.3px;
   color: #b0bfa0;
   padding: 15px 0 12px;
@@ -1418,7 +1418,7 @@ code {
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 400;
   color: #92a77d;
 }
@@ -1433,13 +1433,13 @@ code {
 }
 .job-row > div > .mono {
   display: block;
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #bcc8ae;
   margin: 4px 0 0 35px;
   overflow-wrap: anywhere;
 }
 .job-row > span {
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #b0bea0;
   margin-top: 7px;
 }
@@ -1452,7 +1452,7 @@ code {
   align-items: flex-start;
   gap: 6px;
   color: #ba9a86;
-  font-size: 9px;
+  font-size: 0.5625rem;
   line-height: 1.8;
   margin: 10px 0 0 35px;
 }
@@ -1476,7 +1476,7 @@ code {
   color: #92a47e;
 }
 .card-title h2 {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 450;
   color: #7e946a;
 }
@@ -1484,7 +1484,7 @@ code {
   margin-left: auto;
 }
 .card-description {
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 2;
   color: #acba9c;
   margin-top: 14px;
@@ -1500,7 +1500,7 @@ code {
   display: flex;
   justify-content: space-between;
   gap: 13px;
-  font-size: 9px;
+  font-size: 0.5625rem;
   align-items: center;
 }
 .settings-dl dt {
@@ -1517,7 +1517,7 @@ code {
   min-width: 0;
 }
 .settings-dl .mono {
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 .settings-actions {
   display: flex;
@@ -1526,7 +1526,7 @@ code {
   margin-top: 23px;
 }
 .settings-actions > .button {
-  font-size: 9px;
+  font-size: 0.5625rem;
   min-height: 31px;
   padding: 7px 9px;
 }
@@ -1545,14 +1545,14 @@ code {
   gap: 9px;
   border-bottom: 1px solid #f0f4e8;
   padding: 13px 0;
-  font-size: 9px;
+  font-size: 0.5625rem;
   min-width: 0;
 }
 .diagnostic-fields > div > span {
   color: #adbc9b;
 }
 .diagnostic-fields strong {
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 400;
   color: #95a77f;
   line-height: 1.8;
@@ -1572,7 +1572,7 @@ code {
   list-style: none;
   padding: 12px 14px;
   color: #a5b492;
-  font-size: 9px;
+  font-size: 0.5625rem;
   cursor: pointer;
 }
 .code-details summary::-webkit-details-marker {
@@ -1582,7 +1582,7 @@ code {
   transform: rotate(180deg);
 }
 .code-details pre {
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1.8;
   color: #a0b28a;
   padding: 12px 15px 18px;
@@ -1597,7 +1597,7 @@ code {
   text-align: center;
   padding: 38px 20px 25px;
   color: #b2bfa2;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .settings-unconnected p {
   margin-top: 13px;
@@ -1614,12 +1614,12 @@ code {
   margin-top: 2px;
 }
 .privacy-note h3 {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 450;
   color: #91a57c;
 }
 .privacy-note p {
-  font-size: 9px;
+  font-size: 0.5625rem;
   line-height: 2.1;
   color: #afbc9e;
   margin-top: 6px;
@@ -1658,7 +1658,7 @@ code {
   border-bottom: 1px solid #edf2e3;
   padding: 0 25px;
   color: #97ab80;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .drawer-top > span,
 .drawer-top > div {
@@ -1679,11 +1679,11 @@ code {
   scrollbar-color: #dce5cf transparent;
 }
 .detail-title .section-eyebrow {
-  font-size: 7px;
+  font-size: 0.4375rem;
   letter-spacing: 1.8px;
 }
 .detail-title h2 {
-  font-size: 23px;
+  font-size: 1.4375rem;
   letter-spacing: -0.5px;
   font-weight: 450;
   line-height: 1.65;
@@ -1696,7 +1696,7 @@ code {
   align-items: center;
   flex-wrap: wrap;
   gap: 13px;
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #b0bea0;
   margin-top: 12px;
 }
@@ -1713,20 +1713,20 @@ code {
   align-items: center;
   gap: 7px;
   color: #96aa7f;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 500;
   margin-bottom: 15px;
 }
 .detail-section h3 > span {
   margin-left: auto;
-  font-size: 8px;
+  font-size: 0.5rem;
   background: #f3f7eb;
   color: #b0bf9b;
   padding: 3px 5px;
   border-radius: 4px;
 }
 .memory-description {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: #91a47a;
   line-height: 2.05;
   white-space: pre-wrap;
@@ -1747,7 +1747,7 @@ code {
   gap: 13px;
   padding: 12px 0;
   border-bottom: 1px solid #edf2e2;
-  font-size: 9px;
+  font-size: 0.5625rem;
   line-height: 1.9;
 }
 .detail-facts > div:last-child {
@@ -1777,12 +1777,12 @@ code {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #a8ba93;
 }
 .evidence-heading time {
   margin-left: auto;
-  font-size: 7px;
+  font-size: 0.4375rem;
   color: #bfccb0;
 }
 .evidence-card blockquote {
@@ -1790,7 +1790,7 @@ code {
   padding-left: 13px;
   border-left: 2px solid #d8e4c9;
   color: #93a97a;
-  font-size: 11px;
+  font-size: 0.6875rem;
   line-height: 2;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1799,12 +1799,12 @@ code {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  font-size: 7px;
+  font-size: 0.4375rem;
   color: #bcc9ac;
   min-height: 9px;
 }
 .evidence-disclaimer {
-  font-size: 8px;
+  font-size: 0.5rem;
   line-height: 1.9;
   color: #becbae;
   margin-top: 12px;
@@ -1824,7 +1824,7 @@ code {
   margin-top: 2px;
 }
 .no-evidence p {
-  font-size: 9px;
+  font-size: 0.5625rem;
   line-height: 1.9;
 }
 .revision-list > div {
@@ -1853,25 +1853,25 @@ code {
   flex: 1;
 }
 .revision-list strong {
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 450;
   color: #a0b38a;
   display: block;
 }
 .revision-list time {
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #bccbad;
   display: block;
   margin-top: 6px;
 }
 .revision-list p {
-  font-size: 9px;
+  font-size: 0.5625rem;
   line-height: 1.9;
   color: #acbe96;
   margin-top: 7px;
 }
 .section-empty {
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #b6c7a1;
   line-height: 1.9;
 }
@@ -1879,7 +1879,7 @@ code {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 9px;
+  font-size: 0.5625rem;
   padding: 11px 0;
   border-bottom: 1px solid #edf3e3;
   color: #acbf93;
@@ -1896,13 +1896,13 @@ code {
 }
 .detail-uri > span {
   display: block;
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #c0ceb0;
   margin-bottom: 8px;
 }
 .detail-uri code {
   display: block;
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #adbf96;
   word-break: break-all;
   line-height: 1.9;
@@ -1918,15 +1918,15 @@ code {
   min-height: 75px;
 }
 .drawer-actions > .button {
-  font-size: 10px;
+  font-size: 0.625rem;
   min-height: 35px;
 }
 .drawer-actions > span {
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #b6c6a1;
 }
 .inline-loading {
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #b0c297;
   display: flex;
   align-items: center;
@@ -1934,7 +1934,7 @@ code {
   padding: 13px 0 0;
 }
 .archived-banner {
-  font-size: 9px;
+  font-size: 0.5625rem;
   line-height: 1.9;
   color: #b6a67f;
   padding: 13px;
@@ -1998,14 +1998,14 @@ code {
   color: #b4a074;
 }
 .modal-overlay h2 {
-  font-size: 21px;
+  font-size: 1.3125rem;
   color: #718a59;
   font-weight: 450;
   letter-spacing: -0.6px;
   line-height: 1.5;
 }
 .modal-subtitle {
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 2;
   color: #aebf98;
   margin-top: 10px;
@@ -2018,7 +2018,7 @@ code {
   flex-direction: column;
   gap: 8px;
   color: #a1b68a;
-  font-size: 10px;
+  font-size: 0.625rem;
   margin-bottom: 16px;
 }
 .field-label > input,
@@ -2030,7 +2030,7 @@ code {
   border-radius: 6px;
   padding: 10px 11px;
   color: #859e6c;
-  font-size: 11px;
+  font-size: 0.6875rem;
   line-height: 1.7;
 }
 .field-label > textarea {
@@ -2040,10 +2040,10 @@ code {
 .field-label input::placeholder,
 .field-label textarea::placeholder {
   color: #bfcea9;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .field-note {
-  font-size: 8px;
+  font-size: 0.5rem;
   line-height: 1.9;
   color: #b9c9a2;
 }
@@ -2057,7 +2057,7 @@ code {
   background: #fdfefa;
 }
 .modal-actions .button {
-  font-size: 10px;
+  font-size: 0.625rem;
   min-height: 34px;
 }
 .review-checklist {
@@ -2074,7 +2074,7 @@ code {
   margin-top: 3px;
 }
 .review-checklist p {
-  font-size: 9px;
+  font-size: 0.5625rem;
   line-height: 1.9;
 }
 .review-entity {
@@ -2092,11 +2092,11 @@ code {
   border-radius: 9px;
 }
 .review-entity-heading .badge {
-  font-size: 7px;
+  font-size: 0.4375rem;
   padding: 2px 5px;
 }
 .review-entity-heading h3 {
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.8;
   font-weight: 500;
   color: #8ca271;
@@ -2104,13 +2104,13 @@ code {
 }
 .entity-index {
   margin-left: auto;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-variant-numeric: tabular-nums;
   color: #d3dfc5;
   padding-top: 5px;
 }
 .review-entity-description {
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 2;
   color: #a0b58a;
   margin: 16px 0;
@@ -2123,7 +2123,7 @@ code {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #b4c6a0;
   margin: 10px 0;
 }
@@ -2133,14 +2133,14 @@ code {
   background: #fcfdf9;
   padding: 12px;
   margin-bottom: 9px;
-  font-size: 8px;
+  font-size: 0.5rem;
   display: flex;
   flex-direction: column;
   gap: 7px;
   color: #b0c299;
 }
 .review-relations code {
-  font-size: 8px;
+  font-size: 0.5rem;
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
@@ -2163,11 +2163,11 @@ code {
   padding: 0;
 }
 .brand-small strong {
-  font-size: 15px;
+  font-size: 0.9375rem;
   color: #526d44;
 }
 .brand-small small {
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #9eaf8b;
   letter-spacing: 1.4px;
 }
@@ -2235,13 +2235,13 @@ code {
 }
 .auth-overlay .section-eyebrow {
   text-align: center;
-  font-size: 7px;
+  font-size: 0.4375rem;
   letter-spacing: 2px;
   margin-bottom: 12px;
 }
 .auth-overlay h2 {
   text-align: center;
-  font-size: 23px;
+  font-size: 1.4375rem;
 }
 .auth-overlay .modal-subtitle {
   text-align: center;
@@ -2271,7 +2271,7 @@ code {
   width: 100%;
   padding: 4px 0;
   color: #8aa572;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .auth-submit {
   width: 100%;
@@ -2279,7 +2279,7 @@ code {
   min-height: 39px;
   flex-direction: row-reverse;
   justify-content: center;
-  font-size: 11px;
+  font-size: 0.6875rem;
   background: #627e4e;
   border-color: #627e4e;
 }
@@ -2288,7 +2288,7 @@ code {
   border-color: #526e3f;
 }
 .auth-hint {
-  font-size: 8px;
+  font-size: 0.5rem;
   color: #b9cca3;
   margin: 15px 0 0;
   display: flex;
@@ -2311,7 +2311,7 @@ code {
   border-radius: 8px;
   box-shadow: 0 8px 35px #283b191a;
   color: #829f65;
-  font-size: 11px;
+  font-size: 0.6875rem;
   line-height: 1.8;
   max-width: min(650px, calc(100vw - 35px));
   width: max-content;
@@ -2431,10 +2431,10 @@ code {
     gap: 8px;
   }
   .brand strong {
-    font-size: 15px;
+    font-size: 0.9375rem;
   }
   .brand small {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .nav-item.active:before {
     left: -15px;
@@ -2443,10 +2443,10 @@ code {
     padding: 11px 8px;
   }
   .workspace-label strong {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .workspace-label div span {
-    font-size: 6px;
+    font-size: 0.375rem;
   }
   .sidebar-bottom {
     margin: 0 -15px;
@@ -2469,10 +2469,10 @@ code {
     padding: 18px;
   }
   .metric-value {
-    font-size: 29px;
+    font-size: 1.8125rem;
   }
   .metric-value.metric-text {
-    font-size: 21px;
+    font-size: 1.3125rem;
   }
   .review-open {
     font-size: 0;
@@ -2486,18 +2486,18 @@ code {
     padding: 20px;
   }
   .card-title h2 {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .sync-main {
     gap: 17px;
     padding: 25px 22px;
   }
   .sync-main h2 {
-    font-size: 14px;
+    font-size: 0.875rem;
   }
   .sync-main > .button {
     padding: 8px;
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .toast {
     left: calc(50% + 105px);
@@ -2518,14 +2518,14 @@ code {
     margin-right: -3px;
   }
   .brand strong {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .brand strong span {
     display: block;
     margin-top: 3px;
   }
   .brand small {
-    font-size: 7px;
+    font-size: 0.4375rem;
     letter-spacing: 1.4px;
   }
   .workspace-label {
@@ -2543,17 +2543,17 @@ code {
   .workspace-avatar {
     height: 25px;
     width: 24px;
-    font-size: 16px;
+    font-size: 1rem;
   }
   .workspace-label strong {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .nav-label {
-    font-size: 9px;
+    font-size: 0.5625rem;
     margin-left: 11px;
   }
   .nav-item {
-    font-size: 11px;
+    font-size: 0.6875rem;
     padding: 11px 10px;
     gap: 9px;
   }
@@ -2568,14 +2568,14 @@ code {
     margin-right: 9px;
   }
   .sidebar-note strong {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .sidebar-note p {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .sidebar-bottom {
     margin: 0 -12px;
-    font-size: 9px;
+    font-size: 0.5625rem;
     padding: 15px;
   }
   .main-shell {
@@ -2593,26 +2593,26 @@ code {
     display: none;
   }
   .page-header h1 {
-    font-size: 25px;
+    font-size: 1.5625rem;
   }
   .page-header p {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .metric-card {
     padding: 15px 14px;
   }
   .metric-value {
     margin-top: 17px;
-    font-size: 25px;
+    font-size: 1.5625rem;
   }
   .metric-value.metric-text {
-    font-size: 17px;
+    font-size: 1.0625rem;
   }
   .metric-caption {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .metric-top {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .metric-top svg {
     width: 15px;
@@ -2625,7 +2625,7 @@ code {
   }
   .type-tabs button {
     padding: 7px 8px;
-    font-size: 9px;
+    font-size: 0.5625rem;
     gap: 5px;
   }
   .type-tabs button svg {
@@ -2655,10 +2655,10 @@ code {
     gap: 11px;
   }
   .memory-row h3 {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .memory-row p {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .type-icon {
     height: 35px;
@@ -2683,7 +2683,7 @@ code {
   }
   .sync-main > .button {
     margin-left: 77px;
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .sync-stats {
     padding: 18px 22px;
@@ -2692,10 +2692,10 @@ code {
     padding: 0 15px;
   }
   .sync-stats > div > span {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .sync-stats .sync-time {
-    font-size: 10px;
+    font-size: 0.625rem;
     line-height: 1.8;
   }
   .job-table-head {
@@ -2705,10 +2705,10 @@ code {
     grid-template-columns: minmax(0, 1fr) 115px 65px;
   }
   .job-row > span {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .job-row > div > strong {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .review-intro {
     padding: 18px;
@@ -2718,14 +2718,14 @@ code {
     display: none;
   }
   .review-intro p {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .review-card {
     gap: 12px;
   }
   .review-card-meta {
     gap: 10px;
-    font-size: 7px;
+    font-size: 0.4375rem;
   }
   .review-card-meta .mono {
     display: none;
@@ -2760,14 +2760,14 @@ code {
     gap: 9px;
   }
   .sidebar .brand strong {
-    font-size: 15px;
+    font-size: 0.9375rem;
   }
   .sidebar .brand strong span {
     display: inline;
     margin: 0;
   }
   .sidebar .brand small {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .sidebar .brand-mark {
     transform: scale(0.9);
@@ -2789,7 +2789,7 @@ code {
     min-height: 35px;
     justify-content: center;
     gap: 6px;
-    font-size: 9px;
+    font-size: 0.5625rem;
     border-radius: 5px;
   }
   .nav-item > svg {
@@ -2803,7 +2803,7 @@ code {
     height: 14px;
     min-width: 14px;
     padding: 0 3px;
-    font-size: 7px;
+    font-size: 0.4375rem;
     margin-left: 0;
   }
   .main-shell {
@@ -2816,20 +2816,20 @@ code {
     background: #f6f5f1;
   }
   .breadcrumbs {
-    font-size: 9px;
+    font-size: 0.5625rem;
     gap: 8px;
   }
   .topbar-right {
     gap: 10px;
   }
   .alpha-pill {
-    font-size: 6px;
+    font-size: 0.375rem;
     padding: 3px 5px;
   }
   .avatar-button {
     width: 24px;
     height: 24px;
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .main-content {
     padding: 26px 18px 23px;
@@ -2840,15 +2840,15 @@ code {
     align-items: flex-start;
   }
   .page-header h1 {
-    font-size: 25px;
+    font-size: 1.5625rem;
     margin-top: 9px;
   }
   .eyebrow {
-    font-size: 7px;
+    font-size: 0.4375rem;
     letter-spacing: 1.6px;
   }
   .page-header p {
-    font-size: 9px;
+    font-size: 0.5625rem;
     line-height: 1.9;
     max-width: 240px;
   }
@@ -2857,7 +2857,7 @@ code {
     gap: 5px;
   }
   .page-actions .button {
-    font-size: 9px;
+    font-size: 0.5625rem;
     min-height: 30px;
     padding: 7px 9px;
     gap: 5px;
@@ -2875,31 +2875,31 @@ code {
     border-radius: 7px;
   }
   .metric-top {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .metric-top > svg {
     width: 12px;
     height: 12px;
   }
   .metric-value {
-    font-size: 23px;
+    font-size: 1.4375rem;
     margin: 15px 0 8px;
     gap: 3px;
     min-height: 29px;
   }
   .metric-value small {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .metric-value > svg {
     display: none;
   }
   .metric-value.metric-text {
-    font-size: 14px;
+    font-size: 0.875rem;
     padding-top: 4px;
     letter-spacing: -0.3px;
   }
   .metric-caption {
-    font-size: 7px;
+    font-size: 0.4375rem;
     line-height: 1.8;
     gap: 4px;
     min-height: 25px;
@@ -2919,18 +2919,18 @@ code {
     gap: 1px;
   }
   .type-tabs button {
-    font-size: 8px;
+    font-size: 0.5rem;
     padding: 7px;
   }
   .lifecycle-select {
-    font-size: 8px;
+    font-size: 0.5rem;
     gap: 4px;
   }
   .lifecycle-select > svg:first-child {
     display: none;
   }
   .lifecycle-select select {
-    font-size: 8px;
+    font-size: 0.5rem;
     padding-right: 12px;
   }
   .search-form {
@@ -2945,10 +2945,10 @@ code {
   }
   .search-form input,
   .search-form input::placeholder {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .search-submit {
-    font-size: 8px;
+    font-size: 0.5rem;
     padding: 4px 3px 4px 7px;
     gap: 4px;
   }
@@ -2958,7 +2958,7 @@ code {
   }
   .list-caption {
     padding: 17px 15px 10px;
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .memory-list {
     padding: 0 12px 5px;
@@ -2977,15 +2977,15 @@ code {
     width: 16px;
   }
   .memory-row h3 {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .memory-row p {
-    font-size: 9px;
+    font-size: 0.5625rem;
     margin-top: 5px;
     margin-bottom: 8px;
   }
   .memory-row-meta {
-    font-size: 7px;
+    font-size: 0.4375rem;
     gap: 5px;
   }
   .memory-row-end {
@@ -3000,17 +3000,17 @@ code {
     min-height: 290px;
   }
   .empty-state h3 {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .empty-state p {
-    font-size: 9px;
+    font-size: 0.5625rem;
     max-width: 260px;
   }
   .empty-illustration {
     margin-bottom: 20px;
   }
   .subtle-note {
-    font-size: 8px;
+    font-size: 0.5rem;
     align-items: flex-start;
     text-align: left;
     line-height: 1.9;
@@ -3024,7 +3024,7 @@ code {
   }
   .pagination {
     padding: 12px;
-    font-size: 8px;
+    font-size: 0.5rem;
     gap: 7px;
     align-items: flex-start;
   }
@@ -3032,7 +3032,7 @@ code {
     padding-top: 7px;
   }
   .pagination .button {
-    font-size: 8px;
+    font-size: 0.5rem;
     padding: 6px 4px;
     gap: 4px;
     min-height: 25px;
@@ -3043,10 +3043,10 @@ code {
   .page-footer {
     margin: 0 18px;
     padding: 17px 0;
-    font-size: 7px;
+    font-size: 0.4375rem;
   }
   .page-footer > span:first-child {
-    font-size: 7px;
+    font-size: 0.4375rem;
   }
   .connection-banner {
     padding: 13px;
@@ -3058,19 +3058,19 @@ code {
     flex-basis: calc(100% - 35px);
   }
   .connection-banner strong {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .connection-banner div span {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .connection-banner > .button {
     margin-left: 27px;
-    font-size: 8px;
+    font-size: 0.5rem;
     padding: 6px 9px;
     min-height: 28px;
   }
   .info-banner {
-    font-size: 8px;
+    font-size: 0.5rem;
     padding: 11px;
     gap: 7px;
     flex-wrap: wrap;
@@ -3080,7 +3080,7 @@ code {
   }
   .info-banner > button {
     margin-left: 23px;
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .review-intro {
     padding: 16px;
@@ -3097,19 +3097,19 @@ code {
     width: 19px;
   }
   .review-intro strong {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .review-intro p {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .section-heading {
     padding: 18px 16px;
   }
   .section-heading h2 {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .section-heading > span {
-    font-size: 8px;
+    font-size: 0.5rem;
     max-width: 160px;
     line-height: 1.8;
     text-align: right;
@@ -3130,21 +3130,21 @@ code {
     width: 18px;
   }
   .review-card-top h3 {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .review-card-content > p {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .review-card-top {
     gap: 7px;
   }
   .review-preview > span {
-    font-size: 7px;
+    font-size: 0.4375rem;
     max-width: 165px;
     padding: 3px 5px;
   }
   .review-card-meta {
-    font-size: 7px;
+    font-size: 0.4375rem;
     gap: 8px;
     flex-wrap: wrap;
     line-height: 1.7;
@@ -3173,15 +3173,15 @@ code {
     flex-basis: calc(100% - 70px);
   }
   .sync-main h2 {
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.8;
   }
   .sync-main p {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .sync-main > .button {
     margin-left: 63px;
-    font-size: 8px;
+    font-size: 0.5rem;
     min-height: 30px;
   }
   .sync-stats {
@@ -3191,19 +3191,19 @@ code {
     padding: 0 11px;
   }
   .sync-stats > div > span {
-    font-size: 7px;
+    font-size: 0.4375rem;
     line-height: 1.9;
   }
   .sync-stats strong {
-    font-size: 20px;
+    font-size: 1.25rem;
     min-height: 26px;
     gap: 5px;
   }
   .sync-stats strong small {
-    font-size: 7px;
+    font-size: 0.4375rem;
   }
   .sync-stats .sync-time {
-    font-size: 9px;
+    font-size: 0.5625rem;
     line-height: 1.8;
   }
   .job-table {
@@ -3211,7 +3211,7 @@ code {
   }
   .job-table-head {
     grid-template-columns: 1fr 63px;
-    font-size: 7px;
+    font-size: 0.4375rem;
   }
   .job-table-head > span:nth-child(2) {
     display: none;
@@ -3225,10 +3225,10 @@ code {
     display: none;
   }
   .job-row > .badge {
-    font-size: 7px;
+    font-size: 0.4375rem;
   }
   .job-row > div > strong {
-    font-size: 9px;
+    font-size: 0.5625rem;
     gap: 7px;
   }
   .job-icon {
@@ -3238,10 +3238,10 @@ code {
   .job-row > div > .mono,
   .job-error {
     margin-left: 30px;
-    font-size: 7px;
+    font-size: 0.4375rem;
   }
   .job-error {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .settings-grid {
     gap: 17px;
@@ -3251,20 +3251,20 @@ code {
     padding: 20px 17px;
   }
   .card-title h2 {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .card-title > svg {
     height: 17px;
     width: 17px;
   }
   .card-title .badge {
-    font-size: 7px;
+    font-size: 0.4375rem;
   }
   .card-description {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .settings-dl > div {
-    font-size: 8px;
+    font-size: 0.5rem;
     gap: 13px;
   }
   .settings-dl dt {
@@ -3272,7 +3272,7 @@ code {
   }
   .settings-dl dd,
   .settings-dl .mono {
-    font-size: 9px;
+    font-size: 0.5625rem;
     max-width: 65%;
   }
   .settings-actions {
@@ -3280,7 +3280,7 @@ code {
     flex-wrap: wrap;
   }
   .settings-actions > .button {
-    font-size: 8px;
+    font-size: 0.5rem;
     padding: 7px 8px;
   }
   .diagnostic-fields {
@@ -3288,17 +3288,17 @@ code {
     margin-top: 12px;
   }
   .diagnostic-fields > div {
-    font-size: 8px;
+    font-size: 0.5rem;
     gap: 7px;
   }
   .diagnostic-fields strong {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .code-details summary {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .code-details pre {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .privacy-note {
     gap: 11px;
@@ -3309,10 +3309,10 @@ code {
     height: 20px;
   }
   .privacy-note h3 {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .privacy-note p {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .drawer-overlay > .overlay-panel {
     width: 100%;
@@ -3322,19 +3322,19 @@ code {
     height: 58px;
     min-height: 58px;
     padding: 0 20px;
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .drawer-scroll {
     padding: 26px 23px 21px;
   }
   .detail-title h2 {
-    font-size: 23px;
+    font-size: 1.4375rem;
   }
   .drawer-actions {
     padding: 16px 22px;
   }
   .drawer-actions > .button {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .modal-overlay {
     padding: 14px;
@@ -3347,10 +3347,10 @@ code {
     padding: 24px;
   }
   .modal-overlay h2 {
-    font-size: 20px;
+    font-size: 1.25rem;
   }
   .modal-subtitle {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .modal-actions {
     margin-left: -24px;
@@ -3367,16 +3367,16 @@ code {
     height: 111px;
   }
   .auth-overlay h2 {
-    font-size: 22px;
+    font-size: 1.375rem;
   }
   .auth-overlay .brand strong {
-    font-size: 15px;
+    font-size: 0.9375rem;
   }
   .auth-overlay .brand strong span {
     display: inline;
   }
   .auth-overlay .brand small {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .auth-submit {
     min-height: 40px;
@@ -3384,7 +3384,7 @@ code {
   .toast {
     left: 50%;
     bottom: 18px;
-    font-size: 10px;
+    font-size: 0.625rem;
     max-width: calc(100vw - 30px);
     padding: 12px 14px;
   }
@@ -3393,17 +3393,17 @@ code {
   }
   .error-box {
     padding: 13px;
-    font-size: 10px;
+    font-size: 0.625rem;
     gap: 9px;
   }
   .error-box p {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .error-box strong {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .error-box > .button {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .panel-error {
     padding: 22px 14px;
@@ -3433,19 +3433,19 @@ code {
   gap: 10px;
   padding: 8px 0;
   color: #89967b;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .index-states code {
-  font-size: 9px;
+  font-size: 0.5625rem;
   flex: 1;
   overflow-wrap: anywhere;
 }
 .index-states small {
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #9daa8f;
 }
 .user-edit-note {
-  font-size: 11px;
+  font-size: 0.6875rem;
   line-height: 1.9;
   margin: 12px 0;
   color: #7d9668;
@@ -3471,7 +3471,7 @@ code {
   border-radius: 7px;
 }
 .review-edit-fields .field-label {
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .review-edit-fields > div {
   display: flex;
@@ -3485,7 +3485,7 @@ code {
   margin-bottom: 7px;
 }
 .review-edit-fields .button {
-  font-size: 9px;
+  font-size: 0.5625rem;
   min-height: 29px;
   padding: 6px 9px;
 }
@@ -3493,7 +3493,7 @@ code {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #a58b5f;
   background: #faf5e9;
   border-radius: 4px;
@@ -3502,370 +3502,370 @@ code {
 }
 @media (min-width: 901px) {
   .nav-item {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .nav-label {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .brand small {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .workspace-label strong {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .workspace-label div span {
-    font-size: 7px;
+    font-size: 0.4375rem;
   }
   .sidebar-note strong {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .sidebar-note p {
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: #8d9881;
   }
   .sidebar-bottom {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .breadcrumbs {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .session-label {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .page-header p {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: #7d8971;
   }
   .button {
-    font-size: 12px;
+    font-size: 0.75rem;
     min-height: 36px;
   }
   .metric-top {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .metric-caption {
-    font-size: 10px;
+    font-size: 0.625rem;
     color: #8b987e;
   }
   .metric-value small {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .type-tabs button {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .lifecycle-select select {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .search-form {
     min-height: 44px;
   }
   .search-form input,
   .search-form input::placeholder {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .search-submit {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .search-form kbd {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .list-caption {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .list-caption em {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .memory-row h3 {
-    font-size: 14px;
+    font-size: 0.875rem;
     color: #4b5f3e;
   }
   .memory-row p {
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.8;
     color: #819171;
   }
   .memory-row-meta {
-    font-size: 10px;
+    font-size: 0.625rem;
     color: #8d9d7c;
   }
   .memory-row-end {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .memory-row-meta > span > svg {
     width: 12px;
     height: 12px;
   }
   .badge {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .empty-state h3 {
-    font-size: 15px;
+    font-size: 0.9375rem;
   }
   .empty-state p {
-    font-size: 12px;
+    font-size: 0.75rem;
     max-width: 380px;
     line-height: 1.9;
   }
   .subtle-note {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .section-heading h2 {
-    font-size: 14px;
+    font-size: 0.875rem;
   }
   .section-heading > span {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .review-intro strong {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .review-intro p {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: #8e9f7d;
   }
   .review-card-top h3 {
-    font-size: 14px;
+    font-size: 0.875rem;
   }
   .review-card-content > p {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: #8c9f7b;
   }
   .review-preview > span {
-    font-size: 10px;
+    font-size: 0.625rem;
     max-width: 235px;
   }
   .review-card-meta {
-    font-size: 10px;
+    font-size: 0.625rem;
     color: #a0af8e;
   }
   .review-card-meta .mono {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .review-open {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .sync-main h2 {
-    font-size: 18px;
+    font-size: 1.125rem;
   }
   .sync-main p {
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: #96a881;
   }
   .sync-main .button {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .sync-stats > div > span {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .sync-stats .sync-time {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .sync-stats strong small {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .job-table-head {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .job-row > div > strong {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .job-row > div > .mono {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .job-row > span {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .job-error {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .card-title h2 {
-    font-size: 14px;
+    font-size: 0.875rem;
   }
   .card-description {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: #8e9f7a;
   }
   .settings-dl > div {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .settings-dl .mono {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .settings-actions > .button {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .diagnostic-fields > div {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .diagnostic-fields strong {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .code-details summary {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .privacy-note h3 {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .privacy-note p {
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: #9baa87;
   }
   .info-banner {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .info-banner > button {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .connection-banner strong {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .connection-banner div span {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .connection-banner .button {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .error-box strong {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .error-box p {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .error-box > .button {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .drawer-top {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .detail-title .section-eyebrow {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .detail-title h2 {
-    font-size: 25px;
+    font-size: 1.5625rem;
   }
   .detail-meta {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .detail-section h3 {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .detail-section h3 > span {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .memory-description {
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1.9;
   }
   .detail-facts > div {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .evidence-heading {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .evidence-heading time {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .evidence-card blockquote {
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.9;
   }
   .evidence-footer {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .evidence-disclaimer {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .revision-list strong {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .revision-list time {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .revision-list p {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .detail-uri > span {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .detail-uri code {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .section-empty {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .no-evidence p {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .drawer-actions > .button {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .drawer-actions > span {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .review-checklist p {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .review-entity-heading h3 {
-    font-size: 15px;
+    font-size: 0.9375rem;
   }
   .review-entity-heading .badge {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .review-entity-description {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .review-date {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .review-relations > div,
   .review-relations code {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .relation-list > div {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .modal-subtitle {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .field-label {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .field-label > input,
   .field-label > textarea {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .field-note {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .field-label input::placeholder,
   .field-label textarea::placeholder {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .modal-actions .button {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .auth-overlay .modal-subtitle {
     max-width: 330px;
   }
   .token-input input {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .auth-hint {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .auth-submit {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .toast {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .index-states > div {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .index-states code {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .review-edit-label {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
 }
 .demo-banner {
@@ -3883,18 +3883,18 @@ code {
   flex: 1;
 }
 .demo-banner strong {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   display: block;
 }
 .demo-banner div span {
-  font-size: 11px;
+  font-size: 0.6875rem;
   display: block;
   margin-top: 5px;
   color: #b2945c;
 }
 .demo-tag {
-  font-size: 9px;
+  font-size: 0.5625rem;
   letter-spacing: 1px;
   padding: 4px 7px;
   border: 1px solid #e7d6b5;
@@ -3907,7 +3907,7 @@ code {
   justify-content: space-between;
   gap: 10px;
   margin: 11px 23px 0;
-  font-size: 10px;
+  font-size: 0.625rem;
   color: #9aa98b;
 }
 .search-options label {
@@ -3937,12 +3937,12 @@ code {
   cursor: not-allowed;
 }
 .search-options small {
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #aebc9e;
   margin-left: 3px;
 }
 .search-options > span {
-  font-size: 9px;
+  font-size: 0.5625rem;
   color: #b0bda1;
 }
 .backfill-panel {
@@ -3964,11 +3964,11 @@ code {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: #7f9469;
 }
 .backfill-panel > summary > span:last-child {
-  font-size: 10px;
+  font-size: 0.625rem;
   color: #a6b596;
 }
 .backfill-panel[open] > summary {
@@ -3981,7 +3981,7 @@ code {
   padding: 19px 23px;
 }
 .backfill-description {
-  font-size: 11px;
+  font-size: 0.6875rem;
   line-height: 1.9;
   color: #9bad88;
   max-width: 700px;
@@ -3991,11 +3991,11 @@ code {
   align-items: center;
   gap: 8px;
   padding: 29px 0;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: #a1b58b;
 }
 .backfill-empty {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: #acbc9b;
   line-height: 1.9;
   padding: 27px 0;
@@ -4035,22 +4035,22 @@ code {
   gap: 6px;
 }
 .backfill-sessions strong {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 400;
   color: #8a9f76;
 }
 .backfill-sessions code {
-  font-size: 9px;
+  font-size: 0.5625rem;
   overflow: hidden;
   text-overflow: ellipsis;
   color: #b1c19f;
 }
 .session-source {
-  font-size: 10px;
+  font-size: 0.625rem;
   color: #a2b48f;
 }
 .session-message-count {
-  font-size: 10px;
+  font-size: 0.625rem;
   color: #afc09c;
   min-width: 65px;
   text-align: right;
@@ -4063,7 +4063,7 @@ code {
   margin-top: 20px;
 }
 .backfill-actions > span {
-  font-size: 10px;
+  font-size: 0.625rem;
   color: #a7b896;
 }
 .backfill-actions > div {
@@ -4071,7 +4071,7 @@ code {
   gap: 5px;
 }
 .backfill-actions .button {
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .backfill-error {
   display: flex;
@@ -4081,7 +4081,7 @@ code {
   color: #b49370;
   border-radius: 5px;
   border: 1px solid #eee1cc;
-  font-size: 11px;
+  font-size: 0.6875rem;
   margin-top: 14px;
   line-height: 1.9;
 }
@@ -4096,31 +4096,31 @@ code {
     margin-bottom: 20px;
   }
   .demo-banner strong {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .demo-banner div span {
-    font-size: 9px;
+    font-size: 0.5625rem;
     line-height: 1.8;
   }
   .demo-tag {
-    font-size: 7px;
+    font-size: 0.4375rem;
     padding: 3px 5px;
   }
   .search-options {
     margin: 10px 15px 0;
-    font-size: 8px;
+    font-size: 0.5rem;
     align-items: flex-start;
     flex-wrap: wrap;
     gap: 7px;
   }
   .search-options label {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .search-options small {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .search-options > span {
-    font-size: 8px;
+    font-size: 0.5rem;
     margin-left: 22px;
     flex-basis: 100%;
   }
@@ -4133,10 +4133,10 @@ code {
     gap: 10px;
   }
   .backfill-panel > summary > span {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .backfill-panel > summary > span:last-child {
-    font-size: 8px;
+    font-size: 0.5rem;
     gap: 5px;
   }
   .backfill-body {
@@ -4144,23 +4144,23 @@ code {
   }
   .backfill-description,
   .backfill-empty {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .backfill-sessions > label {
     gap: 8px;
     padding: 13px 4px;
   }
   .backfill-sessions strong {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .backfill-sessions code {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .session-source {
     display: none;
   }
   .session-message-count {
-    font-size: 8px;
+    font-size: 0.5rem;
     min-width: 45px;
   }
   .backfill-actions {
@@ -4172,23 +4172,23 @@ code {
     justify-content: flex-end;
   }
   .backfill-actions .button {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .backfill-actions > span {
-    font-size: 9px;
+    font-size: 0.5625rem;
   }
   .backfill-error {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .index-states > div {
-    font-size: 9px;
+    font-size: 0.5625rem;
     gap: 7px;
   }
   .index-states code {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
   .index-states small {
-    font-size: 8px;
+    font-size: 0.5rem;
   }
 }
 /* Keep content ink distinct from the quiet chrome. */
@@ -4314,7 +4314,7 @@ code {
 .session-source,
 .session-message-count,
 .backfill-actions > span {
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .page-header p,
 .metric-caption {
@@ -4324,7 +4324,7 @@ code {
   color: #6c7b61;
 }
 .memory-row h3 {
-  font-size: 15px;
+  font-size: 0.9375rem;
   color: #374d3c;
 }
 .memory-row p,
@@ -4341,7 +4341,7 @@ code {
 .modal-subtitle,
 .review-entity-description,
 .backfill-empty {
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .memory-row p {
   color: #6b7b61;
@@ -4352,37 +4352,37 @@ code {
 }
 .memory-description,
 .evidence-card blockquote {
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 .card-description,
 .privacy-note p {
   color: #7e926d;
 }
 .search-options label {
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .search-options small {
   margin-left: 5px;
 }
 .backfill-sessions code {
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .backfill-panel > summary > span {
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .backfill-panel > summary > span:last-child {
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .backfill-actions .button {
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .evidence-disclaimer {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: #9bac88;
 }
 @media (max-width: 650px) {
   .nav-item {
-    font-size: 11px;
+    font-size: 0.6875rem;
     gap: 5px;
     padding-left: 5px;
     padding-right: 5px;
@@ -4391,194 +4391,194 @@ code {
     width: 12px;
   }
   .page-header p {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .metric-top {
-    font-size: 10px;
+    font-size: 0.625rem;
     line-height: 1.7;
   }
   .metric-caption {
-    font-size: 10px;
+    font-size: 0.625rem;
     line-height: 1.8;
   }
   .metric-value.metric-text {
-    font-size: 16px;
+    font-size: 1rem;
   }
   .type-tabs button {
-    font-size: 11px;
+    font-size: 0.6875rem;
     padding: 7px;
   }
   .lifecycle-select select {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .lifecycle-select {
     flex-shrink: 1;
   }
   .search-form input,
   .search-form input::placeholder {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .search-submit {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .search-options label,
   .search-options small,
   .search-options > span {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .list-caption {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .memory-row h3 {
-    font-size: 14px;
+    font-size: 0.875rem;
   }
   .memory-row p {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .memory-row-meta {
-    font-size: 11px;
+    font-size: 0.6875rem;
     line-height: 1.8;
   }
   .memory-row-end {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .subtle-note {
-    font-size: 11px;
+    font-size: 0.6875rem;
     line-height: 1.8;
   }
   .empty-state p {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .review-intro strong {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .review-intro p,
   .review-card-content > p {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .review-card-top h3 {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .review-card-meta {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .section-heading > span {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .sync-main h2 {
-    font-size: 14px;
+    font-size: 0.875rem;
   }
   .sync-main p {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .sync-stats > div > span {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .sync-stats .sync-time {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .job-row > div > strong {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .job-row > div > .mono {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .job-error {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .card-title h2 {
-    font-size: 14px;
+    font-size: 0.875rem;
   }
   .card-description {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .settings-dl > div,
   .settings-dl .mono,
   .settings-dl dd {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .settings-actions > .button {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .diagnostic-fields > div,
   .diagnostic-fields strong,
   .code-details summary,
   .privacy-note p {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .modal-subtitle {
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .field-label {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .field-label > input,
   .field-label > textarea,
   .token-input input {
-    font-size: 14px;
+    font-size: 0.875rem;
   }
   .field-label input::placeholder,
   .field-label textarea::placeholder {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .field-note,
   .auth-hint {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .drawer-actions > span {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .evidence-heading,
   .evidence-footer {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .detail-meta {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .detail-facts > div {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .review-checklist p,
   .review-entity-description {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .review-date {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .no-evidence p {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .revision-list time,
   .revision-list p,
   .section-empty {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .backfill-panel > summary > span {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .backfill-panel > summary > span:last-child {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .backfill-description,
   .backfill-sessions strong,
   .session-message-count,
   .backfill-actions > span {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .backfill-sessions code {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .backfill-panel > summary {
     gap: 8px;
   }
   .backfill-actions .button {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .demo-banner strong {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .demo-banner div span {
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
 }
 @media (max-width: 390px) {
@@ -4587,10 +4587,10 @@ code {
   }
   .type-tabs button {
     padding: 7px 5px;
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .lifecycle-select select {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .page-actions > .button {
     padding-left: 7px;
@@ -4609,7 +4609,7 @@ code {
   justify-content: space-between;
   cursor: pointer;
   list-style: none;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: #82996e;
   padding: 10px 11px;
 }
@@ -4631,12 +4631,12 @@ code {
   gap: 6px;
 }
 .revision-diff > div > span {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: #96aa84;
 }
 .revision-diff del,
 .revision-diff ins {
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.9;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -4660,7 +4660,7 @@ code {
 }
 .revision-baseline,
 .revision-no-change {
-  font-size: 11px !important;
+  font-size: 0.6875rem !important;
   padding: 0 11px 12px;
   margin: 0 !important;
   line-height: 1.8 !important;
@@ -4689,20 +4689,20 @@ code {
   min-width: 0;
 }
 .related-memory > div > span {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: #9aae88;
   display: block;
 }
 .related-memory strong {
   display: block;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: #5b744e;
   line-height: 1.8;
   margin-top: 3px;
 }
 .related-memory time {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: #a0b28d;
   margin-top: 3px;
   display: block;
@@ -4715,5 +4715,5 @@ code {
   background: #f1f5eb;
   border-color: #dfe8d2;
   color: #81976d;
-  font-size: 12px;
+  font-size: 0.75rem;
 }

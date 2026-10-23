@@ -145,7 +145,7 @@ class EmbeddingTests(unittest.TestCase):
 
 class HybridSearchTests(unittest.TestCase):
     def test_authored_fixture_has_50_valid_questions_and_expected_entities(self):
-        data = json.loads((Path(__file__).parent / "fixtures" / "search_50.json").read_text())
+        data = json.loads((Path(__file__).parent / "fixtures" / "search_50.json").read_text(encoding="utf-8"))
         self.assertEqual(len(data["queries"]), 50)
         self.assertEqual(len({q["id"] for q in data["queries"]}), 50)
         ids = {e["id"] for e in data["entities"]}

@@ -1,5 +1,6 @@
 """Provider behavior across session, context, and failure boundaries."""
 import json
+import io
 import os
 import sys
 import tempfile
@@ -73,6 +74,31 @@ class ProviderBehaviorTests(unittest.TestCase):
             self.assertEqual(provider._config.home,home.resolve())
             self.assertEqual(provider._config.urn_prefix,'urn:fixture:kg:')
             self.assertEqual(os.environ.get('HERMES_HOME'),previous)
+
+    def test_console_relay_accepts_neutral_token_and_legacy_fallback(self):
+        provider=self.make_provider()
+        for product,legacy,expected in [('product-token','legacy-token','product-token'),(None, 'legacy-token','legacy-token')]:
+            environment={key:value for key,value in os.environ.items() if key!='KG_CONSOLE_TOKEN'}
+            environment['HERMES_KG_CONSOLE_TOKEN']=legacy
+            if product is not None:
+                environment['KG_CONSOLE_TOKEN']=product
+            with self.subTest(product=bool(product)), \
+                 patch.dict(os.environ,environment,clear=True), \
+                 patch('urllib.request.urlopen',return_value=io.StringIO('{"kg_results":[]}')) as request:
+                self.assertEqual(provider._search('synthetic question',1),{'kg_results':[]})
+                sent=request.call_args.args[0]
+                self.assertEqual(sent.get_header('Authorization'),'Bearer '+expected)
+
+    def test_empty_generic_console_token_uses_profile_file_before_legacy_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            provider=KGMemoryProvider(KGConfig(home=Path(directory)),store_factory=FakeStore)
+            provider.initialize('synthetic-session')
+            self.addCleanup(provider.shutdown)
+            (Path(directory)/'kg-console.token').write_text('profile-file-token',encoding='utf-8')
+            with patch.dict(os.environ,{'KG_CONSOLE_TOKEN':'','HERMES_KG_CONSOLE_TOKEN':'legacy-token'}), \
+                 patch('urllib.request.urlopen',return_value=io.StringIO('{"kg_results":[]}')) as request:
+                provider._search('synthetic question',1)
+                self.assertEqual(request.call_args.args[0].get_header('Authorization'),'Bearer profile-file-token')
 
 
 if __name__ == '__main__':

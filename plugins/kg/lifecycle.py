@@ -184,6 +184,7 @@ class MemoryService:
                 NOT other.uri STARTS WITH $prefix AS related_read_only,
                 properties(r) AS props ORDER BY from_urn,relation_type,to_urn""",
             {"uri": uri, "prefix": self.config.urn_prefix, "entity_labels": list(ENTITY_LABELS.values())})
+        from .schema import normalize_rel
         for relation in result["relations"]:
             outgoing = relation["from_urn"] == uri
             labels = {
@@ -194,7 +195,11 @@ class MemoryService:
                 "RELATED_TO": "相关", "LINKED_TO": "关联",
                 "CAUSED_BY": "原因" if outgoing else "影响", "owl_sameAs": "同一身份",
             }
-            relation["relation_label"] = labels.get(relation["relation_type"], "关联")
+            try:
+                canonical_type = normalize_rel(relation["relation_type"])
+            except ValueError:
+                canonical_type = relation["relation_type"]
+            relation["relation_label"] = labels.get(canonical_type, "关联")
             if relation.get("related_type"):
                 relation["related_type"] = relation["related_type"].lower()
         return result
@@ -237,6 +242,27 @@ class MemoryService:
             RETURN properties(b) AS review ORDER BY b.created_at DESC LIMIT $limit""",
             {"namespace": self.config.urn_prefix, "status": status, "limit": limit})
         return [self._review(row) for row in rows]
+
+    def query_reviews(self, *, q="", offset=0, limit=20):
+        """Search the complete pending inbox before returning a bounded page."""
+        if not isinstance(q, str) or len(q) > 200:
+            raise ValueError('q must be text of at most 200 characters')
+        if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 1_000_000:
+            raise ValueError('offset must be an integer from 0 to 1000000')
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+            raise ValueError('limit must be an integer from 1 to 50')
+        params = {'namespace': self.config.urn_prefix, 'query': q.strip().lower(), 'offset': offset, 'limit': limit}
+        match = "MATCH (b:KGReviewBatch {namespace:$namespace}) WHERE b.status='pending'"
+        selected = """($query='' OR any(value IN [b.review_id,b.payload_json,b.evidence_json]
+            + coalesce(b.reason_codes,[]) WHERE toLower(toString(value)) CONTAINS $query))"""
+        counts = self.store.run_read(match + f''' RETURN count(b) AS total_pending,
+            sum(CASE WHEN {selected} THEN 1 ELSE 0 END) AS total''', params)[0]
+        rows = self.store.run_read(match + f''' AND {selected}
+            RETURN properties(b) AS review ORDER BY b.created_at DESC,b.review_id
+            SKIP $offset LIMIT $limit''', params)
+        return {'items': [self._review(row) for row in rows],
+                'total': counts['total'], 'total_pending': counts['total_pending'],
+                'offset': offset, 'limit': limit, 'has_more': offset + limit < counts['total']}
 
     def review(self, review_id):
         rows = self.store.run_read("""MATCH (b:KGReviewBatch {review_id:$review_id,namespace:$namespace})

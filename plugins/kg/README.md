@@ -14,11 +14,11 @@
 - `provenance.py`：提取与证据校验共用的用户正文筛选，排除 Hermes 明确标记的压缩摘要和系统通知。
 - `../../scripts/kg_sync_runner.py`：固定 cron 入口。只有提取通过校验且图事务成功，才推进同步进度。
 
-配置解析顺序：显式 profile 路径、`HERMES_HOME`、插件安装目录。连接字段可通过 `HERMES_KG_*` 和兼容的 `NEO4J_*` 环境变量覆盖。凭据使用现有 profile 的配置及 Hermes 官方 dotenv 加载器，不内置 API Key。
+配置解析顺序：显式 profile 路径、`KG_HOME`、`HERMES_HOME`、插件安装目录。连接字段优先使用中立的 `KG_*` 环境变量，兼容 `HERMES_KG_*` 和 `NEO4J_*`。凭据使用选定 profile 的配置及 Hermes 官方 dotenv 加载器，不内置 API Key。独立控制台可设置 `KG_HERMES_PYTHON` 选择 Hermes 的解释器，通过标准输入桥接模型请求；控制台依赖保持独立。
 
 ## Windows 日常检查
 
-以下 PowerShell 命令从 `C:\Users\zhang\AppData\Local\hermes` 运行：
+以下 PowerShell 命令从当前 Hermes profile 目录运行（例如先执行 `Set-Location $env:HERMES_HOME`）：
 
 ```powershell
 ./hermes-agent/venv/Scripts/python.exe kg-sync/check_kg.py
@@ -41,7 +41,7 @@
 ./hermes-agent/venv/Scripts/python.exe scripts/kg_sync_runner.py
 ```
 
-正式执行从冻结快照中筛出真实用户正文，发送到 Hermes 当前配置的辅助模型路由（`auxiliary.kg_sync`；未单独指定时沿用主模型优先的官方路由），并写入本地 Neo4j。助手输出、工具消息和具有明确 Hermes 标记的合成摘要/通知不作为提取输入或事实证据；原快照保留供核验。2026-09-13 已获用户授权，使用当前 MiniMax-M3 / minimax-cn 路由完成 6 个历史会话回填，并恢复每 4 小时自动同步。当前统计和回执见修复报告。
+正式执行从冻结快照中筛出真实用户正文，发送到 Hermes 当前配置的辅助模型路由（`auxiliary.kg_sync`；未单独指定时沿用主模型优先的官方路由），并写入本地 Neo4j。助手输出、工具消息和具有明确 Hermes 标记的合成摘要/通知不作为提取输入或事实证据；原快照保留供核验。定时抽取频率由部署配置决定；若已由宿主定时任务运行，可设置 `KG_SYNC_SCHEDULER_ENABLED=false` 关闭控制台重复的抽取调度，向量维护和手动同步仍可使用。
 
 默认每轮最多处理 3 个会话，每个快照最多 80 条消息、约 100,000 字符；完整单条消息不会被截断。有效对话达到 5 条才自动进入扫描。`--max-sessions` 可选 1–20。状态以消息游标计数，不以文件修改时间或旧 `processedAt` 判断完成。
 
@@ -49,9 +49,9 @@
 
 ## 数据与证据约定
 
-支持 Person、Event、Preference、Decision、Location、Concept。新实体 ID 使用 `urn:hermes:kg:<type>-<stable-id>`；旧 colon 写法通过统一入口归一化。关系类型经过白名单和端点类型校验，文本全部用数据库参数传入。缺失端点导致整批回滚，不再创建空壳节点。
+支持 Person、Event、Preference、Decision、Location、Concept。新实体 ID 使用配置的 `<urn_prefix><type>-<stable-id>`；旧 colon 写法通过统一入口归一化。关系类型经过白名单和端点类型校验，文本全部用数据库参数传入。缺失端点导致整批回滚，不再创建空壳节点。
 
-沿用此共享图谱的既有约定：新节点默认 `shared=true`（原生 boolean），显式 `shared=false` 可保持私有。查询可见性为当前 namespace 或其他 namespace 明确 `shared=true` 的实体；不会返回其他 namespace 的私有实体。图谱提交、回执与实体关系在同一事务内完成。同一快照重试必须使用相同提取，避免重复写入。
+共享行为由 `default_shared` 配置决定。新建 profile 默认 `false`；兼容旧配置时应显式检查该值，底层兼容默认值仍为 `true`。实体可显式设置原生 boolean `shared`。查询可见性为当前 namespace 或其他 namespace 明确 `shared=true` 的实体；不会返回其他 namespace 的私有实体。图谱提交、回执与实体关系在同一事务内完成。同一快照重试必须使用相同提取，避免重复写入。
 
 自动提取的每个实体和显式关系都必须携带 `evidence: {message_id, quote}`，引用指定用户消息的原文；该证据保存在同步数据库的提取 payload 中。可附最多 4 条 `supporting_evidence`，逐条验证原文，用于日期与改期时间分散在多条消息等情形。模型不能通过自动提取重新命名当前用户。事件日期必须由原文支持；仅有日期时以当地午夜归一化并标记 `hermes_timePrecision=day`，不代表精确发生在午夜。今天/明天按证据消息自身的当地日期解释；无年份的“5月18日”按该条消息的当地年份解释，并标记 `hermes_timeYearInferred=true`。无法确定的事件日期会导致校验失败，保留待处理输入。
 
@@ -76,9 +76,8 @@
 ```powershell
 ./bin/uv.exe pip install --python ./hermes-agent/venv/Scripts/python.exe --target ./plugins/kg/_vendor --require-hashes -r plugins/kg/requirements.lock --cache-dir ./cache/kg-uv
 ./hermes-agent/venv/Scripts/python.exe -m unittest discover -s plugins/kg/tests -v
-./hermes-agent/venv/Scripts/python.exe reports/kg-repair-2026-09-13/test_kg_sync_runner.py
 ```
 
-真实 Neo4j 事务回归工具 `reports/kg-repair-2026-09-13/integration_probe.py` 使用随机测试 namespace，并在 finally 中仅清理自身测试节点与回执。运行该工具会写测试数据。模型路由回归工具 `synthetic_model_probe.py` 仅使用脚本写死的虚构句子，不读取真实会话。
+可复用的事务、模型与检索测试位于 `tests/`；真实数据库和模型测试须显式配置测试连接及模型缓存。测试前使用独立数据库或随机 namespace。外部抽取质量测试 `tests/evaluate_extraction.py` 仅发送仓库内合成语料，不读取个人会话，也不打开图数据库。
 
-修复前备份与迁移计划在 `../../backups/kg-repair-2026-09-13/`。不要把 Neo4j 逻辑备份中的类型化时间当成普通字符串恢复；参阅修复报告和专门的备份恢复说明。
+备份和恢复使用 `python -m kg.console_cli --home <profile> backup <zip>` / `restore <zip>`。备份保留类型化时间、同步状态和会话证据，不包含连接凭据，仍应存入 Git 排除的私有位置。验证结果及边界见[真实模型验证报告](../../docs/real-model-validation.md)。

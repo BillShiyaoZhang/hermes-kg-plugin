@@ -161,7 +161,7 @@ class ReviewedMemoryTests(unittest.TestCase):
         alias = 'urn:hermes:kg:person-old'
         event = 'urn:hermes:kg:event-fixture'
         driver.state['nodes'] = {
-            alias: {'labels': ['KGEntity', 'Person'], 'properties': {'hermes_aliasConfirmed': True, 'hermes_canonicalUri': 'urn:hermes:kg:person-bill'}},
+            alias: {'labels': ['KGEntity', 'Person'], 'properties': {'hermes_aliasConfirmed': True, 'hermes_canonicalUri': 'urn:hermes:kg:person-legacy-owner'}},
             event: {'labels': ['KGEntity', 'Event'], 'properties': {}},
         }
         before = copy.deepcopy(driver.state)
@@ -174,7 +174,7 @@ class ReviewedMemoryTests(unittest.TestCase):
         self.assertEqual(driver.state, before)
 
     def test_regular_writes_cannot_create_confirmation_metadata(self):
-        for props in ({'hermes_aliasConfirmed': True}, {'hermes_canonicalUri': 'urn:hermes:kg:person-bill'}, {'alias_names': ['Valid', 2]}):
+        for props in ({'hermes_aliasConfirmed': True}, {'hermes_canonicalUri': 'urn:hermes:kg:person-legacy-owner'}, {'alias_names': ['Valid', 2]}):
             with self.assertRaises(ValueError):
                 normalize_properties(props)
 

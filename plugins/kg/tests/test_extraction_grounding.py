@@ -23,7 +23,7 @@ import kg_sync_runner as runner
 
 class GroundingTests(unittest.TestCase):
     def setUp(self):
-        self.config = KGConfig()
+        self.config = KGConfig(user_person_urn="urn:hermes:kg:person-legacy-owner")
         self.timestamp = datetime(2026, 9, 13, 0, 30, tzinfo=ZoneInfo("Asia/Shanghai")).timestamp()
         self.snapshot = {"session_id": "grounding-fixture-session", "snapshot_id": "grounding-fixture-snapshot",
                          "after_message_id": 0, "last_message_id": 3,
@@ -104,11 +104,11 @@ class GroundingTests(unittest.TestCase):
             self.validate(self.payload([entity]))
 
     def test_current_user_cannot_be_recreated_even_with_a_name_quote(self):
-        self.snapshot["messages"][0]["content"] = "Please call me Bill in all replies."
-        for urn in (self.config.user_person_urn, "urn:hermes:kg:person:bill"):
+        self.snapshot["messages"][0]["content"] = "Please call me Morgan in all replies."
+        for urn in (self.config.user_person_urn, "urn:hermes:kg:person:legacy-owner"):
             with self.subTest(urn=urn):
-                entity = {"type": "Person", "urn": urn, "name": "Bill", "props": {},
-                          "evidence": {"message_id": 1, "quote": "Please call me Bill in all replies."}}
+                entity = {"type": "Person", "urn": urn, "name": "Morgan", "props": {},
+                          "evidence": {"message_id": 1, "quote": "Please call me Morgan in all replies."}}
                 with self.assertRaises(ValueError):
                     self.validate(self.payload([entity]))
 
@@ -119,6 +119,29 @@ class GroundingTests(unittest.TestCase):
                     "evidence": copy.deepcopy(preference["evidence"])}
         result = self.validate(self.payload([preference], [relation]))
         self.assertEqual(result["relations"][0]["from_urn"], self.config.user_person_urn)
+
+    def test_automatic_preferences_cannot_be_owned_by_a_third_party(self):
+        person=self.person()
+        for field in ('owner','owner_urn'):
+            with self.subTest(field=field):
+                preference=self.preference()
+                preference[field]=person['urn']
+                with self.assertRaisesRegex(ValueError,'current user'):
+                    self.validate(self.payload([person,preference]))
+        preference=self.preference()
+        relation={'from_urn':person['urn'],'to_urn':preference['urn'],'relation_type':'EXPRESSED_PREFERENCE',
+                  'evidence':copy.deepcopy(preference['evidence'])}
+        with self.assertRaisesRegex(ValueError,'current user'):
+            self.validate(self.payload([person,preference],[relation]))
+
+    def test_explicit_fictional_or_hypothetical_flags_cannot_become_automatic_memory(self):
+        for key in ('fictional','hypothetical','is_fictional','is_hypothetical'):
+            for value in (True,'true'):
+                with self.subTest(key=key,value=value):
+                    entity=self.event('The fictional test meeting is on 2026-09-12.','2026-09-12T00:00:00+08:00')
+                    entity['props'][key]=value
+                    with self.assertRaisesRegex(ValueError,'Fictional or hypothetical'):
+                        self.validate(self.payload([entity]))
 
     def test_explicit_relationship_requires_its_own_evidence(self):
         person = self.person()
@@ -398,6 +421,7 @@ class ExtractionCorrectionTests(unittest.TestCase):
         self.assertEqual(correction_messages[2], {"role": "assistant", "content": drafts[0]})
         self.assertIn("REJECTED", correction_messages[3]["content"])
         self.assertIn("evidence", correction_messages[3]["content"])
+        self.assertIn(json.dumps({key:self.snapshot[key] for key in ('session_id','snapshot_id')}),correction_messages[3]['content'])
         self.assertEqual(requests[0]["messages"][1], correction_messages[1], "Correction must preserve the original user source")
 
     def test_two_invalid_drafts_raise_after_two_calls_and_never_stage(self):

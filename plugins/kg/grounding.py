@@ -105,6 +105,9 @@ def _event_grounding(value, source, quote, config, supporting=()):
 
 def validate_entity_evidence(entity, snapshot, config):
     prepared, _ = prepare_entity(entity, config)
+    for key in ('fictional','hypothetical','is_fictional','is_hypothetical'):
+        if prepared['properties'].get(key) is True or str(prepared['properties'].get(key,'')).casefold()=='true':
+            raise ValueError('Fictional or hypothetical material cannot become automatic memory')
     source, quote = _evidence(entity, snapshot)
     supporting = _supporting_evidence(entity, snapshot)
     if prepared['uri'] == config.user_person_urn:

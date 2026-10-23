@@ -13,12 +13,14 @@ import re
 from datetime import timedelta
 
 from .embedding import DIMENSIONS, EMBEDDING_REVISION, MODEL_REVISION, EmbeddingUnavailable, normalized_vector
-from .schema import ENTITY_LABELS, RELATION_ALIASES, entity_type, parse_time
+from .schema import ENTITY_LABELS, entity_type, parse_time, relationship_types
 
 FULLTEXT_INDEX = "kg_search_fulltext_v1"
 VECTOR_INDEX = "kg_search_vector_v1"
 SOURCE_INDEX = "kg_search_source_v1"
 RRF_K = 60
+ANN_OVERSAMPLE = 10
+ANN_MAX_CANDIDATES = 10000
 _EXCLUDED = {"KGQuarantined", "KGLegacyAlias", "KGLegacyUnresolved"}
 _TEXT_KEYS = ("foaf_name", "hermes_name", "hermes_aliasNames", "hermes_description",
               "hermes_note", "hermes_preferenceKey", "hermes_preferenceValue",
@@ -38,6 +40,13 @@ def _current_chunk():
     return ("c.namespace=$prefix AND c.source_revision=coalesce(n.hermes_revision,0) "
             "AND c.source_updated_at=coalesce(toString(n.hermes_updatedAt),'') "
             "AND c.model_revision=$model_revision AND c.embedding_revision=$embedding_revision")
+
+
+def _requested_scope(alias="n"):
+    # Apply the caller's namespace/type constraints before every channel's
+    # candidate budget. Shared data must not crowd out the selected profile.
+    return (f"($filter_namespace IS NULL OR {alias}.uri STARTS WITH $filter_namespace) "
+            f"AND (size($filter_types)=0 OR any(label IN labels({alias}) WHERE label IN $filter_types))")
 
 
 def _lookup_uri(expression, outer, *, allow_missing=False):
@@ -192,7 +201,7 @@ class HybridSearch:
             RETURN properties(n) AS properties, labels(n) AS labels,
                 coalesce(toString(n.hermes_updatedAt),'') AS updated,
                 collect(DISTINCT {{fingerprint:c.source_fingerprint, state:c.embedding_state}}) AS indexed
-            ORDER BY properties.uri""")
+            ORDER BY CASE WHEN properties.uri STARTS WITH $prefix THEN 0 ELSE 1 END,properties.uri""")
 
     def index_pending(self, limit=100, *, force=False):
         """Index a bounded batch; an unavailable model still builds lexical chunks.
@@ -380,9 +389,10 @@ class HybridSearch:
             return {"kg_results": [], "mode": "disabled", "index": {"state": "disabled"}, "warnings": []}
         question = question.strip()
         candidate_limit = min(1000, max(50, limit * 10))
+        scope = {"filter_namespace": filters.get("namespace"), "filter_types": filters["types"]}
         warnings, rankings = [], {}
         index = self.status()
-        exact = self._run(f"""MATCH (n) WHERE {_visible()} AND (
+        exact_query = f"""MATCH (n) WHERE {_visible()} AND {_requested_scope()} AND (
             n.uri=$question OR toLower(coalesce(n.foaf_name,n.hermes_name,n['foaf:name'],''))=$name
             OR any(alias IN coalesce(n.hermes_aliasNames,[]) WHERE toLower(alias)=$name)
             OR EXISTS {{ MATCH (alias:KGQuarantined {{uri:$question}})
@@ -391,9 +401,14 @@ class HybridSearch:
             RETURN n.uri AS uri,coalesce(n.hermes_revision,0) AS revision,
                 coalesce(toString(n.hermes_updatedAt),'') AS updated,
                 CASE WHEN n.uri<>$question AND $question STARTS WITH 'urn:' THEN $question ELSE null END AS matched_alias_uri
-            ORDER BY CASE WHEN n.uri=$question THEN 0 ELSE 1 END,n.uri LIMIT $limit""",
-            {"question": question, "name": _name_query(question), "limit": candidate_limit})
+            ORDER BY CASE WHEN n.uri=$question THEN 0 ELSE 1 END,n.uri LIMIT $limit"""
+        exact_params = {**scope, "question": question, "name": _name_query(question), "limit": candidate_limit}
+        exact = self._run(exact_query, exact_params)
         rankings["exact"] = exact
+        # A type filter controls returned cards, but an exact named person can
+        # still supply context for their events/preferences. Keep this separate
+        # from result candidates so unrelated types cannot fill their budget.
+        context = self._run(exact_query, {**exact_params, 'filter_types': [], 'limit': 3}) if filters['types'] else []
         lexical = []
         if index.get("indexes", {}).get(FULLTEXT_INDEX, {}).get("state") == "ONLINE":
             # Quote terms and escape Lucene metacharacters: a question is content,
@@ -402,24 +417,28 @@ class HybridSearch:
             lucene = " OR ".join('"' + re.sub(r'([+\-!(){}\[\]^"~*?:\\/])', r'\\\1', t) + '"' for t in terms)
             if lucene:
                 try:
-                    lexical = self._run(f"""CALL db.index.fulltext.queryNodes($index,$query,{{limit:$limit}})
-                        YIELD node AS c,score {_lookup_uri('c.source_uri', 'c')}
+                    lexical = self._run(f"""CALL db.index.fulltext.queryNodes($index,$query)
+                        YIELD node AS c,score
+                        WITH c,score WHERE c.namespace=$prefix AND c.model_revision=$model_revision
+                            AND c.embedding_revision=$embedding_revision
+                        {_lookup_uri('c.source_uri', 'c')}
                         WITH c,score,n
-                        WHERE {_visible()} AND {_current_chunk()}
+                        WHERE {_visible()} AND {_current_chunk()} AND {_requested_scope()}
                         RETURN n.uri AS uri,coalesce(n.hermes_revision,0) AS revision,
-                            coalesce(toString(n.hermes_updatedAt),'') AS updated,score ORDER BY score DESC,n.uri""",
-                        {"index": FULLTEXT_INDEX, "query": lucene, "limit": candidate_limit})
+                            coalesce(toString(n.hermes_updatedAt),'') AS updated,max(score) AS score
+                        ORDER BY score DESC,uri LIMIT $limit""",
+                        {**scope, "index": FULLTEXT_INDEX, "query": lucene, "limit": candidate_limit})
                 except Exception:
                     warnings.append("fulltext_unavailable")
         if not lexical:
-            lexical = self._run(f"""MATCH (n) WHERE {_visible()}
+            lexical = self._run(f"""MATCH (n) WHERE {_visible()} AND {_requested_scope()}
                 AND any(term IN $terms WHERE term<>'' AND any(value IN
                     [n.uri,n.foaf_name,n.hermes_name,n.hermes_description,n.hermes_note,
                      n.hermes_preferenceKey,n.hermes_preferenceValue,n.hermes_decisionText,n.hermes_decisionContext]
                      + coalesce(n.hermes_aliasNames,[]) WHERE toLower(toString(value)) CONTAINS term))
                 RETURN n.uri AS uri,coalesce(n.hermes_revision,0) AS revision,
                     coalesce(toString(n.hermes_updatedAt),'') AS updated ORDER BY uri LIMIT $limit""",
-                {"terms": _terms(question), "limit": candidate_limit})
+                {**scope, "terms": _terms(question), "limit": candidate_limit})
         rankings["keyword"] = lexical
         # The worker may be downloading/loading under the embedder's lock.
         # Readiness is a nonblocking snapshot; a search must never enter model
@@ -428,34 +447,47 @@ class HybridSearch:
                 and index.get("indexes", {}).get(VECTOR_INDEX, {}).get("state") == "ONLINE"):
             try:
                 vector = normalized_vector(self.embedder.embed_query(question))
-                rankings["vector"] = self._run(f"""CALL db.index.vector.queryNodes($index,$limit,$vector)
-                    YIELD node AS c,score {_lookup_uri('c.source_uri', 'c')}
+                # Neo4j 5 ANN indexes cannot prefilter by namespace/model. A
+                # bounded oversample keeps other profiles from consuming the
+                # ordinary result budget, without an unbounded vector scan.
+                rankings["vector"] = self._run(f"""CALL db.index.vector.queryNodes($index,$ann_limit,$vector)
+                    YIELD node AS c,score
+                    WITH c,score WHERE c.namespace=$prefix AND c.model_revision=$model_revision
+                        AND c.embedding_revision=$embedding_revision
+                    {_lookup_uri('c.source_uri', 'c')}
                     WITH c,score,n
-                    WHERE {_visible()} AND {_current_chunk()} AND c.embedding_state='ready'
+                    WHERE {_visible()} AND {_current_chunk()} AND {_requested_scope()} AND c.embedding_state='ready'
                     RETURN n.uri AS uri,coalesce(n.hermes_revision,0) AS revision,
-                        coalesce(toString(n.hermes_updatedAt),'') AS updated,score ORDER BY score DESC,n.uri""",
-                    {"index": VECTOR_INDEX, "limit": candidate_limit, "vector": vector})
+                        coalesce(toString(n.hermes_updatedAt),'') AS updated,max(score) AS score
+                    ORDER BY score DESC,uri LIMIT $limit""",
+                    {**scope, "index": VECTOR_INDEX, "limit": candidate_limit,
+                     "ann_limit": min(ANN_MAX_CANDIDATES, candidate_limit * ANN_OVERSAMPLE), "vector": vector})
             except Exception:
                 warnings.append("embedding_unavailable")
         else:
             warnings.append("vector_pending")
         fused = reciprocal_rank_fusion(rankings)
-        if fused:
+        seed_by_uri = {row['uri']: row for row in fused[:3]}
+        for rank, row in enumerate(context, 1):
+            seed_by_uri.setdefault(row['uri'], {**row, 'rrf_score': 1.0 / (RRF_K + rank)})
+        graph_seeds = sorted(seed_by_uri.values(), key=lambda row: (-row['rrf_score'], row['uri']))[:3]
+        if graph_seeds:
             expanded = self._run(f"""UNWIND $seeds AS seed MATCH (source {{uri:seed.uri}})-[r]-(n)
                 WHERE {_visible('source')} AND {_visible()}
+                    AND {_requested_scope()}
                     AND type(r) IN $relations AND coalesce(source.hermes_revision,0)=seed.revision
                     AND coalesce(toString(source.hermes_updatedAt),'')=seed.updated
                 RETURN DISTINCT n.uri AS uri,coalesce(n.hermes_revision,0) AS revision,
                     coalesce(toString(n.hermes_updatedAt),'') AS updated,seed.rrf_score AS source_score
                 ORDER BY source_score DESC,uri LIMIT $limit""",
-                {"seeds": fused[:3], "relations": sorted(set(RELATION_ALIASES.values())), "limit": candidate_limit})
+                {**scope, "seeds": graph_seeds, "relations": relationship_types(), "limit": candidate_limit})
             # A graph neighbor is contextual support for a strong direct hit,
             # not an independent relevance vote. Adding all neighbors as an RRF
             # channel unfairly promotes highly connected hubs over precise,
             # isolated preferences and decisions.
             by_candidate = {row["uri"]: row for row in fused}
             for row in expanded:
-                score = row.get("source_score", fused[0]["rrf_score"]) * 0.5
+                score = row.get("source_score", graph_seeds[0]["rrf_score"]) * 0.5
                 if row["uri"] in by_candidate:
                     item = by_candidate[row["uri"]]
                     item["rrf_score"] = max(item["rrf_score"], score)

@@ -14,27 +14,22 @@ configuration and query contracts. The scripts in this skill are compatibility
 entry points into that library. Current implementation details are in
 `references/entity-schema.md`; older architecture/research documents are historical.
 
-Provenance: this plugin was written in-session by Hermes for this user. It is
-NOT part of the `NousResearch/hermes-agent` repo (that tree ships only
-byterover/retaindb under `plugins/memory/`, and its `plugin-catalog/` has no
-`kg` entry) and it has no public GitHub repo of its own. The directory is not a
-git checkout. Upstream `hermes-agent` updates never touch it, and there is
-nothing to `git pull` for it — do not spend time searching for an upstream KG
-repo or an upstream remote. Publishing it is a separate, user-initiated task.
+This is an independently distributed plugin. Install or update it through its
+own repository/package; updating the host agent does not update this plugin.
 
 ## Active installation and configuration
 
-On this native Windows installation, the default home is
-`%LOCALAPPDATA%\hermes`. An explicit profile home or `HERMES_HOME` overrides it.
-Do not substitute WSL `/c/Users/...` paths into native Windows Python.
+Resolve the selected profile from an explicit path, `KG_HOME` or the compatible
+`HERMES_HOME`. A copied plugin otherwise uses its installation root. Do not
+substitute WSL `/c/Users/...` paths into native Windows Python.
 
-Use the installed Hermes Python:
-`%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\python.exe`.
+Use the configured host Python or the supported standalone environment.
 Scripts bootstrap the plugin's private locked dependencies in `plugins/kg/_vendor`;
 there is no requirement for a separate `venvs/kg` interpreter or Miniconda.
 
 All entry points use `kg.config.load_config()`. Configuration comes from the
-active home's `kg.json`; explicit `HERMES_KG_*` environment variables override it.
+active home's `kg.json`; explicit `KG_*` environment variables override it,
+followed by the compatible `HERMES_KG_*` names.
 Legacy `NEO4J_URL/USER/PASSWORD/DATABASE` are compatible environment names.
 The loader does not silently fall back to another profile's configuration.
 
@@ -60,7 +55,7 @@ permissions. Report the `legacy_exclusions` breakdown when explaining quarantine
 counts; retained aliases and incomplete legacy records are not newly deleted data.
 
 For a specific entity, pass its actual complete URN to `kg_search.question`, not
-an invented phrase such as `bill URN person`. Complete URNs are exact matches;
+an invented phrase such as `owner URN person`. Complete URNs are exact matches;
 legacy alias/unresolved nodes remain excluded unless an old URI has the explicit
 reviewed alias mapping described below. Ordinary multiword topic input is
 a literal phrase unless a supported question pattern applies.
@@ -69,14 +64,14 @@ Resolve the installed Python and script paths once; use those absolute paths.
 The examples below show arguments after the Python executable:
 
 ```text
-skills/kg-memory/scripts/query_natural.py "秦一丹是谁"
+skills/kg-memory/scripts/query_natural.py "Alice是谁"
 skills/kg-memory/scripts/query_natural.py "上个月我做了什么"
 skills/kg-memory/scripts/query_entity.py --type Person --query "Alice"
-skills/kg-memory/scripts/query_entity.py --owner urn:hermes:kg:person-bill
+skills/kg-memory/scripts/query_entity.py --owner urn:hermes:kg:person-legacy-owner
 skills/kg-memory/scripts/query_events.py --from 2026-09-01 --to 2026-09-13
 skills/kg-memory/scripts/query_events.py --all-persons --event-type meeting
 skills/kg-memory/scripts/manage_entity.py --type person --id alice --name "Alice"
-skills/kg-memory/scripts/manage_entity.py --type event --id meeting-example --name "Meeting" --event-time 2026-09-13T12:00:00+08:00 --agent urn:hermes:kg:person-bill
+skills/kg-memory/scripts/manage_entity.py --type event --id meeting-example --name "Meeting" --event-time 2026-09-13T12:00:00+08:00 --agent urn:hermes:kg:person-legacy-owner
 skills/kg-memory/scripts/manage_entity.py --type preference --id response-style --name "Response style" --pref-key response_style --pref-value concise
 skills/kg-memory/scripts/manage_entity.py --type concept --id ontology --name "Ontology"
 skills/kg-memory/scripts/manage_entity.py --type relation --from urn:hermes:kg:person-alice --to urn:hermes:kg:event-meeting-example --rel-type HERMES_participant

@@ -37,11 +37,16 @@ CURRENT_MEMORY_REVIEW_PREFIX=(
     "Review the conversation above and consider saving to memory if appropriate.\n\n"
     "Memory has TWO distinct stores — pick the right one for each fact:"
 )
+COMBINED_REVIEW_PREFIX=(
+    "Review the conversation above and update two things:\n\n"
+    "**Memory**: TWO distinct stores — pick the right one for each fact:"
+)
 
 PREFIX_REASONS=(
     (SKILL_REVIEW_PREFIX,"background_skill_review_prompt"),
     (MEMORY_REVIEW_PREFIX,"background_memory_review_prompt"),
     (CURRENT_MEMORY_REVIEW_PREFIX,"background_memory_review_prompt"),
+    (COMBINED_REVIEW_PREFIX,"background_combined_review_prompt"),
     ("[IMPORTANT: Background process ","background_process_notification"),
     ("[Your active task list was preserved across context compression]\n","preserved_todo_notice"),
     ("[System: Your previous tool call ","tool_continuation_notice"),

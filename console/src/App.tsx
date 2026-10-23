@@ -1,5 +1,13 @@
 import RevisionHistory from "./RevisionHistory";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import PendingFeedback from "./PendingFeedback";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
   Activity,
@@ -15,7 +23,7 @@ import {
   CircleHelp,
   Clock3,
   Database,
-  FileCheck2,
+  GitBranch,
   FileText,
   Fingerprint,
   History,
@@ -60,6 +68,17 @@ import type {
   SyncJob,
 } from "./types";
 import HistoryBackfill from "./HistoryBackfill";
+import GraphExplorer from "./GraphExplorer";
+import { propertyValueTitle } from "./ontologyPresentation";
+import { PAGE_LABELS, pageFromSearch, pageLocation } from "./navigation";
+import type { Page } from "./navigation";
+import {
+  operationForIntent,
+  writeFailure,
+  isPendingReview,
+  reviewChanges,
+  rebaseMemoryDraft,
+} from "./mutationState";
 import {
   errorMessage,
   formatDate,
@@ -70,17 +89,9 @@ import {
   typeLabels,
 } from "./lib";
 
-type Page = "memories" | "reviews" | "sync" | "settings";
 type Notification = { message: string; error?: boolean };
-const PAGE_LABELS: Record<Page, string> = {
-  memories: "记忆库",
-  reviews: "审阅收件箱",
-  sync: "同步与任务",
-  settings: "设置与诊断",
-};
 const PAGE_ICONS = {
-  memories: Layers3,
-  reviews: Inbox,
+  graph: GitBranch,
   sync: Activity,
   settings: Settings2,
 };
@@ -89,6 +100,9 @@ const MAIN_TYPES: { value: string; label: string }[] = [
   { value: "person", label: "人物" },
   { value: "event", label: "事件" },
   { value: "decision", label: "决策" },
+  { value: "preference", label: "偏好" },
+  { value: "location", label: "地点" },
+  { value: "concept", label: "概念" },
 ];
 
 function Brand({ small = false }: { small?: boolean }) {
@@ -101,18 +115,24 @@ function Brand({ small = false }: { small?: boolean }) {
       </div>
       <div>
         <strong>
-          Hermes<span> Memory</span>
+          Memory<span> Workbench</span>
         </strong>
-        <small>个人记忆工作台</small>
+        <small>个人知识与记忆工作台</small>
       </div>
     </div>
   );
 }
 function Spinner({ label = "正在加载" }: { label?: string }) {
+  const [longWait, setLongWait] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setLongWait(true), 10000);
+    return () => window.clearTimeout(timer);
+  }, []);
   return (
-    <div className="loading-state">
-      <LoaderCircle className="spin" size={22} />
+    <div className="loading-state" role="status" aria-live="polite">
+      <LoaderCircle className="spin" size={22} aria-hidden="true" />
       <span>{label}</span>
+      {longWait && <span>仍在等待服务响应。你可以切换页面，稍后再试。</span>}
     </div>
   );
 }
@@ -215,21 +235,48 @@ function Overlay({
   labelledBy: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const closeHandler = useRef(onClose);
+  closeHandler.current = onClose;
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    // Inert siblings along the active modal's ancestor path. Nested dialogs
+    // keep their ancestors active without exposing the surrounding controls.
+    const background: HTMLElement[] = [];
+    let active: HTMLElement | null =
+      ref.current?.closest<HTMLElement>(".overlay") ?? null;
+    while (active?.parentElement) {
+      Array.from(active.parentElement.children).forEach((sibling) => {
+        if (sibling !== active && sibling instanceof HTMLElement)
+          background.push(sibling);
+      });
+      active = active.parentElement;
+      if (active === document.body) break;
+    }
+    const previousInert = background.map((element) => element.inert);
+    background.forEach((element) => {
+      element.inert = true;
+    });
     ref.current?.focus();
     const handler = (event: KeyboardEvent) => {
       const panels = document.querySelectorAll(".overlay-panel");
       if (panels[panels.length - 1] !== ref.current) return;
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") closeHandler.current();
       if (event.key !== "Tab" || !ref.current) return;
       const elements = Array.from(
         ref.current.querySelectorAll<HTMLElement>(
           'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]',
         ),
+      ).filter(
+        (element) =>
+          element.getClientRects().length > 0 && !element.closest("[inert]"),
       );
+      if (!elements.length) {
+        event.preventDefault();
+        ref.current.focus();
+        return;
+      }
       const first = elements[0],
         last = elements[elements.length - 1];
       if (
@@ -247,10 +294,22 @@ function Overlay({
     document.addEventListener("keydown", handler);
     return () => {
       document.body.style.overflow = overflow;
+      background.forEach((element, index) => {
+        element.inert = previousInert[index];
+      });
       document.removeEventListener("keydown", handler);
-      before?.focus();
+      if (before?.isConnected && !before.closest("[inert]")) before.focus();
+      else {
+        const remaining = Array.from(
+          document.querySelectorAll<HTMLElement>(".overlay-panel"),
+        ).filter((panel) => !panel.closest("[inert]"));
+        (
+          remaining[remaining.length - 1] ??
+          document.getElementById("main-content")
+        )?.focus();
+      }
     };
-  }, [onClose]);
+  }, []);
   return (
     <div
       className={`overlay ${className}`}
@@ -272,23 +331,62 @@ function Overlay({
   );
 }
 
+function DetailSurface({
+  embedded = false,
+  children,
+  onClose,
+  className,
+  labelledBy,
+}: {
+  embedded?: boolean;
+  children: ReactNode;
+  onClose: () => void;
+  className?: string;
+  labelledBy: string;
+}) {
+  return embedded ? (
+    <section className="graph-record-detail" aria-labelledby={labelledBy}>
+      {children}
+    </section>
+  ) : (
+    <Overlay onClose={onClose} className={className} labelledBy={labelledBy}>
+      {children}
+    </Overlay>
+  );
+}
+
 export default function App() {
   const [token, setToken] = useState(initialToken);
-  const [page, setPage] = useState<Page>("memories");
+  const [page, setPage] = useState<Page>(() =>
+    pageFromSearch(window.location.search),
+  );
   const [status, setStatus] = useState<ConsoleStatus | null>(null);
   const [statusError, setStatusError] = useState<unknown>(null);
   const [statusLoading, setStatusLoading] = useState(false);
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [reviewsError, setReviewsError] = useState<unknown>(null);
-  const [reviewsLoading, setReviewsLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selected, setSelected] = useState<Memory | null>(null);
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [authOpen, setAuthOpen] = useState(!token);
   const [notice, setNotice] = useState<Notification | null>(null);
-  const api = useMemo(() => createApi(() => token), [token]);
+  const [lastStatusAt, setLastStatusAt] = useState<string>();
+  const [authExpired, setAuthExpired] = useState(false);
   const currentToken = useRef(token);
   currentToken.current = token;
+  const expireAuthentication = useCallback(() => {
+    saveToken("");
+    currentToken.current = "";
+    setToken("");
+    setAuthExpired(true);
+    setStatusLoading(false);
+    setStatusError(
+      new ApiError("连接凭证已失效。草稿已保留，请重新连接后继续。", 401),
+    );
+  }, []);
+  const api = useMemo(
+    () => createApi(() => currentToken.current, fetch, expireAuthentication),
+    [token, expireAuthentication],
+  );
+  const statusRequest = useRef(0);
   const notify = useCallback(
     (message: string, error = false) => setNotice({ message, error }),
     [],
@@ -297,55 +395,95 @@ export default function App() {
   const closeMemory = useCallback(() => setSelected(null), []);
   const closeReview = useCallback(() => setSelectedReview(null), []);
   const closeAuth = useCallback(() => setAuthOpen(false), []);
+  const navigate = useCallback(
+    (next: Page) => {
+      if (next !== page) {
+        window.history.pushState(
+          null,
+          "",
+          pageLocation(next, window.location.href),
+        );
+        setPage(next);
+        setSelected(null);
+        setSelectedReview(null);
+      }
+    },
+    [page],
+  );
+  const selectMemory = useCallback((memory: Memory) => {
+    setSelectedReview(null);
+    setSelected(memory);
+  }, []);
+  const selectReview = useCallback((review: Review) => {
+    setSelected(null);
+    setSelectedReview(review);
+  }, []);
+  const clearSelection = useCallback(() => {
+    setSelected(null);
+    setSelectedReview(null);
+  }, []);
+  useEffect(() => {
+    window.history.replaceState(
+      null,
+      "",
+      pageLocation(
+        pageFromSearch(window.location.search),
+        window.location.href,
+      ),
+    );
+    const restorePage = () => {
+      setPage(pageFromSearch(window.location.search));
+      setSelected(null);
+      setSelectedReview(null);
+    };
+    window.addEventListener("popstate", restorePage);
+    return () => window.removeEventListener("popstate", restorePage);
+  }, []);
+  const previousPage = useRef(page);
+  useEffect(() => {
+    document.title = `${PAGE_LABELS[page]} · 记忆工作台`;
+    if (previousPage.current !== page) {
+      document.getElementById("main-content")?.focus();
+      previousPage.current = page;
+    }
+  }, [page]);
 
   const fetchStatus = useCallback(async () => {
     if (!token) return;
+    const requestId = ++statusRequest.current;
     setStatusLoading(true);
     try {
       const value = await api.status();
-      if (currentToken.current === token) {
+      if (
+        currentToken.current === token &&
+        statusRequest.current === requestId
+      ) {
         setStatus(value);
         setStatusError(null);
+        setLastStatusAt(new Date().toISOString());
       }
     } catch (error) {
-      if (currentToken.current === token) {
+      if (
+        currentToken.current === token &&
+        statusRequest.current === requestId
+      ) {
         setStatusError(error);
-        setStatus(null);
       }
     } finally {
-      if (currentToken.current === token) setStatusLoading(false);
-    }
-  }, [api, token]);
-  const fetchReviews = useCallback(async () => {
-    if (!token) return;
-    setReviewsLoading(true);
-    try {
-      const value = await api.reviews();
-      if (currentToken.current === token) {
-        setReviews(value);
-        setReviewsError(null);
-      }
-    } catch (error) {
-      if (currentToken.current === token) {
-        setReviewsError(error);
-        setReviews([]);
-      }
-    } finally {
-      if (currentToken.current === token) setReviewsLoading(false);
+      if (currentToken.current === token && statusRequest.current === requestId)
+        setStatusLoading(false);
     }
   }, [api, token]);
   useEffect(() => {
     void fetchStatus();
-    void fetchReviews();
-  }, [fetchStatus, fetchReviews, refreshKey]);
+  }, [fetchStatus, refreshKey]);
   useEffect(() => {
     if (!token) return;
     const timer = window.setInterval(() => {
       void fetchStatus();
-      void fetchReviews();
     }, 30000);
     return () => window.clearInterval(timer);
-  }, [token, fetchStatus, fetchReviews]);
+  }, [token, fetchStatus]);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(null), 6000);
@@ -356,46 +494,49 @@ export default function App() {
     setToken("");
     setStatus(null);
     setStatusError(null);
-    setReviewsError(null);
-    setReviews([]);
     setSelected(null);
     setSelectedReview(null);
     setAuthOpen(true);
+    setAuthExpired(false);
+    setLastStatusAt(undefined);
+    setStatusLoading(false);
   };
-  const pendingReviews = reviews.filter(
-    (review) => !["approved", "rejected", "committed"].includes(review.status),
-  );
   const offline = !token || statusError || status?.connected === false;
+  const writeEnabled = !!token && !statusError && status?.connected !== false;
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        跳到主要内容
+      </a>
       <aside className="sidebar">
         <Brand />
         <div className="workspace-label">
-          <span className="workspace-avatar">H</span>
+          <span className="workspace-avatar">M</span>
           <div>
             <strong>个人工作空间</strong>
-            <span>HERMES MEMORY CONSOLE</span>
+            <span>PERSONAL MEMORY WORKSPACE</span>
           </div>
           <LockKeyhole size={13} />
         </div>
-        <div className="nav-label">工作台</div>
+        <div className="nav-label">探索与核对</div>
         <nav aria-label="主导航">
           {(Object.keys(PAGE_LABELS) as Page[]).map((key) => {
             const Icon = PAGE_ICONS[key];
             return (
-              <button
-                key={key}
-                className={`nav-item ${page === key ? "active" : ""}`}
-                onClick={() => setPage(key)}
-                aria-current={page === key ? "page" : undefined}
-              >
-                <Icon size={18} strokeWidth={1.7} />
-                <span>{PAGE_LABELS[key]}</span>
-                {key === "reviews" && pendingReviews.length > 0 && (
-                  <span className="nav-count">{pendingReviews.length}</span>
+              <Fragment key={key}>
+                {key === "sync" && (
+                  <div className="nav-group-label">运行与管理</div>
                 )}
-              </button>
+                <button
+                  className={`nav-item ${page === key ? "active" : ""}`}
+                  onClick={() => navigate(key)}
+                  aria-current={page === key ? "page" : undefined}
+                >
+                  <Icon size={18} strokeWidth={1.7} />
+                  <span>{PAGE_LABELS[key]}</span>
+                </button>
+              </Fragment>
             );
           })}
         </nav>
@@ -415,13 +556,13 @@ export default function App() {
               : statusLoading && !status
                 ? "正在检查服务"
                 : offline
-                  ? "服务需要检查"
+                  ? "连接中断"
                   : "已连接记忆服务"}
           </span>
           <button
             aria-label="连接设置"
             title="连接设置"
-            onClick={() => setPage("settings")}
+            onClick={() => navigate("settings")}
           >
             <Settings2 size={15} />
           </button>
@@ -443,21 +584,30 @@ export default function App() {
             <span className="alpha-pill">ALPHA</span>
             <button
               className="avatar-button"
-              onClick={() => setPage("settings")}
+              onClick={() => navigate("settings")}
               aria-label="设置与诊断"
             >
-              H
+              M
             </button>
           </div>
         </header>
-        <main className="main-content">
+        <main id="main-content" className="main-content" tabIndex={-1}>
           {!token && (
-            <div className="connection-banner">
+            <div
+              className="connection-banner"
+              role={authExpired ? "alert" : "status"}
+            >
               <KeyRound size={18} />
               <div>
-                <strong>连接你的个人记忆服务</strong>
+                <strong>
+                  {authExpired
+                    ? "连接凭证已失效，请重新连接"
+                    : "连接你的个人记忆服务"}
+                </strong>
                 <span>
-                  使用服务启动时提供的访问令牌，开始查看记忆与待审内容。
+                  {authExpired
+                    ? "失效凭证已清除；当前草稿保留在此标签页，写操作已暂停。"
+                    : "使用服务启动时提供的访问令牌，开始查看记忆与待审内容。"}
                 </span>
               </div>
               <button
@@ -469,23 +619,22 @@ export default function App() {
               </button>
             </div>
           )}
-          {token &&
-            statusError instanceof ApiError &&
-            statusError.status === 401 && (
-              <div className="connection-banner error-banner">
-                <Unplug size={18} />
-                <div>
-                  <strong>连接需要重新验证</strong>
-                  <span>当前访问令牌无效或已过期。</span>
-                </div>
-                <button
-                  className="button button-secondary"
-                  onClick={() => setAuthOpen(true)}
-                >
-                  重新连接
-                </button>
+          {token && (statusError || status?.connected === false) && (
+            <div className="connection-banner error-banner" role="alert">
+              <Unplug size={18} />
+              <div>
+                <strong>连接已中断，写操作暂不可用</strong>
+                <span>
+                  {lastStatusAt
+                    ? `正在显示上次读取的状态（${formatDate(lastStatusAt, true)}）。草稿仍保留在此标签页。`
+                    : "尚未确认服务状态，请检查服务后重试。"}
+                </span>
               </div>
-            )}
+              <button className="button button-secondary" onClick={refresh}>
+                重试连接
+              </button>
+            </div>
+          )}
           {status?.compatibility.data_mode === "demo" && (
             <div className="demo-banner" role="status">
               <Sparkles size={18} />
@@ -496,32 +645,67 @@ export default function App() {
               <span className="demo-tag">DEMO</span>
             </div>
           )}
-          {page === "memories" && (
-            <MemoryLibrary
+          {page === "graph" && (
+            <GraphExplorer
               api={api}
               enabled={!!token}
-              status={status}
-              statusError={statusError}
-              statusLoading={statusLoading}
-              reviewCount={
-                reviewsError || !token || (reviewsLoading && !reviews.length)
-                  ? null
-                  : pendingReviews.length
-              }
               refreshKey={refreshKey}
               refresh={refresh}
-              onSelect={setSelected}
-              navigate={setPage}
-            />
-          )}
-          {page === "reviews" && (
-            <ReviewInbox
-              enabled={!!token}
-              reviews={reviews}
-              loading={reviewsLoading}
-              error={reviewsError}
-              refresh={refresh}
-              onSelect={setSelectedReview}
+              onSelectMemory={selectMemory}
+              onSelectReview={selectReview}
+              onClearSelection={clearSelection}
+              selectedUri={selected?.uri}
+              selectedReviewId={selectedReview?.id}
+              selectedReviewStatus={selectedReview?.status}
+              detail={
+                selected ? (
+                  <MemoryDrawer
+                    api={api}
+                    selected={selected}
+                    onClose={closeMemory}
+                    onNavigate={selectMemory}
+                    onChanged={refresh}
+                    notify={notify}
+                    writeEnabled={writeEnabled}
+                    onReconnect={() => setAuthOpen(true)}
+                    embedded
+                  />
+                ) : selectedReview ? (
+                  <ReviewDrawer
+                    key={selectedReview.id}
+                    api={api}
+                    review={selectedReview}
+                    onResolved={(status) =>
+                      setSelectedReview((current) =>
+                        current?.id === selectedReview.id
+                          ? { ...current, status }
+                          : current,
+                      )
+                    }
+                    onClose={closeReview}
+                    onChanged={refresh}
+                    notify={notify}
+                    writeEnabled={writeEnabled}
+                    onReconnect={() => setAuthOpen(true)}
+                    embedded
+                  />
+                ) : null
+              }
+              library={
+                <MemoryLibrary
+                  api={api}
+                  enabled={!!token}
+                  status={status}
+                  statusError={statusError}
+                  statusLoading={statusLoading}
+                  reviewCount={null}
+                  refreshKey={refreshKey}
+                  refresh={refresh}
+                  onSelect={selectMemory}
+                  navigate={navigate}
+                  embedded
+                />
+              }
             />
           )}
           {page === "sync" && (
@@ -551,7 +735,7 @@ export default function App() {
           )}
         </main>
         <footer className="page-footer">
-          <span>Hermes Memory Console</span>
+          <span>Memory Workbench</span>
           <span>有来源的记忆，有分寸的理解。</span>
           <span>
             <ShieldCheck size={12} />
@@ -559,34 +743,16 @@ export default function App() {
           </span>
         </footer>
       </div>
-      {selected && (
-        <MemoryDrawer
-          api={api}
-          selected={selected}
-          onClose={closeMemory}
-          onNavigate={setSelected}
-          onChanged={refresh}
-          notify={notify}
-        />
-      )}
-      {selectedReview && (
-        <ReviewDrawer
-          api={api}
-          review={selectedReview}
-          onClose={closeReview}
-          onChanged={refresh}
-          notify={notify}
-        />
-      )}
       {authOpen && (
         <AuthDialog
           initialValue=""
-          canClose={!!token}
+          canClose={true}
           onClose={closeAuth}
           onConnected={(value) => {
             setToken(saveToken(value));
             setAuthOpen(false);
             setStatusError(null);
+            setAuthExpired(false);
             refresh();
           }}
         />
@@ -659,6 +825,7 @@ function MemoryLibrary({
   refresh,
   onSelect,
   navigate,
+  embedded = false,
 }: {
   api: ConsoleApi;
   enabled: boolean;
@@ -670,21 +837,33 @@ function MemoryLibrary({
   refresh: () => void;
   onSelect: (memory: Memory) => void;
   navigate: (page: Page) => void;
+  embedded?: boolean;
 }) {
   const [type, setType] = useState("");
   const [lifecycle, setLifecycle] = useState("active");
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
   const [interpret, setInterpret] = useState(false);
+  const [interpretOption, setInterpretOption] = useState(false);
+  const [submission, setSubmission] = useState(0);
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<MemoryPage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const resultRegion = useRef<HTMLDivElement>(null);
+  const focusResult = useRef(false);
+  const loadedScope = useRef("");
+  const [lastReadAt, setLastReadAt] = useState<string>();
   const isSearch = !!query && lifecycle === "active";
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+        if (
+          event.isComposing ||
+          document.querySelector('[role="dialog"][aria-modal="true"]')
+        )
+          return;
         event.preventDefault();
         searchInput.current?.focus();
       }
@@ -694,12 +873,12 @@ function MemoryLibrary({
   }, []);
   useEffect(() => {
     if (!enabled) {
-      setData(null);
-      setError(null);
       setLoading(false);
       return;
     }
     const controller = new AbortController();
+    const scope = JSON.stringify([type, lifecycle, query, offset, interpret]);
+    if (loadedScope.current !== scope) setData(null);
     setLoading(true);
     setError(null);
     const request = isSearch
@@ -714,11 +893,19 @@ function MemoryLibrary({
           controller.signal,
         );
     request
-      .then(setData)
+      .then((value) => {
+        if (controller.signal.aborted) return;
+        if (!isSearch && value.total > 0 && offset >= value.total) {
+          setOffset(Math.floor((value.total - 1) / 30) * 30);
+          return;
+        }
+        loadedScope.current = scope;
+        setData(value);
+        setLastReadAt(new Date().toISOString());
+      })
       .catch((failure) => {
         if (!controller.signal.aborted) {
           setError(failure);
-          setData(null);
         }
       })
       .finally(() => {
@@ -735,84 +922,101 @@ function MemoryLibrary({
     refreshKey,
     isSearch,
     interpret,
+    submission,
   ]);
   const resetSearch = () => {
     setInput("");
     setQuery("");
+    setInterpret(false);
     setOffset(0);
   };
+  useEffect(() => {
+    if (!loading && focusResult.current) {
+      resultRegion.current?.focus();
+      focusResult.current = false;
+    }
+  }, [loading, data, error]);
   return (
     <>
-      <PageHeader
-        eyebrow="YOUR PERSONAL MEMORY"
-        title="记忆库"
-        subtitle="重新找到那些人物、经历，以及做出选择时的自己。"
-      >
-        <RefreshButton refresh={refresh} loading={loading || statusLoading} />
-      </PageHeader>
-      <div className="metric-grid">
-        <div className="metric-card">
-          <div className="metric-top">
-            <span>可用记忆</span>
-            <Layers3 size={17} />
+      {!embedded && (
+        <>
+          <PageHeader
+            eyebrow="YOUR PERSONAL MEMORY"
+            title="记忆库"
+            subtitle="重新找到那些人物、经历，以及做出选择时的自己。"
+          >
+            <RefreshButton
+              refresh={refresh}
+              loading={loading || statusLoading}
+            />
+          </PageHeader>
+          <div className="metric-grid">
+            <div className="metric-card">
+              <div className="metric-top">
+                <span>可用记忆</span>
+                <Layers3 size={17} />
+              </div>
+              <div className="metric-value">
+                {status?.totalMemories?.toLocaleString() ?? "—"}
+                <small>条</small>
+              </div>
+              <div className="metric-caption">
+                <span
+                  className={`tiny-dot ${status?.connected ? "green" : ""}`}
+                />
+                {status?.connected
+                  ? "来自当前记忆服务"
+                  : enabled
+                    ? "等待服务状态"
+                    : "连接后查看"}
+              </div>
+            </div>
+            <button
+              className="metric-card metric-clickable"
+              onClick={() => navigate("graph")}
+            >
+              <div className="metric-top">
+                <span>等待你的审阅</span>
+                <Inbox size={17} />
+              </div>
+              <div className="metric-value">
+                {enabled && !statusError ? (reviewCount ?? "—") : "—"}
+                <small>批</small>
+                <ArrowRight size={20} />
+              </div>
+              <div className="metric-caption">先核对，再让新记忆生效</div>
+            </button>
+            <button
+              className="metric-card metric-clickable"
+              onClick={() => navigate("sync")}
+            >
+              <div className="metric-top">
+                <span>最近同步</span>
+                <Clock3 size={17} />
+              </div>
+              <div className="metric-value metric-text">
+                {status ? relativeTime(status.lastRun) : "—"}
+                <ArrowRight size={20} />
+              </div>
+              <div className="metric-caption">
+                {status?.paused === true ? (
+                  <>
+                    <span className="tiny-dot amber" />
+                    自动提取已暂停
+                  </>
+                ) : status?.paused === false ? (
+                  <>
+                    <span className="tiny-dot green" />
+                    自动提取已启用
+                  </>
+                ) : (
+                  "同步状态尚未确认"
+                )}
+              </div>
+            </button>
           </div>
-          <div className="metric-value">
-            {status?.totalMemories?.toLocaleString() ?? "—"}
-            <small>条</small>
-          </div>
-          <div className="metric-caption">
-            <span className={`tiny-dot ${status?.connected ? "green" : ""}`} />
-            {status?.connected
-              ? "来自当前记忆服务"
-              : enabled
-                ? "等待服务状态"
-                : "连接后查看"}
-          </div>
-        </div>
-        <button
-          className="metric-card metric-clickable"
-          onClick={() => navigate("reviews")}
-        >
-          <div className="metric-top">
-            <span>等待你的审阅</span>
-            <Inbox size={17} />
-          </div>
-          <div className="metric-value">
-            {enabled && !statusError ? (reviewCount ?? "—") : "—"}
-            <small>批</small>
-            <ArrowRight size={20} />
-          </div>
-          <div className="metric-caption">先核对，再让新记忆生效</div>
-        </button>
-        <button
-          className="metric-card metric-clickable"
-          onClick={() => navigate("sync")}
-        >
-          <div className="metric-top">
-            <span>最近同步</span>
-            <Clock3 size={17} />
-          </div>
-          <div className="metric-value metric-text">
-            {status ? relativeTime(status.lastRun) : "—"}
-            <ArrowRight size={20} />
-          </div>
-          <div className="metric-caption">
-            {status?.paused === true ? (
-              <>
-                <span className="tiny-dot amber" />
-                自动提取已暂停
-              </>
-            ) : status?.paused === false ? (
-              <>
-                <span className="tiny-dot green" />
-                自动提取已启用
-              </>
-            ) : (
-              "同步状态尚未确认"
-            )}
-          </div>
-        </button>
-      </div>
+        </>
+      )}
       {statusError &&
         enabled &&
         !(statusError instanceof ApiError && statusError.status === 401) && (
@@ -828,7 +1032,7 @@ function MemoryLibrary({
               {status.search.modelReady === false
                 ? "语义模型尚未就绪。搜索能力以服务当前返回的模式为准。"
                 : status.search.ready === false
-                  ? "搜索索引尚未就绪，查询可能暂时无法完成。"
+                  ? "本地语义索引尚未就绪；查询将使用服务可用的关键词检索。"
                   : `有 ${status.search.pending} 条记忆等待建立索引，搜索结果可能暂不完整。`}
             </span>
             <button onClick={() => navigate("settings")}>
@@ -839,11 +1043,10 @@ function MemoryLibrary({
         )}
       <section className="library-panel">
         <div className="library-toolbar">
-          <div className="type-tabs" role="tablist" aria-label="记忆类型">
+          <div className="type-tabs" role="group" aria-label="记忆类型筛选">
             {MAIN_TYPES.map((tab) => (
               <button
-                role="tab"
-                aria-selected={type === tab.value}
+                aria-pressed={type === tab.value}
                 className={type === tab.value ? "active" : ""}
                 key={tab.value}
                 onClick={() => {
@@ -884,6 +1087,8 @@ function MemoryLibrary({
           onSubmit={(event) => {
             event.preventDefault();
             setQuery(input.trim());
+            setInterpret(interpretOption);
+            setSubmission((value) => value + 1);
             setOffset(0);
           }}
         >
@@ -910,7 +1115,7 @@ function MemoryLibrary({
               <X size={15} />
             </button>
           )}
-          <kbd>⌘ K</kbd>
+          <kbd aria-hidden="true">Ctrl / ⌘ K</kbd>
           <button
             className="search-submit"
             type="submit"
@@ -924,22 +1129,25 @@ function MemoryLibrary({
           <label>
             <input
               type="checkbox"
-              checked={interpret}
-              onChange={(event) => setInterpret(event.target.checked)}
+              checked={interpretOption}
+              onChange={(event) => {
+                setInterpretOption(event.target.checked);
+                if (!event.target.checked) setInterpret(false);
+              }}
               disabled={!enabled || lifecycle !== "active"}
             />
             <Sparkles size={13} />
             <span>
-              智能理解 <small>使用 Hermes 模型</small>
+              模型解释查询 <small>默认关闭</small>
             </span>
           </label>
           <span>
-            {interpret && lifecycle === "active"
-              ? "搜索问题会发送到你配置的模型"
+            {interpretOption && lifecycle === "active"
+              ? "点击搜索时，问题将发送到已配置模型，用于理解检索条件；可能由外部服务处理。"
               : "默认检索不调用远程模型"}
           </span>
         </div>
-        <div className="list-caption">
+        <div className="list-caption" role="status" aria-live="polite">
           <span>
             {query ? (
               <>
@@ -971,120 +1179,156 @@ function MemoryLibrary({
             )}
           </span>
         </div>
-        {loading ? (
-          <Spinner label={query ? "正在寻找相关记忆" : "正在读取记忆"} />
-        ) : error ? (
+        {isSearch && (
+          <p className="field-note">
+            按相关性显示本次检索命中的前 30 条；这不是整个记忆库的总数。
+          </p>
+        )}
+        {data?.truncated && (
+          <p className="info-banner" role="status">
+            当前列表达到服务读取上限，计数仅代表已载入范围。请按类型或关键词缩小范围。
+          </p>
+        )}
+        {!!data?.warnings?.length && (
+          <p className="info-banner" role="status">
+            部分检索能力暂不可用，本次模式以结果标记为准。可到设置与诊断检查索引和本地模型。
+          </p>
+        )}
+        {!!error && (
           <div className="panel-error">
             <ErrorBox error={error} retry={refresh} />
           </div>
-        ) : !data?.items.length ? (
-          <EmptyState
-            title={
-              !enabled
-                ? "你的记忆，从一次连接开始"
+        )}
+        {data && (error || !enabled) && (
+          <p className="info-banner">
+            当前显示上次读取的内容（{formatDate(lastReadAt, true)}
+            ），恢复连接后请刷新核对。
+          </p>
+        )}
+        <div
+          ref={resultRegion}
+          tabIndex={-1}
+          role="region"
+          aria-label="记忆查询结果"
+          aria-busy={loading}
+        >
+          {loading ? (
+            <Spinner label={query ? "正在寻找相关记忆" : "正在读取记忆"} />
+          ) : error && !data ? null : !data?.items.length ? (
+            <EmptyState
+              title={
+                !enabled
+                  ? "你的记忆，从一次连接开始"
+                  : query
+                    ? "暂时没有找到相关记忆"
+                    : lifecycle === "archived"
+                      ? "没有已停用的记忆"
+                      : "留给值得记住的事"
+              }
+            >
+              {!enabled
+                ? "连接你的记忆服务后，已保存的六类记忆会出现在这里。"
                 : query
-                  ? "暂时没有找到相关记忆"
+                  ? "试试更具体的姓名或关键词。没有结果并不代表这件事从未被记录。"
                   : lifecycle === "archived"
-                    ? "没有已停用的记忆"
-                    : "留给值得记住的事"
-            }
-          >
-            {!enabled
-              ? "连接 Hermes 记忆服务后，已保存的人物、事件与决策会出现在这里。"
-              : query
-                ? "试试更具体的姓名或关键词。没有结果并不代表这件事从未被记录。"
-                : lifecycle === "archived"
-                  ? "被停用的条目会保留在这里，方便核对与恢复。"
-                  : "自动提取与审阅完成后，新的记忆会出现在这里。每一条都可以回到它的来源。"}
-            {enabled && !query && lifecycle === "active" && (
-              <span className="empty-next">
-                先检查同步状态，或查看等待审阅的批次。
-              </span>
-            )}
-          </EmptyState>
-        ) : (
-          <div className="memory-list">
-            {data.items.map((memory, index) => (
-              <button
-                className="memory-row"
-                key={memory.uri || index}
-                onClick={() => onSelect(memory)}
-              >
-                <TypeIcon type={memory.type} />
-                <div className="memory-row-body">
-                  <div className="memory-row-title">
-                    <h3>{memory.name}</h3>
-                    {memory.status === "archived" && <Badge>已停用</Badge>}
+                    ? "被停用的条目会保留在这里，方便核对与恢复。"
+                    : "自动提取与审阅完成后，新的记忆会出现在这里。每一条都可以回到它的来源。"}
+              {enabled && !query && lifecycle === "active" && (
+                <span className="empty-next">
+                  先检查同步状态，或查看等待审阅的批次。
+                </span>
+              )}
+            </EmptyState>
+          ) : (
+            <div className="memory-list">
+              {data.items.map((memory, index) => (
+                <button
+                  className="memory-row"
+                  key={memory.uri || index}
+                  onClick={() => onSelect(memory)}
+                >
+                  <TypeIcon type={memory.type} />
+                  <div className="memory-row-body">
+                    <div className="memory-row-title">
+                      <h3>{memory.name}</h3>
+                      {memory.status === "archived" && <Badge>已停用</Badge>}
+                    </div>
+                    <p>
+                      {memory.description ||
+                        `${typeLabels[memory.type]}记忆 · 打开查看内容与来源`}
+                    </p>
+                    <div className="memory-row-meta">
+                      <span>{typeLabels[memory.type]}</span>
+                      {memory.eventTime && (
+                        <>
+                          <i />
+                          <span>
+                            <CalendarDays size={11} />
+                            {formatDate(memory.eventTime)}
+                          </span>
+                        </>
+                      )}
+                      {memory.evidence.length > 0 && (
+                        <>
+                          <i />
+                          <span>
+                            <MessageSquareQuote size={11} />
+                            {memory.evidence.length} 条来源
+                          </span>
+                        </>
+                      )}
+                      {memory.participants.length > 0 && (
+                        <>
+                          <i />
+                          <span>{memory.participants.join("、")}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <p>
-                    {memory.description ||
-                      `${typeLabels[memory.type]}记忆 · 打开查看内容与来源`}
-                  </p>
-                  <div className="memory-row-meta">
-                    <span>{typeLabels[memory.type]}</span>
-                    {memory.eventTime && (
-                      <>
-                        <i />
-                        <span>
-                          <CalendarDays size={11} />
-                          {formatDate(memory.eventTime)}
-                        </span>
-                      </>
-                    )}
-                    {memory.evidence.length > 0 && (
-                      <>
-                        <i />
-                        <span>
-                          <MessageSquareQuote size={11} />
-                          {memory.evidence.length} 条来源
-                        </span>
-                      </>
-                    )}
-                    {memory.participants.length > 0 && (
-                      <>
-                        <i />
-                        <span>{memory.participants.join("、")}</span>
-                      </>
-                    )}
+                  <div className="memory-row-end">
+                    <span>
+                      {memory.updatedAt ? formatDate(memory.updatedAt) : "—"}
+                    </span>
+                    <ChevronRight size={16} />
                   </div>
-                </div>
-                <div className="memory-row-end">
-                  <span>
-                    {memory.updatedAt ? formatDate(memory.updatedAt) : "—"}
-                  </span>
-                  <ChevronRight size={16} />
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-        {data && data.total > data.limit && !isSearch && (
-          <div className="pagination">
-            <span>
-              第 {data.offset + 1}–
-              {Math.min(data.offset + data.items.length, data.total)} 条，共{" "}
-              {data.total} 条
-            </span>
-            <div>
-              <button
-                className="button button-quiet"
-                disabled={offset === 0 || loading}
-                onClick={() => setOffset(Math.max(0, offset - 30))}
-              >
-                <ArrowLeft size={14} />
-                上一页
-              </button>
-              <button
-                className="button button-quiet"
-                disabled={offset + data.limit >= data.total || loading}
-                onClick={() => setOffset(offset + 30)}
-              >
-                下一页
-                <ArrowRight size={14} />
-              </button>
+                </button>
+              ))}
             </div>
-          </div>
-        )}
+          )}
+          {data && data.total > data.limit && !isSearch && (
+            <div className="pagination">
+              <span>
+                第 {data.offset + 1}–
+                {Math.min(data.offset + data.items.length, data.total)} 条，共{" "}
+                {data.total} 条
+              </span>
+              <div>
+                <button
+                  className="button button-quiet"
+                  disabled={offset === 0 || loading}
+                  onClick={() => {
+                    focusResult.current = true;
+                    setOffset(Math.max(0, offset - 30));
+                  }}
+                >
+                  <ArrowLeft size={14} />
+                  上一页
+                </button>
+                <button
+                  className="button button-quiet"
+                  disabled={offset + data.limit >= data.total || loading}
+                  onClick={() => {
+                    focusResult.current = true;
+                    setOffset(offset + 30);
+                  }}
+                >
+                  下一页
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </section>
       <div className="subtle-note">
         <MessageSquareQuote size={15} />
@@ -1106,127 +1350,12 @@ function reviewReason(reason?: string): string {
     archived_target: "涉及已停用记忆",
     quarantined_target: "涉及已停用记忆",
     semantic_conflict: "内容存在语义冲突",
+    user_confirmed_relationship: "将修改用户确认过的关系",
   };
   return reason
     .split(",")
     .map((code) => labels[code.trim()] ?? code.trim())
     .join("；");
-}
-
-function ReviewInbox({
-  enabled,
-  reviews,
-  loading,
-  error,
-  refresh,
-  onSelect,
-}: {
-  enabled: boolean;
-  reviews: Review[];
-  loading: boolean;
-  error: unknown;
-  refresh: () => void;
-  onSelect: (review: Review) => void;
-}) {
-  return (
-    <>
-      <PageHeader
-        eyebrow="A MOMENT TO REVIEW"
-        title="审阅收件箱"
-        subtitle="看看新提取的内容，决定哪些值得成为长期记忆。"
-      >
-        <RefreshButton refresh={refresh} loading={loading} />
-      </PageHeader>
-      <div className="review-intro">
-        <span className="intro-icon">
-          <FileCheck2 size={24} strokeWidth={1.5} />
-        </span>
-        <div>
-          <strong>让记忆的边界更清楚</strong>
-          <p>
-            模型可能混淆计划、转述和已发生的事。批准前，请核对事实与原话是否表达了同一件事。
-          </p>
-        </div>
-        <Badge tone="amber">人工审阅</Badge>
-      </div>
-      <section className="content-panel">
-        <div className="section-heading">
-          <h2>
-            提取批次 <span>{enabled ? reviews.length : "—"}</span>
-          </h2>
-          <span>内容在批准后写入记忆</span>
-        </div>
-        {loading ? (
-          <Spinner label="正在读取待审内容" />
-        ) : error ? (
-          <div className="panel-error">
-            <ErrorBox error={error} retry={refresh} />
-          </div>
-        ) : !reviews.length ? (
-          <EmptyState
-            icon={<Inbox size={29} strokeWidth={1.3} />}
-            title={enabled ? "收件箱很清静" : "连接后查看待审内容"}
-          >
-            {enabled
-              ? "目前没有等待审阅的批次。新的提取需要复核时，会出现在这里。"
-              : "连接你的服务后，可以在此核对每批新提取的事实与证据。"}
-          </EmptyState>
-        ) : (
-          <div className="review-list">
-            {reviews.map((review) => (
-              <button
-                className="review-card"
-                key={review.id}
-                onClick={() => onSelect(review)}
-              >
-                <div className="review-card-icon">
-                  <FileText size={22} strokeWidth={1.5} />
-                </div>
-                <div className="review-card-content">
-                  <div className="review-card-top">
-                    <h3>
-                      {review.entities.length
-                        ? `${review.entities.length} 条记忆等待核对`
-                        : "一批提取内容等待核对"}
-                    </h3>
-                    <Badge tone={jobTone(review.status)}>
-                      {jobLabels[review.status] ?? review.status}
-                    </Badge>
-                  </div>
-                  <p>{reviewReason(review.reason)}</p>
-                  <div className="review-preview">
-                    {review.entities.slice(0, 3).map((memory, index) => (
-                      <span key={index}>
-                        {typeLabels[memory.type]}
-                        <i />
-                        {memory.name}
-                      </span>
-                    ))}
-                    {review.entities.length > 3 && (
-                      <span>+{review.entities.length - 3}</span>
-                    )}
-                  </div>
-                  <div className="review-card-meta">
-                    <span>{formatDate(review.createdAt, true)}</span>
-                    <span>{review.relations.length} 条关系</span>
-                    <span className="mono">{review.id.slice(0, 14)}</span>
-                  </div>
-                </div>
-                <span className="review-open">
-                  查看并审阅
-                  <ArrowRight size={15} />
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-      <div className="subtle-note">
-        <ShieldCheck size={15} />
-        <span>拒绝的批次不会写入图谱。批次状态以服务返回的提交回执为准。</span>
-      </div>
-    </>
-  );
 }
 
 function SyncPage({
@@ -1252,6 +1381,9 @@ function SyncPage({
     [jobsError, setJobsError] = useState<unknown>(null),
     [jobsLoading, setJobsLoading] = useState(false);
   const [busy, setBusy] = useState("");
+  const [actionError, setActionError] = useState<unknown>(null);
+  const actionLock = useRef(false);
+  const writable = enabled && !statusError && status?.connected !== false;
   useEffect(() => {
     if (!enabled) {
       setJobs([]);
@@ -1259,31 +1391,44 @@ function SyncPage({
       return;
     }
     let current = true;
-    setJobsLoading(true);
-    api
-      .jobs()
-      .then((value) => {
-        if (current) {
-          setJobs(value);
-          setJobsError(null);
-        }
-      })
-      .catch((error) => {
-        if (current) setJobsError(error);
-      })
-      .finally(() => {
-        if (current) setJobsLoading(false);
-      });
+    const controller = new AbortController();
+    let poll: number | undefined;
+    const load = (initial = false) => {
+      if (initial) setJobsLoading(true);
+      void api
+        .jobs(controller.signal)
+        .then((value) => {
+          if (current) {
+            setJobs(value);
+            setJobsError(null);
+          }
+        })
+        .catch((error) => {
+          if (current) setJobsError(error);
+        })
+        .finally(() => {
+          if (current) {
+            setJobsLoading(false);
+            poll = window.setTimeout(() => load(), 5000);
+          }
+        });
+    };
+    load(true);
     return () => {
       current = false;
+      controller.abort();
+      window.clearTimeout(poll);
     };
   }, [api, enabled, refreshKey]);
   const action = async (kind: "run" | "pause" | "resume") => {
+    if (actionLock.current || !writable) return;
+    actionLock.current = true;
     setBusy(kind);
+    setActionError(null);
     try {
       if (kind === "run") {
         await api.sync();
-        notify("同步请求已被服务接收。请查看任务状态确认处理结果。");
+        notify("同步已加入队列。任务记录会自动更新，处理结果以最终状态为准。");
       } else {
         await api[kind]();
         notify(
@@ -1294,8 +1439,9 @@ function SyncPage({
       }
       refresh();
     } catch (error) {
-      notify(errorMessage(error), true);
+      setActionError(error);
     } finally {
+      actionLock.current = false;
       setBusy("");
     }
   };
@@ -1309,7 +1455,7 @@ function SyncPage({
         <RefreshButton refresh={refresh} loading={statusLoading} />
         <button
           className="button button-primary"
-          disabled={!enabled || !!busy}
+          disabled={!writable || status?.syncAvailable === false || !!busy}
           onClick={() => void action("run")}
         >
           {busy === "run" ? (
@@ -1321,6 +1467,13 @@ function SyncPage({
         </button>
       </PageHeader>
       {!!statusError && <ErrorBox error={statusError} retry={refresh} />}
+      {!!actionError && <ErrorBox error={actionError} />}
+      <PendingFeedback active={!!busy} />
+      {status?.syncAvailable === false && (
+        <p className="info-banner">
+          当前服务未接入会话提取能力，已有记忆仍可查看。请由维护者检查宿主集成。
+        </p>
+      )}
       <div className="sync-overview">
         <div className="sync-main">
           <div
@@ -1349,7 +1502,7 @@ function SyncPage({
           </div>
           <button
             className="button button-secondary"
-            disabled={!enabled || status?.paused === null || !status || !!busy}
+            disabled={!writable || status?.paused === null || !status || !!busy}
             onClick={() => void action(status?.paused ? "resume" : "pause")}
           >
             {busy && busy !== "run" ? (
@@ -1364,10 +1517,17 @@ function SyncPage({
         </div>
         <div className="sync-stats">
           <div>
-            <span>待处理会话 / 快照</span>
+            <span>待处理快照</span>
             <strong>
               {status?.pendingCount ?? "—"}
               <small>项</small>
+            </strong>
+          </div>
+          <div>
+            <span>排队会话 / 失败快照</span>
+            <strong>
+              {status?.queuedCount ?? "—"}
+              <small> / {status?.failedCount ?? "—"}</small>
             </strong>
           </div>
           <div>
@@ -1385,18 +1545,30 @@ function SyncPage({
           </div>
         </div>
       </div>
+      <p className="field-note">
+        {status?.schedulerEnabled === true
+          ? "服务内定时提取已启用。"
+          : status?.schedulerEnabled === false
+            ? "服务内定时提取已关闭；外部调度器如有配置，将独立运行。"
+            : "尚未确认定时提取状态。"}{" "}
+        暂停自动提取不会断开服务；关闭页面不会停止已提交任务。
+      </p>
       <section className="content-panel">
         <div className="section-heading">
           <h2>任务记录</h2>
           <span>提交请求后，以任务最终状态为准</span>
         </div>
-        {jobsLoading ? (
-          <Spinner label="正在读取任务记录" />
-        ) : jobsError ? (
+        {!!jobsError && (
           <div className="panel-error">
             <ErrorBox error={jobsError} retry={refresh} />
+            {jobs.length > 0 && (
+              <p>当前显示上次读取的任务，恢复连接后将继续更新。</p>
+            )}
           </div>
-        ) : !jobs.length ? (
+        )}
+        {jobsLoading && !jobs.length ? (
+          <Spinner label="正在读取任务记录" />
+        ) : jobsError && !jobs.length ? null : !jobs.length ? (
           <EmptyState
             icon={<History size={29} strokeWidth={1.3} />}
             title="暂时没有任务记录"
@@ -1405,7 +1577,7 @@ function SyncPage({
           </EmptyState>
         ) : (
           <div className="job-table">
-            <div className="job-table-head">
+            <div className="job-table-head" aria-hidden="true">
               <span>任务</span>
               <span>开始时间</span>
               <span>状态</span>
@@ -1427,7 +1599,15 @@ function SyncPage({
                     </p>
                   )}
                 </div>
-                <span>{formatDate(job.createdAt, true)}</span>
+                <span>
+                  提交：{formatDate(job.createdAt, true)}
+                  {job.startedAt && (
+                    <small>开始：{formatDate(job.startedAt, true)}</small>
+                  )}
+                  {job.finishedAt && (
+                    <small>结束：{formatDate(job.finishedAt, true)}</small>
+                  )}
+                </span>
                 <Badge tone={jobTone(job.status)} dot>
                   {jobLabels[job.status] ?? job.status}
                 </Badge>
@@ -1438,7 +1618,11 @@ function SyncPage({
       </section>
       <HistoryBackfill
         api={api}
-        enabled={enabled}
+        enabled={
+          writable &&
+          status?.sourceAvailable !== false &&
+          status?.syncAvailable !== false
+        }
         refreshKey={refreshKey}
         refresh={refresh}
         notify={notify}
@@ -1446,8 +1630,7 @@ function SyncPage({
       <div className="subtle-note">
         <CircleHelp size={15} />
         <span>
-          同步会使用 Hermes
-          配置的模型路由。连接成功与历史提交记录不代表本次写入已经完成。
+          同步会把选定会话内容交给服务配置的模型进行提取，可能由外部模型处理。连接成功与历史提交记录不代表本次写入已经完成。
         </span>
       </div>
     </>
@@ -1505,8 +1688,14 @@ function SettingsPage({
     };
   }, [api, enabled, refreshKey]);
   const [indexBusy, setIndexBusy] = useState("");
+  const [indexError, setIndexError] = useState<unknown>(null);
+  const indexLock = useRef(false);
+  const writable = enabled && !statusError && status?.connected !== false;
   const indexAction = async (action: "prepare" | "reindex") => {
+    if (indexLock.current || !writable) return;
+    indexLock.current = true;
     setIndexBusy(action);
+    setIndexError(null);
     try {
       const receipt = await (action === "prepare"
         ? api.prepareSearch()
@@ -1520,8 +1709,9 @@ function SettingsPage({
       );
       refresh();
     } catch (failure) {
-      notify(errorMessage(failure), true);
+      setIndexError(failure);
     } finally {
+      indexLock.current = false;
       setIndexBusy("");
     }
   };
@@ -1542,8 +1732,18 @@ function SettingsPage({
           <div className="card-title">
             <KeyRound size={19} />
             <h2>访问连接</h2>
-            <Badge tone={enabled ? "green" : "neutral"}>
-              {enabled ? "已设置令牌" : "尚未连接"}
+            <Badge
+              tone={
+                writable && status?.connected === true ? "green" : "neutral"
+              }
+            >
+              {!enabled
+                ? "尚未连接"
+                : statusError || status?.connected === false
+                  ? "连接中断"
+                  : status?.connected === true
+                    ? "已连接"
+                    : "正在确认"}
             </Badge>
           </div>
           <p className="card-description">
@@ -1590,7 +1790,15 @@ function SettingsPage({
           <dl className="settings-dl">
             <div>
               <dt>当前检索模式</dt>
-              <dd>{status?.search.mode ?? "尚未确认"}</dd>
+              <dd>
+                {status?.search.mode === "keyword"
+                  ? "关键词检索"
+                  : status?.search.mode === "hybrid"
+                    ? "混合检索"
+                    : status?.search.mode === "semantic"
+                      ? "语义检索"
+                      : "由查询实际结果确认"}
+              </dd>
             </div>
             <div>
               <dt>语义模型</dt>
@@ -1626,7 +1834,7 @@ function SettingsPage({
             <button
               className="button button-secondary"
               onClick={() => void indexAction("prepare")}
-              disabled={!enabled || !!indexBusy}
+              disabled={!writable || !!indexBusy}
             >
               {indexBusy === "prepare" ? (
                 <LoaderCircle size={14} className="spin" />
@@ -1638,7 +1846,7 @@ function SettingsPage({
             <button
               className="button button-quiet"
               onClick={() => void indexAction("reindex")}
-              disabled={!enabled || !!indexBusy}
+              disabled={!writable || !!indexBusy}
             >
               {indexBusy === "reindex" ? (
                 <LoaderCircle size={14} className="spin" />
@@ -1648,8 +1856,10 @@ function SettingsPage({
               更新索引
             </button>
           </div>
+          {!!indexError && <ErrorBox error={indexError} />}
+          <PendingFeedback active={!!indexBusy} />
           <p className="field-note index-note">
-            模型在 Hermes 主机本地运行。首次准备会联网下载模型文件。
+            模型在记忆服务主机本地运行。首次准备会联网下载模型文件。
           </p>
           {status && Object.keys(status.search.indexes).length > 0 && (
             <div className="index-states">
@@ -1657,9 +1867,12 @@ function SettingsPage({
                 <div key={key}>
                   <code>{key}</code>
                   <span>{textValue((value as JsonRecord).state)}</span>
-                  <small>
-                    {textValue((value as JsonRecord).population_percent)}%
-                  </small>
+                  {typeof (value as JsonRecord).population_percent ===
+                    "number" && (
+                    <small>
+                      {textValue((value as JsonRecord).population_percent)}%
+                    </small>
+                  )}
                 </div>
               ))}
             </div>
@@ -1687,7 +1900,16 @@ function SettingsPage({
           <>
             <div className="diagnostic-fields">
               {Object.entries(settings)
-                .filter(([key]) => !["ok"].includes(key))
+                .filter(([key]) =>
+                  [
+                    "enabled",
+                    "timezone",
+                    "default_shared",
+                    "single_profile",
+                    "memory_provider",
+                    "sync_scheduler_enabled",
+                  ].includes(key),
+                )
                 .map(([key, value]) => (
                   <div key={key}>
                     <span>{SETTING_LABELS[key] ?? key}</span>
@@ -1698,7 +1920,7 @@ function SettingsPage({
             {Object.keys(compatibility).length > 0 && (
               <details className="code-details">
                 <summary>
-                  Hermes 兼容性详情
+                  宿主集成详情
                   <ChevronDown size={14} />
                 </summary>
                 <pre>{JSON.stringify(compatibility, null, 2)}</pre>
@@ -1706,10 +1928,24 @@ function SettingsPage({
             )}
             <details className="code-details">
               <summary>
-                查看服务诊断响应
+                查看检索与同步诊断摘要
                 <ChevronDown size={14} />
               </summary>
-              <pre>{JSON.stringify(status?.raw ?? {}, null, 2)}</pre>
+              <pre>
+                {JSON.stringify(
+                  {
+                    connected: status?.connected ?? null,
+                    search: status?.search ?? null,
+                    sync: {
+                      paused: status?.paused ?? null,
+                      pending: status?.pendingCount ?? null,
+                      queued: status?.queuedCount ?? null,
+                    },
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
             </details>
           </>
         ) : (
@@ -1724,9 +1960,7 @@ function SettingsPage({
         <div>
           <h3>关于这份工作台</h3>
           <p>
-            这是面向单个 Hermes profile 的个人
-            Alpha。工作台访问你部署的记忆服务；自动提取使用 Hermes
-            配置的模型。停用记忆会停止后续检索，原会话与证据仍保留在宿主机。
+            工作台面向单个记忆空间，连接你部署的记忆服务。浏览知识结构与默认检索不会调用外部模型；自动提取和手动开启的查询解释使用服务所配置的模型。停用记忆会停止后续检索，原会话与证据仍保留在服务主机。断开浏览器会话不会停止后台服务。
           </p>
         </div>
       </div>
@@ -1824,6 +2058,9 @@ function MemoryDrawer({
   onNavigate,
   onChanged,
   notify,
+  writeEnabled = true,
+  onReconnect,
+  embedded = false,
 }: {
   api: ConsoleApi;
   selected: Memory;
@@ -1831,6 +2068,9 @@ function MemoryDrawer({
   onNavigate: (memory: Memory) => void;
   onChanged: () => void;
   notify: (message: string, error?: boolean) => void;
+  writeEnabled?: boolean;
+  onReconnect?: () => void;
+  embedded?: boolean;
 }) {
   const [memory, setMemory] = useState(selected),
     [loading, setLoading] = useState(true),
@@ -1838,7 +2078,28 @@ function MemoryDrawer({
   const [edit, setEdit] = useState<"correct" | "archive" | null>(null),
     [restoring, setRestoring] = useState(false),
     [revisionKey, setRevisionKey] = useState(0);
+  const [writeError, setWriteError] = useState<unknown>(null);
+  const restoreLock = useRef(false);
+  const restoreIntent = useRef<ReturnType<typeof operationForIntent> | null>(
+    null,
+  );
+  const lastSelectedUri = useRef(selected.uri);
+  const close = useCallback(() => {
+    if (!restoreLock.current) onClose();
+  }, [onClose]);
   useEffect(() => {
+    if (lastSelectedUri.current !== selected.uri) {
+      lastSelectedUri.current = selected.uri;
+      setMemory(selected);
+      setEdit(null);
+      setError(null);
+      setWriteError(null);
+      restoreIntent.current = null;
+    }
+    if (!writeEnabled && revisionKey === 0) {
+      setLoading(false);
+      return;
+    }
     let active = true;
     setLoading(true);
     api
@@ -1858,30 +2119,58 @@ function MemoryDrawer({
     return () => {
       active = false;
     };
-  }, [api, selected.uri, revisionKey]);
+  }, [api, selected.uri, revisionKey, writeEnabled]);
   const canEdit =
-    !loading && !error && !memory.readOnly && memory.version !== undefined;
+    writeEnabled &&
+    !loading &&
+    !error &&
+    !restoring &&
+    !memory.readOnly &&
+    memory.version !== undefined;
   const changed = () => {
     setEdit(null);
     setRevisionKey((value) => value + 1);
     onChanged();
   };
   const restore = async () => {
+    if (!canEdit || restoreLock.current) return;
+    restoreLock.current = true;
     setRestoring(true);
+    setWriteError(null);
     try {
-      await api.restore(memory, "用户从个人记忆工作台恢复此条记忆");
+      const reason = "用户从记忆工作台恢复此条记忆";
+      restoreIntent.current = operationForIntent(restoreIntent.current, {
+        action: "restore",
+        uri: memory.uri,
+        version: memory.version,
+        reason,
+      });
+      const receipt = await api.restore(
+        memory,
+        reason,
+        restoreIntent.current.id,
+      );
+      if (receipt.disposition !== "applied") {
+        setWriteError(
+          new Error("恢复请求已收到，但尚未应用。请在审阅页或刷新后核对状态。"),
+        );
+        onChanged();
+        return;
+      }
       notify("记忆已恢复，可以继续检索。");
       changed();
     } catch (failure) {
-      setError(failure);
+      setWriteError(writeFailure(failure));
     } finally {
+      restoreLock.current = false;
       setRestoring(false);
     }
   };
   return (
     <>
-      <Overlay
-        onClose={onClose}
+      <DetailSurface
+        embedded={embedded}
+        onClose={close}
         className="drawer-overlay"
         labelledBy="memory-title"
       >
@@ -1895,7 +2184,8 @@ function MemoryDrawer({
             {memory.status === "archived" && <Badge>已停用</Badge>}
             <button
               className="icon-button"
-              onClick={onClose}
+              onClick={close}
+              disabled={restoring}
               aria-label="关闭记忆详情"
             >
               <X size={19} />
@@ -1924,12 +2214,51 @@ function MemoryDrawer({
               正在读取完整内容
             </div>
           )}
+          <PendingFeedback
+            active={loading || restoring}
+            message={
+              restoring
+                ? "仍在等待服务确认，请保留本页；超时后先核对状态再重试。"
+                : "读取记忆内容需要一些时间，你可以关闭详情后重试。"
+            }
+          />
           {!!error && (
             <ErrorBox
               error={error}
               retry={() => setRevisionKey((value) => value + 1)}
               compact
             />
+          )}
+          {!writeEnabled && (
+            <div className="info-banner" role="status">
+              <LockKeyhole size={16} />
+              <span>
+                服务不可写，请恢复连接后重试。已打开的内容和编辑输入仍保留。
+              </span>
+              {onReconnect && (
+                <button
+                  className="button button-secondary"
+                  onClick={onReconnect}
+                >
+                  重新连接
+                </button>
+              )}
+            </div>
+          )}
+          {!!writeError && (
+            <div role="alert">
+              <ErrorBox error={writeError} compact />
+              <button
+                className="button button-secondary"
+                disabled={restoring}
+                onClick={() => {
+                  setWriteError(null);
+                  setRevisionKey((value) => value + 1);
+                }}
+              >
+                读取最新状态
+              </button>
+            </div>
           )}
           {memory.readOnly && (
             <div className="info-banner shared-memory-banner">
@@ -2091,20 +2420,38 @@ function MemoryDrawer({
                     "相关记忆";
                   const time = stringValue(relation.related_time);
                   return (
-                    <button
-                      className="related-memory"
-                      key={index}
-                      disabled={!relatedUri}
-                      onClick={() => onNavigate(related)}
-                    >
-                      <TypeIcon type={related.type} size={16} />
-                      <div>
-                        <span>{label}</span>
-                        <strong>{related.name}</strong>
-                        {time && <time>{formatDate(time)}</time>}
-                      </div>
-                      <ChevronRight size={15} />
-                    </button>
+                    <div className="relation-record" key={index}>
+                      <button
+                        className="related-memory"
+                        disabled={!relatedUri}
+                        onClick={() => onNavigate(related)}
+                      >
+                        <TypeIcon type={related.type} size={16} />
+                        <div>
+                          <span>{label}</span>
+                          <strong>{related.name}</strong>
+                          {time && <time>{formatDate(time)}</time>}
+                        </div>
+                        <ChevronRight size={15} />
+                      </button>
+                      {relation.props &&
+                      typeof relation.props === "object" &&
+                      Object.keys(relation.props).length > 0 ? (
+                        <details className="relation-source-details">
+                          <summary>关系属性与来源</summary>
+                          <dl>
+                            {Object.entries(relation.props as JsonRecord).map(
+                              ([key, value]) => (
+                                <div key={key}>
+                                  <dt>{propertyValueTitle(key)}</dt>
+                                  <dd>{textValue(value)}</dd>
+                                </div>
+                              ),
+                            )}
+                          </dl>
+                        </details>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>
@@ -2173,7 +2520,7 @@ function MemoryDrawer({
             </>
           )}
         </div>
-      </Overlay>
+      </DetailSurface>
       {edit && (
         <EditMemoryDialog
           api={api}
@@ -2182,6 +2529,8 @@ function MemoryDrawer({
           onClose={() => setEdit(null)}
           onSuccess={changed}
           notify={notify}
+          writeEnabled={writeEnabled}
+          onReconnect={onReconnect}
         />
       )}
     </>
@@ -2195,6 +2544,8 @@ function EditMemoryDialog({
   onClose,
   onSuccess,
   notify,
+  writeEnabled = true,
+  onReconnect,
 }: {
   api: ConsoleApi;
   memory: Memory;
@@ -2202,38 +2553,180 @@ function EditMemoryDialog({
   onClose: () => void;
   onSuccess: () => void;
   notify: (message: string, error?: boolean) => void;
+  writeEnabled?: boolean;
+  onReconnect?: () => void;
 }) {
+  const [baseMemory, setBaseMemory] = useState(memory);
   const [name, setName] = useState(memory.name),
     [content, setContent] = useState(memory.description),
     [eventTime, setEventTime] = useState(memory.eventTime ?? ""),
     [reason, setReason] = useState("");
+  const [preferenceKey, setPreferenceKey] = useState(
+    String(
+      memory.properties.hermes_preferenceKey ??
+        memory.properties.preference_key ??
+        "",
+    ),
+  );
+  const [preferenceValue, setPreferenceValue] = useState(
+    String(
+      memory.properties.hermes_preferenceValue ??
+        memory.properties.preference_value ??
+        "",
+    ),
+  );
+  const [decisionContext, setDecisionContext] = useState(
+    String(
+      memory.properties.hermes_decisionContext ??
+        memory.properties.decision_context ??
+        "",
+    ),
+  );
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(null);
+  const [latestLoaded, setLatestLoaded] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [loadingLatest, setLoadingLatest] = useState(false);
+  const [conflictDetected, setConflictDetected] = useState(false);
+  const requestLock = useRef(false);
+  const operation = useRef<ReturnType<typeof operationForIntent> | null>(null);
+  const errorRegion = useRef<HTMLDivElement>(null);
+  const latestRegion = useRef<HTMLElement>(null);
+  const canWrite =
+    writeEnabled &&
+    !baseMemory.readOnly &&
+    baseMemory.version !== undefined &&
+    baseMemory.status !== "archived" &&
+    !submitted;
+  const conflict =
+    conflictDetected || (error instanceof ApiError && error.status === 409);
+  useEffect(() => {
+    if (error) errorRegion.current?.focus();
+  }, [error]);
+  useEffect(() => {
+    if (latestLoaded) latestRegion.current?.focus();
+  }, [latestLoaded, baseMemory]);
   const close = useCallback(() => {
-    if (!busy) onClose();
-  }, [busy, onClose]);
+    if (!requestLock.current || loadingLatest) onClose();
+  }, [onClose, loadingLatest]);
+  const loadLatest = async () => {
+    if (requestLock.current) return;
+    requestLock.current = true;
+    setBusy(true);
+    setLoadingLatest(true);
+    try {
+      const latest = await api.detail(memory.uri);
+      const rebased = rebaseMemoryDraft(
+        {
+          name,
+          content,
+          eventTime,
+          preferenceKey,
+          preferenceValue,
+          decisionContext,
+        },
+        baseMemory,
+        latest,
+      );
+      setName(rebased.name);
+      setContent(rebased.content);
+      setEventTime(rebased.eventTime);
+      setPreferenceKey(rebased.preferenceKey);
+      setPreferenceValue(rebased.preferenceValue);
+      setDecisionContext(rebased.decisionContext);
+      setBaseMemory(latest);
+      setLatestLoaded(true);
+      setConflictDetected(false);
+      setError(null);
+      operation.current = null;
+    } catch (failure) {
+      if (failure instanceof ApiError && failure.status === 409)
+        setConflictDetected(true);
+      setError(writeFailure(failure));
+    } finally {
+      requestLock.current = false;
+      setBusy(false);
+      setLoadingLatest(false);
+    }
+  };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!canWrite || conflict || requestLock.current) return;
+    requestLock.current = true;
     setError(null);
     setBusy(true);
     try {
-      if (mode === "archive") await api.archive(memory, reason.trim());
-      else {
-        const changes: JsonRecord = {},
-          props: JsonRecord = {};
-        if (name.trim() !== memory.name) changes.name = name.trim();
-        if (content.trim() !== memory.description)
-          props[memory.type === "decision" ? "decision_text" : "description"] =
-            content.trim();
+      const changes: JsonRecord = {},
+        props: JsonRecord = {};
+      if (mode === "correct") {
+        if (name.trim() !== baseMemory.name) changes.name = name.trim();
+        if (content.trim() !== baseMemory.description)
+          props[
+            baseMemory.type === "decision" ? "decision_text" : "description"
+          ] = content.trim();
         if (
-          memory.type === "event" &&
-          eventTime.trim() !== (memory.eventTime ?? "")
+          baseMemory.type === "event" &&
+          eventTime.trim() !== (baseMemory.eventTime ?? "")
         )
           props.event_time = eventTime.trim();
+        if (baseMemory.type === "preference") {
+          if (
+            preferenceKey.trim() !==
+            String(
+              baseMemory.properties.hermes_preferenceKey ??
+                baseMemory.properties.preference_key ??
+                "",
+            )
+          )
+            props.preference_key = preferenceKey.trim();
+          if (
+            preferenceValue.trim() !==
+            String(
+              baseMemory.properties.hermes_preferenceValue ??
+                baseMemory.properties.preference_value ??
+                "",
+            )
+          )
+            props.preference_value = preferenceValue.trim();
+        }
+        if (
+          baseMemory.type === "decision" &&
+          decisionContext.trim() !==
+            String(
+              baseMemory.properties.hermes_decisionContext ??
+                baseMemory.properties.decision_context ??
+                "",
+            )
+        )
+          props.decision_context = decisionContext.trim();
         if (Object.keys(props).length) changes.props = props;
         if (!Object.keys(changes).length)
           throw new Error("请先修改需要更正的内容。");
-        await api.correct(memory, changes, reason.trim());
+      }
+      operation.current = operationForIntent(operation.current, {
+        action: mode,
+        uri: baseMemory.uri,
+        version: baseMemory.version,
+        reason: reason.trim(),
+        changes,
+      });
+      const receipt =
+        mode === "archive"
+          ? await api.archive(baseMemory, reason.trim(), operation.current.id)
+          : await api.correct(
+              baseMemory,
+              changes,
+              reason.trim(),
+              operation.current.id,
+            );
+      if (receipt.disposition !== "applied") {
+        setSubmitted(true);
+        setError(
+          new Error(
+            "请求已收到，但尚未应用。输入仍保留；请关闭后在审阅页核对处理状态。",
+          ),
+        );
+        return;
       }
       notify(
         mode === "archive"
@@ -2242,8 +2735,11 @@ function EditMemoryDialog({
       );
       onSuccess();
     } catch (failure) {
-      setError(failure);
+      if (failure instanceof ApiError && failure.status === 409)
+        setConflictDetected(true);
+      setError(writeFailure(failure));
     } finally {
+      requestLock.current = false;
       setBusy(false);
     }
   };
@@ -2253,7 +2749,7 @@ function EditMemoryDialog({
       className="modal-overlay nested-modal"
       labelledBy="edit-title"
     >
-      <form onSubmit={(event) => void submit(event)}>
+      <form onSubmit={(event) => void submit(event)} aria-busy={busy}>
         <div className="modal-header">
           <span
             className={`modal-icon ${mode === "archive" ? "amber-icon" : ""}`}
@@ -2269,7 +2765,7 @@ function EditMemoryDialog({
             type="button"
             onClick={close}
             aria-label="关闭编辑"
-            disabled={busy}
+            disabled={busy && !loadingLatest}
           >
             <X size={18} />
           </button>
@@ -2283,6 +2779,78 @@ function EditMemoryDialog({
             : "更正会保留为一次人工修订。请只填写你确认的事实。"}
         </p>
         <div className="modal-body">
+          <PendingFeedback
+            active={busy}
+            message={
+              loadingLatest
+                ? "读取最新版本需要一些时间，你可以稍后重试。当前输入仍保留。"
+                : "仍在等待服务确认，请保留本页；超时后先核对状态再重试。"
+            }
+          />
+          {!writeEnabled && (
+            <div className="info-banner" role="status">
+              <span>服务不可写，请恢复连接后重试。输入仍保留。</span>
+              {onReconnect && (
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  onClick={onReconnect}
+                >
+                  重新连接
+                </button>
+              )}
+            </div>
+          )}
+          {latestLoaded && (
+            <section
+              ref={latestRegion}
+              tabIndex={-1}
+              className="info-banner"
+              aria-label="最新版本核对"
+            >
+              <div>
+                <strong>
+                  最新版本 {baseMemory.version ?? "未知"} · {baseMemory.name}
+                </strong>
+                <p>{baseMemory.description || "没有附加描述"}</p>
+                {baseMemory.eventTime && (
+                  <p>事件时间：{baseMemory.eventTime}</p>
+                )}
+                {baseMemory.type === "preference" && (
+                  <p>
+                    偏好项目：
+                    {textValue(
+                      baseMemory.properties.hermes_preferenceKey ??
+                        baseMemory.properties.preference_key,
+                    )}
+                    ；偏好值：
+                    {textValue(
+                      baseMemory.properties.hermes_preferenceValue ??
+                        baseMemory.properties.preference_value,
+                    )}
+                  </p>
+                )}
+                {baseMemory.type === "decision" && (
+                  <p>
+                    决策背景：
+                    {textValue(
+                      baseMemory.properties.hermes_decisionContext ??
+                        baseMemory.properties.decision_context,
+                    )}
+                  </p>
+                )}
+                <p>
+                  你修改过的字段保留在下方，未修改字段已同步最新值。请核对后，再明确保存。
+                </p>
+                {baseMemory.status === "archived" && (
+                  <p>这条记忆已停用，请先返回详情恢复使用。</p>
+                )}
+                {baseMemory.readOnly && (
+                  <p>这条记忆现在仅可查看，不能保存更改。</p>
+                )}
+              </div>
+            </section>
+          )}
           {mode === "correct" && (
             <>
               <label className="field-label">
@@ -2292,6 +2860,7 @@ function EditMemoryDialog({
                   onChange={(event) => setName(event.target.value)}
                   required
                   maxLength={300}
+                  disabled={busy || submitted}
                   autoFocus
                 />
               </label>
@@ -2301,8 +2870,46 @@ function EditMemoryDialog({
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
                   rows={4}
+                  disabled={busy || submitted}
                 />
               </label>
+              {memory.type === "preference" && (
+                <>
+                  <label className="field-label">
+                    偏好项目
+                    <input
+                      value={preferenceKey}
+                      onChange={(event) => setPreferenceKey(event.target.value)}
+                      required
+                      maxLength={300}
+                      disabled={busy || submitted}
+                    />
+                  </label>
+                  <label className="field-label">
+                    偏好值
+                    <textarea
+                      value={preferenceValue}
+                      onChange={(event) =>
+                        setPreferenceValue(event.target.value)
+                      }
+                      required
+                      rows={3}
+                      disabled={busy || submitted}
+                    />
+                  </label>
+                </>
+              )}
+              {memory.type === "decision" && (
+                <label className="field-label">
+                  决策背景
+                  <textarea
+                    value={decisionContext}
+                    onChange={(event) => setDecisionContext(event.target.value)}
+                    rows={3}
+                    disabled={busy || submitted}
+                  />
+                </label>
+              )}
               {memory.type === "event" && (
                 <label className="field-label">
                   事件时间
@@ -2310,6 +2917,7 @@ function EditMemoryDialog({
                     value={eventTime}
                     onChange={(event) => setEventTime(event.target.value)}
                     placeholder="带时区的 ISO 日期或时间"
+                    disabled={busy || submitted}
                   />
                   <span className="field-note">
                     保留真实日期和时区；日期不确定时，不要补造。
@@ -2331,17 +2939,37 @@ function EditMemoryDialog({
                   : "说明原内容哪里有误，便于日后回看"
               }
               maxLength={2000}
+              disabled={busy || submitted}
               autoFocus={mode === "archive"}
             />
           </label>
-          {!!error && <ErrorBox error={error} compact />}
+          {!!error && (
+            <div
+              ref={errorRegion}
+              tabIndex={-1}
+              role="alert"
+              aria-label="保存未完成"
+            >
+              <ErrorBox error={error} compact />
+              {conflict && (
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void loadLatest()}
+                >
+                  读取最新版本并核对
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="modal-actions">
           <button
             className="button button-secondary"
             type="button"
             onClick={close}
-            disabled={busy}
+            disabled={busy && !loadingLatest}
           >
             取消
           </button>
@@ -2349,7 +2977,14 @@ function EditMemoryDialog({
             className={`button ${mode === "archive" ? "button-danger" : "button-primary"}`}
             type="submit"
             disabled={
-              busy || !reason.trim() || (mode === "correct" && !name.trim())
+              busy ||
+              !canWrite ||
+              conflict ||
+              !reason.trim() ||
+              (mode === "correct" &&
+                (!name.trim() ||
+                  (memory.type === "preference" &&
+                    (!preferenceKey.trim() || !preferenceValue.trim()))))
             }
           >
             {busy ? (
@@ -2357,7 +2992,13 @@ function EditMemoryDialog({
             ) : (
               <Check size={15} />
             )}
-            {mode === "archive" ? "确认停用" : "保存更正"}
+            {busy
+              ? "正在提交"
+              : submitted
+                ? "已提交待核对"
+                : mode === "archive"
+                  ? "确认停用"
+                  : "保存更正"}
           </button>
         </div>
       </form>
@@ -2371,12 +3012,20 @@ function ReviewDrawer({
   onClose,
   onChanged,
   notify,
+  writeEnabled = true,
+  onReconnect,
+  embedded = false,
+  onResolved,
 }: {
   api: ConsoleApi;
   review: Review;
   onClose: () => void;
   onChanged: () => void;
   notify: (message: string, error?: boolean) => void;
+  writeEnabled?: boolean;
+  onReconnect?: () => void;
+  embedded?: boolean;
+  onResolved?: (status: "approved" | "rejected") => void;
 }) {
   const [busy, setBusy] = useState(""),
     [error, setError] = useState<unknown>(null),
@@ -2386,7 +3035,19 @@ function ReviewDrawer({
   const [drafts, setDrafts] = useState<
     Record<string, { name: string; content: string }>
   >({});
-  const editedCount = Object.keys(drafts).length;
+  const [resolved, setResolved] = useState<
+    "approved" | "rejected" | "deferred" | null
+  >(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [latestMemories, setLatestMemories] = useState<Memory[]>([]);
+  const [versions, setVersions] = useState(review.expectedVersions);
+  const [conflictDetected, setConflictDetected] = useState(false);
+  const operation = useRef<ReturnType<typeof operationForIntent> | null>(null);
+  const requestLock = useRef(false);
+  const resultRegion = useRef<HTMLDivElement>(null);
+  const latestRegion = useRef<HTMLElement>(null);
+  const changes = reviewChanges(review, drafts);
+  const editedCount = Object.keys(changes).length;
   const invalidDraft = Object.values(drafts).some(
     (draft) => !draft.name.trim(),
   );
@@ -2400,60 +3061,150 @@ function ReviewDrawer({
       },
     }));
   const close = useCallback(() => {
-    if (!busy) onClose();
-  }, [busy, onClose]);
-  const isPending = !["approved", "rejected", "committed"].includes(
-    review.status,
-  );
+    if (!requestLock.current || refreshing) onClose();
+  }, [onClose, refreshing]);
+  const isPending = !resolved && isPendingReview(review.status);
+  const conflict =
+    conflictDetected || (error instanceof ApiError && error.status === 409);
+  const readOnlyEntities = review.entities.some((memory) => memory.readOnly);
+  useEffect(() => {
+    if (error || resolved) resultRegion.current?.focus();
+  }, [error, resolved]);
+  useEffect(() => {
+    if (latestMemories.length) latestRegion.current?.focus();
+  }, [latestMemories]);
+  const loadLatest = async () => {
+    if (requestLock.current) return;
+    requestLock.current = true;
+    setRefreshing(true);
+    try {
+      const originalVersions =
+        versions ??
+        Object.fromEntries(
+          review.entities
+            .filter((memory) => memory.version !== undefined && memory.uri)
+            .map((memory) => [memory.uri, memory.version!]),
+        );
+      const latest = await Promise.all(
+        Object.entries(originalVersions).map(async ([uri, version]) => {
+          try {
+            return await api.detail(uri);
+          } catch (failure) {
+            // New entities have version 0 and may still be absent. Any other failure
+            // leaves every original version intact and keeps approval blocked.
+            if (
+              failure instanceof ApiError &&
+              failure.status === 404 &&
+              version === 0
+            )
+              return null;
+            throw failure;
+          }
+        }),
+      );
+      const found = latest.filter(
+        (memory): memory is Memory => memory !== null,
+      );
+      if (
+        found.some(
+          (memory) =>
+            memory.version === undefined ||
+            memory.readOnly ||
+            memory.status === "archived",
+        )
+      )
+        throw new Error(
+          "关联记录现已停用、仅可查看或缺少版本，不能继续批准。更正输入仍保留。",
+        );
+      setLatestMemories(found);
+      setVersions({
+        ...originalVersions,
+        ...Object.fromEntries(
+          found.map((memory) => [memory.uri, memory.version!]),
+        ),
+      });
+      operation.current = null;
+      setConflictDetected(false);
+      setError(null);
+    } catch (failure) {
+      setError(writeFailure(failure));
+    } finally {
+      requestLock.current = false;
+      setRefreshing(false);
+    }
+  };
   const act = async (action: "approve" | "reject") => {
+    if (
+      !isPending ||
+      !writeEnabled ||
+      requestLock.current ||
+      (action === "approve" &&
+        (readOnlyEntities ||
+          conflict ||
+          invalidDraft ||
+          (editedCount > 0 && !reason.trim())))
+    )
+      return;
+    requestLock.current = true;
     setBusy(action);
     setError(null);
     try {
       const expectedVersions =
-        review.expectedVersions ??
+        versions ??
         Object.fromEntries(
           review.entities
             .filter((memory) => memory.version !== undefined && memory.uri)
             .map((memory) => [memory.uri, memory.version]),
         );
-      const changes: JsonRecord = {};
-      if (action === "approve")
-        review.entities.forEach((memory) => {
-          const draft = drafts[memory.uri];
-          if (!draft) return;
-          const change: JsonRecord = {};
-          if (draft.name.trim() !== memory.name)
-            change.name = draft.name.trim();
-          if (draft.content.trim() !== memory.description)
-            change.props = {
-              [memory.type === "decision" ? "decision_text" : "description"]:
-                draft.content.trim(),
-            };
-          if (Object.keys(change).length) changes[memory.uri] = change;
-        });
-      await api.review(review.id, action, {
-        operation_id: crypto.randomUUID(),
+      const body: JsonRecord = {
         ...(Object.keys(expectedVersions).length
           ? { expected_versions: expectedVersions }
           : {}),
         ...(reason.trim() ? { reason: reason.trim() } : {}),
-        ...(Object.keys(changes).length ? { changes } : {}),
+        ...(action === "approve" && editedCount ? { changes } : {}),
+      };
+      operation.current = operationForIntent(operation.current, {
+        id: review.id,
+        action,
+        body,
       });
+      const receipt = await api.review(review.id, action, {
+        ...body,
+        operation_id: operation.current.id,
+      });
+      if (receipt.disposition === "deferred") {
+        setResolved("deferred");
+        setEditingUri(null);
+        onChanged();
+        return;
+      }
+      if (
+        receipt.disposition !== (action === "approve" ? "applied" : "rejected")
+      )
+        throw new Error(
+          "服务未确认预期的处理结果。输入仍保留；请刷新批次核对状态后再操作。",
+        );
+      setResolved(action === "approve" ? "approved" : "rejected");
+      onResolved?.(action === "approve" ? "approved" : "rejected");
+      setEditingUri(null);
       notify(
         action === "approve"
           ? "批次已批准。内容已按服务回执提交。"
           : "批次已拒绝，不会写入这批内容。",
       );
       onChanged();
-      onClose();
     } catch (failure) {
-      setError(failure);
+      if (failure instanceof ApiError && failure.status === 409)
+        setConflictDetected(true);
+      setError(writeFailure(failure));
     } finally {
+      requestLock.current = false;
       setBusy("");
     }
   };
   return (
-    <Overlay
+    <DetailSurface
+      embedded={embedded}
       onClose={close}
       className="drawer-overlay review-drawer-overlay"
       labelledBy="review-title"
@@ -2495,6 +3246,81 @@ function ReviewDrawer({
             核对是否为用户确认的事实，注意否定、假设、转述与时间。批准将提交整个批次。
           </p>
         </div>
+        <PendingFeedback
+          active={!!busy || refreshing}
+          message={
+            refreshing
+              ? "读取最新记录需要一些时间，你可以稍后重试。更正输入仍保留。"
+              : "仍在等待服务确认，请保留本页；超时后先核对状态再重试。"
+          }
+        />
+        {!writeEnabled && (
+          <div className="info-banner" role="status">
+            <span>服务不可写，请恢复连接后重试。更正输入仍保留。</span>
+            {onReconnect && (
+              <button className="button button-secondary" onClick={onReconnect}>
+                重新连接
+              </button>
+            )}
+          </div>
+        )}
+        {readOnlyEntities && (
+          <div className="info-banner">
+            <LockKeyhole size={16} />
+            <span>批次包含仅可查看的记录，不能在此更正或批准。</span>
+          </div>
+        )}
+        {(!!error || resolved) && (
+          <div
+            ref={resultRegion}
+            tabIndex={-1}
+            role={error ? "alert" : "status"}
+            aria-label="批次处理结果"
+          >
+            {!!error && <ErrorBox error={error} compact />}
+            {conflict && (
+              <button
+                className="button button-secondary"
+                disabled={!!busy || refreshing || !writeEnabled}
+                onClick={() => void loadLatest()}
+              >
+                {refreshing ? "正在读取最新记录" : "读取最新记录并核对"}
+              </button>
+            )}
+            {resolved && (
+              <div className="info-banner">
+                <span>
+                  {resolved === "approved"
+                    ? "已应用：服务器已确认这批内容写入，列表将同步更新。"
+                    : resolved === "rejected"
+                      ? "已拒绝：服务器已确认该批次不会写入，列表将同步更新。"
+                      : "仍待审：服务已接收请求，但尚未应用内容，请返回列表核对后续处理。"}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+        {latestMemories.length > 0 && (
+          <section
+            ref={latestRegion}
+            tabIndex={-1}
+            className="detail-section"
+            aria-label="最新关联记录核对"
+          >
+            <h3>最新关联记录</h3>
+            <p className="field-note">
+              更正输入仍保留。请与下列最新内容核对，再明确批准整个批次。
+            </p>
+            {latestMemories.map((memory) => (
+              <div className="review-entity" key={memory.uri}>
+                <strong>
+                  {memory.name} · 版本 {memory.version}
+                </strong>
+                <p>{memory.description || "没有附加描述"}</p>
+              </div>
+            ))}
+          </section>
+        )}
         {review.entities.map((memory, index) => (
           <section className="review-entity" key={memory.uri || index}>
             <div className="review-entity-heading">
@@ -2503,13 +3329,13 @@ function ReviewDrawer({
                 <Badge>{typeLabels[memory.type]}</Badge>
                 <h3>{drafts[memory.uri]?.name ?? memory.name}</h3>
               </div>
-              {isPending && memory.uri && (
+              {isPending && memory.uri && !memory.readOnly && (
                 <button
                   className="icon-button review-edit-button"
                   onClick={() =>
                     setEditingUri(editingUri === memory.uri ? null : memory.uri)
                   }
-                  disabled={!!busy}
+                  disabled={!!busy || refreshing}
                   aria-label={`修改${memory.name}`}
                   title="更正名称与描述"
                 >
@@ -2530,12 +3356,14 @@ function ReviewDrawer({
                       setDraft(memory, "name", event.target.value)
                     }
                     maxLength={300}
+                    disabled={!!busy || refreshing}
                   />
                 </label>
                 <label className="field-label">
                   {memory.type === "decision" ? "决策内容" : "描述"}
                   <textarea
                     rows={3}
+                    disabled={!!busy || refreshing}
                     value={drafts[memory.uri]?.content ?? memory.description}
                     onChange={(event) =>
                       setDraft(memory, "content", event.target.value)
@@ -2556,12 +3384,14 @@ function ReviewDrawer({
                       });
                       setEditingUri(null);
                     }}
+                    disabled={!!busy || refreshing}
                   >
                     撤销更正
                   </button>
                   <button
                     className="button button-secondary"
                     onClick={() => setEditingUri(null)}
+                    disabled={!!busy || refreshing}
                   >
                     完成编辑
                   </button>
@@ -2574,7 +3404,7 @@ function ReviewDrawer({
                 </p>
               )
             )}
-            {drafts[memory.uri] && (
+            {!!changes[memory.uri] && (
               <div className="review-edit-label">
                 <PencilLine size={11} />
                 有人工更正 · 原引文将保留为来源背景
@@ -2623,7 +3453,6 @@ function ReviewDrawer({
             </div>
           </section>
         )}
-        {!!error && <ErrorBox error={error} compact />}
         {(rejecting || editedCount > 0) && (
           <label className="field-label reject-reason">
             {rejecting ? "拒绝原因" : "更正说明"}
@@ -2631,6 +3460,7 @@ function ReviewDrawer({
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               rows={3}
+              disabled={!!busy || refreshing || !!resolved}
               placeholder={
                 rejecting
                   ? "简要说明不应保存的原因"
@@ -2652,21 +3482,21 @@ function ReviewDrawer({
               <button
                 className="button button-quiet"
                 onClick={() => setRejecting(false)}
-                disabled={!!busy}
+                disabled={!!busy || refreshing}
               >
                 返回核对
               </button>
               <button
                 className="button button-danger"
                 onClick={() => void act("reject")}
-                disabled={!!busy}
+                disabled={!!busy || refreshing || !writeEnabled}
               >
                 {busy === "reject" ? (
                   <LoaderCircle size={15} className="spin" />
                 ) : (
                   <X size={15} />
                 )}
-                拒绝此批次
+                {busy === "reject" ? "正在拒绝" : "拒绝此批次"}
               </button>
             </>
           ) : (
@@ -2674,7 +3504,7 @@ function ReviewDrawer({
               <button
                 className="button button-quiet danger-text"
                 onClick={() => setRejecting(true)}
-                disabled={!!busy}
+                disabled={!!busy || refreshing || !writeEnabled}
               >
                 <X size={15} />
                 拒绝批次
@@ -2683,7 +3513,13 @@ function ReviewDrawer({
                 className="button button-primary"
                 onClick={() => void act("approve")}
                 disabled={
-                  !!busy || invalidDraft || (editedCount > 0 && !reason.trim())
+                  !!busy ||
+                  refreshing ||
+                  !writeEnabled ||
+                  readOnlyEntities ||
+                  conflict ||
+                  invalidDraft ||
+                  (editedCount > 0 && !reason.trim())
                 }
               >
                 {busy === "approve" ? (
@@ -2691,14 +3527,21 @@ function ReviewDrawer({
                 ) : (
                   <CheckCheck size={15} />
                 )}
-                {editedCount ? "保存更正并批准" : "批准此批次"}
+                {busy === "approve"
+                  ? "正在批准"
+                  : editedCount
+                    ? "保存更正并批准"
+                    : "批准此批次"}
               </button>
             </>
           )
         ) : (
           <>
-            <Badge tone={jobTone(review.status)}>
-              {jobLabels[review.status] ?? review.status}
+            <Badge tone={jobTone(resolved ?? review.status)}>
+              {resolved === "deferred"
+                ? "仍待审"
+                : (jobLabels[resolved ?? review.status] ??
+                  "状态未知 · 仅可查看")}
             </Badge>
             <button className="button button-secondary" onClick={close}>
               关闭
@@ -2706,7 +3549,7 @@ function ReviewDrawer({
           </>
         )}
       </div>
-    </Overlay>
+    </DetailSurface>
   );
 }
 
@@ -2783,6 +3626,7 @@ function AuthDialog({
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
                 type="password"
+                disabled={busy}
                 autoComplete="off"
                 spellCheck={false}
                 placeholder="粘贴服务提供的访问令牌"
@@ -2792,6 +3636,10 @@ function AuthDialog({
             </div>
           </label>
           {!!error && <ErrorBox error={error} compact />}
+          <PendingFeedback
+            active={busy}
+            message="仍在验证连接。你可以等待响应；若超时，请核对服务地址与令牌后重试。"
+          />
           <button
             className="button button-primary auth-submit"
             type="submit"

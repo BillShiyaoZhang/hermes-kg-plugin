@@ -67,7 +67,7 @@ and assistant suggestions from user decisions. Do not store credentials, transie
 errors, tool payloads or sync reports as personal memory.
 
 Supported entity types: Person, Event, Preference, Decision, Location, Concept.
-Canonical URI example: `urn:hermes:kg:person-bill`. Use stable slugs. Prefer the
+Canonical URI example: `urn:hermes:kg:person-legacy-owner`. Use stable slugs. Prefer the
 configured user URI for ownership. The shared writer normalizes accepted legacy
 URI/relation aliases, validates property types and rejects unsupported types.
 Event time must be an actual ISO date/time with appropriate timezone; never

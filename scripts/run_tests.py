@@ -34,10 +34,13 @@ def candidate_cores() -> list[Path]:
         candidates.append(Path(env).expanduser())
     candidates.append(CORE_LINK)
     candidates.append(REPO_ROOT.parent / "hermes-agent")
+    candidates.extend(Path(sys.executable).resolve().parents)
     local = os.environ.get("LOCALAPPDATA")
     if local:
         candidates.append(Path(local) / "hermes" / "hermes-agent")
     home = Path.home()
+    if os.name == "nt":
+        candidates.append(home / "AppData" / "Local" / "hermes" / "hermes-agent")
     candidates.append(home / ".hermes" / "hermes-agent")
     candidates.append(home / "Developer" / "hermes-agent")
     return candidates

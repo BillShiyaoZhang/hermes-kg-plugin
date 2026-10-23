@@ -62,6 +62,12 @@ class Neo4jHybridContractTests(unittest.TestCase):
         dated = self.search.search("memory evidence", filters={"type": "Event", "from": "2026-10-21", "to": "2026-10-22", "namespace": self.prefix})
         self.assertEqual([r["uri"] for r in dated["kg_results"]], [self.prefix + "event-meeting"])
 
+    def test_type_filter_keeps_exact_person_context_for_graph_events_with_a_cold_model(self):
+        result = HybridSearch(self.store).search('Mindy', filters={'namespace': self.prefix, 'type': 'Event'})
+        self.assertEqual([row['uri'] for row in result['kg_results']], [self.prefix + 'event-meeting'])
+        self.assertEqual(result['kg_results'][0]['channels'], ['graph'])
+        self.assertEqual(result['mode'], 'keyword')
+
     def test_archive_after_index_cannot_leak_via_any_channel(self):
         uri = self.prefix + "person-alice"
         with self.store.driver.session(database=self.config.database) as session:
@@ -77,6 +83,44 @@ class Neo4jHybridContractTests(unittest.TestCase):
         result = self.search.search(uri, filters={"namespace": self.prefix})
         self.assertEqual(result["kg_results"][0]["uri"], uri)
         self.assertIn("vector", result["kg_results"][0]["channels"])
+
+    def test_shared_profiles_cannot_starve_owned_indexing_or_filtered_candidates(self):
+        foreign = 'urn:aa' + uuid.uuid4().hex + ':kg:'
+        try:
+            with self.store.driver.session(database=self.config.database) as session:
+                session.run("""UNWIND range(0,129) AS ordinal
+                    CREATE (n:KGEntity:Person {uri:$foreign+'person-'+toString(ordinal),
+                        foaf_name:'memory evidence',hermes_description:'memory evidence',shared:true})
+                    CREATE (:KGSearchChunk {id:$foreign+toString(ordinal),namespace:$foreign,
+                        source_uri:n.uri,source_revision:0,source_updated_at:'',
+                        model_revision:'another-profile-model',embedding_revision:'other-revision',
+                        embedding_state:'ready',text:'memory evidence',embedding:$vector})""",
+                    {'foreign': foreign, 'vector': [1.0] + [0.0] * 383}).consume()
+                session.run('MATCH (c:KGSearchChunk {namespace:$prefix}) DELETE c',
+                            {'prefix': self.prefix}).consume()
+            # Even a one-entity batch must start with owned memories; a large
+            # shared profile cannot consume the entire indexing allowance.
+            self.assertEqual(self.search.index_pending(limit=1)['indexed'], 1)
+            with self.store.driver.session(database=self.config.database) as session:
+                row = session.run("""MATCH (c:KGSearchChunk {namespace:$prefix})
+                    RETURN count(c) AS total,
+                        sum(CASE WHEN c.source_uri STARTS WITH $prefix THEN 1 ELSE 0 END) AS owned""",
+                    {'prefix': self.prefix}).single()
+                self.assertEqual((row['total'], row['owned']), (1, 1))
+            self.search.index_pending(limit=1000)
+            result = self.search.search('memory evidence', filters={
+                'namespace': self.prefix, 'type': 'Event', 'from': '2026-10-21', 'to': '2026-10-22'})
+            self.assertEqual([row['uri'] for row in result['kg_results']], [self.prefix + 'event-meeting'])
+            self.assertIn('keyword', result['kg_results'][0]['channels'])
+            self.assertIn('vector', result['kg_results'][0]['channels'])
+            # Omitting a namespace still applies the requested type before the
+            # many shared Person hits can fill the candidate shortlist.
+            typed = self.search.search('memory evidence', filters={'type': 'Event'})
+            self.assertIn(self.prefix + 'event-meeting', [row['uri'] for row in typed['kg_results']])
+        finally:
+            with self.store.driver.session(database=self.config.database) as session:
+                session.run('MATCH (n) WHERE n.uri STARTS WITH $foreign OR n.namespace=$foreign DETACH DELETE n',
+                            {'foreign': foreign}).consume()
 
     def test_revision_update_prevents_old_chunk_and_allows_new_lexical_content(self):
         uri = self.prefix + "person-alice"

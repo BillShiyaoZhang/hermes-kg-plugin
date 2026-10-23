@@ -1,0 +1,239 @@
+.graph-canvas {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line, #dce3dc);
+  border-radius: 16px;
+  background: #fcfdfb;
+}
+.graph-canvas-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 10px 14px;
+  background: #fff;
+  border-bottom: 1px solid var(--line, #dce3dc);
+}
+.graph-canvas-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.graph-canvas-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #315c45;
+  cursor: pointer;
+}
+.graph-canvas-controls button:hover {
+  background: #eef3ed;
+  border-color: #c5d2c6;
+}
+.graph-canvas-controls button:disabled {
+  color: #66736b;
+  opacity: 0.6;
+  cursor: default;
+}
+.graph-canvas-controls output {
+  min-width: 45px;
+  font-size: 0.8125rem;
+  color: #415448;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.graph-canvas-surface {
+  position: relative;
+  height: 580px;
+  min-width: 0;
+}
+.graph-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+.graph-canvas-surface.is-dragging .graph-svg {
+  cursor: grabbing;
+}
+.graph-node,
+.graph-edge {
+  cursor: pointer;
+  outline: none;
+}
+.graph-node-halo {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 3px;
+}
+.graph-node-shape {
+  fill: var(--graph-fill);
+  stroke: var(--graph-stroke);
+  stroke-width: 2px;
+}
+.graph-node-candidate .graph-node-shape {
+  stroke-dasharray: 5 3;
+  fill: #fffdf8;
+}
+.graph-node-review .graph-node-shape {
+  stroke-dasharray: 2 2;
+}
+.graph-node-icon {
+  color: var(--graph-ink);
+  pointer-events: none;
+}
+.graph-node-label {
+  fill: #22332b;
+  font-size: 13px;
+  font-weight: 650;
+  pointer-events: none;
+}
+.graph-node-layer {
+  fill: #58675f;
+  font-size: 11px;
+  pointer-events: none;
+}
+.graph-node-schema .graph-node-label {
+  fill: var(--graph-ink);
+  font-size: 12px;
+}
+.graph-canvas.is-focused .graph-node-label {
+  font-size: 14px;
+}
+.graph-canvas.is-focused .graph-node-layer {
+  font-size: 12px;
+}
+.graph-node-focus-icon {
+  color: #315c45;
+  fill: #fff;
+}
+.graph-node:hover .graph-node-halo {
+  fill: #e6eee5;
+}
+.graph-node.is-selected .graph-node-halo,
+.graph-node.is-focused .graph-node-halo {
+  fill: #e3eedf;
+  stroke: #5f7e5c;
+}
+.graph-node:focus-visible .graph-node-halo {
+  stroke: #223f2d;
+  stroke-width: 4px;
+  stroke-dasharray: 4 2;
+}
+.graph-edge-line {
+  fill: none;
+  stroke: #82958b;
+  stroke-width: 1.5px;
+}
+.graph-edge-definition .graph-edge-line {
+  stroke: #738197;
+  stroke-dasharray: 7 5;
+}
+.graph-edge-instance .graph-edge-line {
+  stroke: #7c8f82;
+  stroke-width: 1px;
+  stroke-dasharray: 2 5;
+}
+.graph-edge-candidate .graph-edge-line,
+.graph-edge-review .graph-edge-line {
+  stroke: #987343;
+  stroke-dasharray: 5 4;
+}
+.graph-edge.is-highlighted .graph-edge-line {
+  stroke: #315c45;
+  stroke-width: 2.5px;
+}
+.graph-edge.is-selected .graph-edge-line,
+.graph-edge:focus-visible .graph-edge-line {
+  stroke: #223f2d;
+  stroke-width: 4px;
+}
+.graph-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18px;
+}
+.graph-edge:hover .graph-edge-line {
+  stroke: #315c45;
+  stroke-width: 3px;
+}
+.graph-edge-label {
+  fill: #415448;
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: #fcfdfb;
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.graph-canvas-help {
+  margin: 0;
+  padding: 12px 16px;
+  color: #415448;
+  background: #f2f5ef;
+  font-size: 0.8125rem;
+  border-bottom: 1px solid #dce3dc;
+}
+.graph-canvas-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  color: #58675f;
+  text-align: center;
+}
+.graph-canvas-empty p {
+  max-width: 32em;
+}
+@media (max-width: 600px) {
+  .graph-canvas-surface {
+    height: 440px;
+  }
+  .graph-canvas-toolbar {
+    padding: 8px;
+  }
+  .graph-canvas-controls {
+    gap: 0;
+  }
+  .graph-canvas-controls output {
+    min-width: 38px;
+  }
+}
+@media (forced-colors: active) {
+  .graph-node-shape {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+  .graph-node-label,
+  .graph-node-layer,
+  .graph-edge-label {
+    fill: CanvasText;
+  }
+  .graph-node-icon {
+    color: CanvasText;
+  }
+  .graph-node.is-selected .graph-node-halo,
+  .graph-node:focus-visible .graph-node-halo {
+    fill: Canvas;
+    stroke: Highlight;
+  }
+  .graph-edge-line {
+    stroke: CanvasText;
+  }
+  .graph-edge.is-selected .graph-edge-line {
+    stroke: Highlight;
+  }
+}

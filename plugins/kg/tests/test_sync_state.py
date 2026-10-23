@@ -260,7 +260,7 @@ class SyncBehaviorTests(unittest.TestCase):
             rc=analyzer.main(["human","--home",str(self.home)])
         self.assertEqual(rc,0)
         self.assertIn(snapshot["snapshot_id"],stream.getvalue())
-        self.assertIn("urn:hermes:kg:person-bill",stream.getvalue())
+        self.assertIn("urn:hermes:kg:person-self",stream.getvalue())
 
     def test_analyzer_default_projects_human_evidence_but_json_stays_raw(self):
         from kg.provenance import COMPACTION_PREFIX

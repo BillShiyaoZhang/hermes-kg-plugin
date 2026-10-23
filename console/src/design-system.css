@@ -1,0 +1,1166 @@
+/* Shared workspace foundations. Keep host-specific settings out of presentation. */
+:root {
+  --paper: #fff;
+  --ink: #22332b;
+  --muted: #58675f;
+  --green: #315c45;
+  --line: #dce3dc;
+  --soft: #f2f5ef;
+  --amber: #785a20;
+  --danger: #963f38;
+  --control-border: #7c8b80;
+  --success-ink: #315c45;
+  --warning-ink: #785a20;
+  --danger-ink: #963f38;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  color: var(--ink);
+  background: #f7f8f5;
+}
+
+body {
+  background: #f7f8f5;
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+.app-shell {
+  min-width: 0;
+}
+.main-shell,
+.main-content {
+  min-width: 0;
+}
+.main-content {
+  max-width: 1600px;
+  width: 100%;
+  margin-inline: auto;
+}
+.main-content:focus {
+  outline: none;
+}
+.skip-link {
+  position: fixed;
+  left: 16px;
+  top: -80px;
+  z-index: 200;
+  padding: 12px 20px;
+  border-radius: var(--radius-sm);
+  color: white;
+  background: var(--green);
+}
+.skip-link:focus {
+  top: 12px;
+}
+.app-shell :is(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 2px var(--paper);
+}
+.app-shell .button {
+  min-height: 44px;
+  font-size: 0.875rem;
+  border-radius: var(--radius-sm);
+}
+.app-shell .button-primary {
+  background: var(--green);
+  color: #fff;
+}
+.app-shell .button-secondary {
+  color: var(--green);
+  border-color: #c4d2c7;
+  background: #fff;
+}
+.app-shell .icon-button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.app-shell :is(input, select, textarea) {
+  font-size: 0.875rem;
+}
+.app-shell input:not([type="checkbox"]):not([type="radio"]),
+.app-shell select {
+  min-height: 44px;
+}
+.app-shell input::placeholder,
+.app-shell textarea::placeholder {
+  color: #66736b;
+  opacity: 1;
+}
+.app-shell .sidebar {
+  background: #eef2eb;
+  border-color: var(--line);
+}
+.app-shell .nav-item {
+  min-height: 46px;
+  font-size: 0.875rem;
+  color: #4b5b50;
+  border-radius: var(--radius-sm);
+}
+.app-shell .nav-item.active {
+  background: #dde8dc;
+  color: #214d35;
+  font-weight: 600;
+}
+.app-shell .nav-item:hover {
+  background: #e3ebe0;
+}
+.app-shell .nav-item:focus-visible {
+  outline-offset: -3px;
+}
+.app-shell .nav-label,
+.app-shell .nav-group-label {
+  padding: 14px 12px 8px;
+  color: #596b5b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.app-shell .nav-group-label {
+  margin-top: 16px;
+}
+.app-shell .brand strong {
+  font-size: 1.25rem;
+  color: #24442f;
+  letter-spacing: -0.04em;
+}
+.app-shell .brand strong span {
+  color: #52684f;
+}
+.app-shell .brand small {
+  font-size: 0.75rem;
+  color: #53654f;
+}
+.app-shell .workspace-label {
+  border-color: #d4dfd0;
+}
+.app-shell .workspace-label strong {
+  font-size: 0.8125rem;
+  color: var(--ink);
+}
+.app-shell .workspace-label span {
+  color: #52634f;
+}
+.app-shell .workspace-label > div > span {
+  font-size: 0.625rem;
+  letter-spacing: 0.035em;
+}
+.app-shell .sidebar-note p,
+.app-shell .sidebar-note > span,
+.app-shell .sidebar-bottom {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.app-shell .sidebar-note strong {
+  color: #3d563f;
+  font-size: 0.8125rem;
+}
+.app-shell .breadcrumbs {
+  font-size: 0.8125rem;
+  color: #5a675d;
+}
+.app-shell .breadcrumbs strong {
+  color: var(--ink);
+}
+.app-shell .topbar {
+  border-color: var(--line);
+  background: #f7f8f5;
+}
+.app-shell .session-label {
+  font-size: 0.75rem;
+  color: #58675f;
+}
+.app-shell .alpha-pill {
+  font-size: 0.625rem;
+  color: #59674e;
+}
+.app-shell .avatar-button {
+  width: 44px;
+  height: 44px;
+  color: var(--ink);
+}
+.app-shell .page-header h1 {
+  font-size: clamp(1.6875rem, 2.4vw, 2.25rem);
+  color: var(--ink);
+  letter-spacing: -0.035em;
+}
+.app-shell .page-header p {
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.8;
+}
+.app-shell .eyebrow,
+.app-shell .section-eyebrow {
+  font-size: 0.6875rem;
+  color: #536a51;
+  letter-spacing: 0.12em;
+}
+.app-shell .metric-card {
+  border-color: var(--line);
+  border-radius: var(--radius-md);
+}
+.app-shell .metric-top,
+.app-shell .metric-caption {
+  font-size: 0.75rem;
+  color: #56664f;
+}
+.app-shell .metric-value {
+  color: var(--ink);
+}
+.app-shell .memory-row h3 {
+  font-size: 1rem;
+  color: #294732;
+}
+.app-shell .library-toolbar {
+  flex-wrap: wrap;
+}
+.app-shell .type-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.app-shell .lifecycle-select {
+  margin-left: auto;
+}
+.app-shell .search-submit {
+  min-height: 44px;
+  font-size: 0.8125rem;
+  padding: 8px 12px;
+}
+.app-shell .search-form input::placeholder {
+  font-size: 0.875rem;
+}
+.app-shell .memory-row p,
+.app-shell .card-description,
+.app-shell .review-card-content > p,
+.app-shell .review-entity-description,
+.app-shell .sync-main p,
+.app-shell .review-intro p,
+.app-shell .modal-subtitle,
+.app-shell .privacy-note p,
+.app-shell .backfill-description {
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.8;
+}
+.app-shell
+  :is(
+    .type-tabs button,
+    .lifecycle-select select,
+    .list-caption,
+    .memory-row-meta,
+    .memory-row-end,
+    .subtle-note,
+    .section-heading > span,
+    .review-card-meta,
+    .review-card-meta .mono,
+    .settings-dl > div,
+    .settings-dl .mono,
+    .diagnostic-fields > div,
+    .code-details summary,
+    .detail-meta,
+    .detail-facts > div,
+    .evidence-heading,
+    .evidence-footer,
+    .revision-list time,
+    .revision-list p,
+    .section-empty,
+    .drawer-actions > span,
+    .review-checklist p,
+    .review-date,
+    .relation-list > div,
+    .field-note,
+    .auth-hint,
+    .search-options,
+    .search-options > span,
+    .search-options small,
+    .backfill-sessions strong,
+    .session-source,
+    .session-message-count,
+    .backfill-actions > span,
+    .index-note,
+    .index-states > div,
+    .index-states small
+  ) {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.app-shell :is(.type-tabs button, .lifecycle-select select) {
+  min-height: 44px;
+}
+.app-shell .field-label {
+  font-size: 0.8125rem;
+  color: #3f5a41;
+}
+.app-shell .memory-description,
+.app-shell .evidence-card blockquote {
+  font-size: 0.9375rem;
+  color: #334c39;
+  line-height: 1.9;
+}
+.app-shell .section-heading h2 {
+  font-size: 1rem;
+  color: var(--ink);
+}
+.app-shell .section-heading h2 > span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.app-shell .detail-section h3 {
+  font-size: 0.875rem;
+  color: var(--ink);
+}
+.app-shell :is(.error-box, .error-box p, .error-box strong) {
+  font-size: 0.8125rem;
+  color: #873e37;
+}
+.app-shell .error-box {
+  background: #fff4f1;
+  border-color: #eccbc4;
+}
+.app-shell .empty-state h3 {
+  font-size: 1.125rem;
+  color: var(--ink);
+}
+.app-shell .empty-state p {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.app-shell .loading-state {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.app-shell .page-footer {
+  font-size: 0.75rem;
+  color: #5c685d;
+  border-color: var(--line);
+}
+.app-shell .pagination,
+.app-shell .pagination > span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.app-shell .page-footer > span:first-child {
+  font-size: 0.75rem;
+}
+.app-shell .demo-banner {
+  color: #70551b;
+  border-color: #dfc88f;
+  background: #fff5d9;
+}
+.app-shell .demo-banner strong {
+  font-size: 0.8125rem;
+}
+.app-shell .demo-banner div span {
+  opacity: 1;
+  color: inherit;
+  font-size: 0.75rem;
+}
+.app-shell .demo-tag {
+  font-size: 0.625rem;
+  color: #70551b;
+}
+.app-shell .badge {
+  font-size: 0.6875rem;
+}
+
+@media (max-width: 900px) and (min-width: 651px) {
+  .app-shell .sidebar {
+    width: 200px;
+    padding-inline: 12px;
+  }
+  .app-shell .main-shell {
+    margin-left: 200px;
+    width: calc(100% - 200px);
+  }
+  .app-shell .brand {
+    gap: 8px;
+  }
+  .app-shell .brand strong {
+    font-size: 1.125rem;
+  }
+  .app-shell .brand strong span {
+    display: block;
+    margin-left: 0;
+  }
+  .app-shell .main-content {
+    padding-inline: 24px;
+  }
+}
+
+@media (max-width: 650px) {
+  .app-shell .type-tabs {
+    flex: 1 1 100%;
+  }
+  .app-shell .search-form kbd {
+    display: none;
+  }
+  .app-shell .sidebar {
+    padding: 18px 16px 10px;
+  }
+  .app-shell .sidebar .brand strong {
+    font-size: 1.125rem;
+  }
+  .app-shell .sidebar .brand small {
+    font-size: 0.75rem;
+  }
+  .app-shell .sidebar nav {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    overflow-x: auto;
+    gap: 4px;
+    margin-top: 16px;
+    padding: 4px 1px 6px;
+    scrollbar-width: thin;
+  }
+  .app-shell .nav-item {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 0.8125rem;
+  }
+  .app-shell .nav-item > svg {
+    height: 17px;
+    width: 17px;
+  }
+  .app-shell .nav-group-label {
+    display: none;
+  }
+  .app-shell .nav-count {
+    height: 19px;
+    min-width: 19px;
+    font-size: 0.6875rem;
+  }
+  .app-shell .topbar {
+    padding-inline: 18px;
+    min-height: 52px;
+  }
+  .app-shell .topbar-right .alpha-pill {
+    display: none;
+  }
+  .app-shell .main-content {
+    padding: 24px 16px 32px;
+  }
+  .app-shell .page-header {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .app-shell .page-header p {
+    max-width: 100%;
+  }
+  .app-shell .page-actions {
+    padding-top: 0;
+    flex-wrap: wrap;
+  }
+  .app-shell .metric-grid {
+    gap: 12px;
+  }
+  .app-shell .metric-card {
+    padding: 16px 12px;
+  }
+  .app-shell .metric-value {
+    font-size: 1.75rem;
+  }
+  .app-shell .memory-row h3 {
+    font-size: 0.9375rem;
+  }
+  .app-shell .type-tabs {
+    overflow-x: auto;
+  }
+  .app-shell .type-tabs button {
+    padding-inline: 10px;
+    white-space: nowrap;
+  }
+  .app-shell .list-caption {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .app-shell .drawer-header h2 {
+    font-size: 1.5rem;
+  }
+  .app-shell .detail-facts {
+    gap: 12px;
+  }
+  .app-shell .sync-main h2,
+  .app-shell .review-card-top h3 {
+    font-size: 1.0625rem;
+  }
+  .app-shell .review-card-meta {
+    flex-wrap: wrap;
+  }
+  .app-shell .page-footer {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding-inline: 16px;
+  }
+}
+
+@media (pointer: coarse) {
+  .app-shell :is(.icon-button, .avatar-button) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* P0 readability and operability apply to every workspace screen. Decorative
+   separators keep --line; controls use the stronger boundary token. */
+.app-shell
+  :is(
+    .button-secondary,
+    .ontology-button,
+    .ontology-icon-button,
+    .ontology-type-card,
+    .ontology-filter-select select,
+    .ontology-search-field > div,
+    .search-form,
+    .field-label > input,
+    .field-label > textarea,
+    .token-input
+  ) {
+  border-color: var(--control-border);
+}
+.app-shell .ontology-type-card.is-selected {
+  border-color: var(--green);
+}
+.app-shell :is(.field-label > input, .field-label > textarea, .token-input) {
+  color: var(--ink);
+}
+.app-shell .auth-submit {
+  color: #fff;
+  background: var(--green);
+  border-color: var(--green);
+}
+.app-shell .type-tabs button[aria-pressed="true"],
+.app-shell .ontology-tabs button[aria-selected="true"],
+.app-shell .ontology-data-kind button[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px var(--green);
+  color: var(--green);
+}
+.app-shell .ontology-search-field .ontology-icon-button {
+  min-height: 44px;
+  height: auto;
+}
+.app-shell :is(input, textarea, select):focus {
+  border-color: var(--green) !important;
+}
+.app-shell
+  .ontology-page
+  :is(
+    .ontology-hero,
+    .ontology-statistics,
+    .ontology-property > summary,
+    .ontology-property-flags,
+    .ontology-type-metadata,
+    .ontology-pagination > div
+  ) {
+  flex-wrap: wrap;
+}
+.app-shell
+  .ontology-page
+  :is(
+    .ontology-type-card,
+    .ontology-statistics,
+    .ontology-technical,
+    .ontology-property summary,
+    .ontology-type-metadata
+  ) {
+  overflow-wrap: anywhere;
+}
+.app-shell .ontology-page .ontology-property-flags {
+  flex-shrink: 1;
+}
+.app-shell .ontology-page .ontology-tabs button {
+  white-space: normal;
+}
+.app-shell .ontology-page .ontology-message > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.app-shell .button-quiet,
+.app-shell .icon-button,
+.app-shell .search-submit,
+.app-shell .search-form > svg,
+.app-shell .lifecycle-select,
+.app-shell .metric-value small,
+.app-shell .metric-value > svg,
+.app-shell .metric-top > svg,
+.app-shell .list-caption em,
+.app-shell .text-muted {
+  color: var(--muted);
+}
+.app-shell .search-form kbd {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.app-shell :is(.badge-neutral, .badge-green, .badge-amber, .badge-danger) {
+  font-size: 0.75rem;
+  white-space: normal;
+}
+.app-shell .badge-neutral {
+  color: var(--muted);
+  background: #f0f3e9;
+}
+.app-shell .badge-green {
+  color: var(--success-ink);
+  background: #edf4e8;
+}
+.app-shell .badge-amber {
+  color: var(--warning-ink);
+  background: #f8f0e0;
+}
+.app-shell .badge-danger {
+  color: var(--danger-ink);
+  background: #f7ece8;
+}
+.app-shell :is(.type-person, .type-icon) {
+  color: #49613d;
+}
+.app-shell .type-event {
+  color: #796037;
+}
+.app-shell .type-decision {
+  color: #66507e;
+}
+.app-shell .type-preference {
+  color: #805265;
+}
+.app-shell .type-location {
+  color: #38685a;
+}
+.app-shell
+  :is(
+    .review-intro strong,
+    .review-card-top h3,
+    .sync-main h2,
+    .sync-stats strong,
+    .card-title h2,
+    .privacy-note h3,
+    .detail-title h2,
+    .review-entity-heading h3,
+    .modal-overlay h2,
+    .related-memory strong
+  ) {
+  color: var(--ink);
+}
+.app-shell
+  :is(
+    .review-preview > span,
+    .review-open,
+    .sync-stats > div > span,
+    .sync-stats strong small,
+    .job-table-head,
+    .job-row > div > strong,
+    .job-row > div > .mono,
+    .job-row > span:not(.badge),
+    .job-icon,
+    .settings-dl dt,
+    .settings-dl dd,
+    .diagnostic-fields > div > span,
+    .diagnostic-fields strong,
+    .settings-unconnected,
+    .privacy-note,
+    .drawer-top,
+    .detail-section h3,
+    .detail-section h3 > span,
+    .detail-facts dt,
+    .detail-facts dd,
+    .evidence-heading time,
+    .evidence-disclaimer,
+    .no-evidence,
+    .revision-list strong,
+    .detail-uri > span,
+    .detail-uri code,
+    .inline-loading,
+    .entity-index,
+    .review-relations > div,
+    .review-relations span,
+    .review-date,
+    .auth-heading small,
+    .auth-hint,
+    .search-options label,
+    .backfill-panel > summary > span,
+    .backfill-sessions code,
+    .backfill-loading,
+    .backfill-empty,
+    .related-memory > div > span,
+    .related-memory time,
+    .related-memory > svg,
+    .code-details summary,
+    .revision-details > summary,
+    .review-edit-label
+  ) {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.app-shell
+  :is(
+    .code-details pre,
+    .no-evidence p,
+    .user-edit-note,
+    .user-edit-note > span,
+    .index-states code,
+    .related-memory time,
+    .review-relations code,
+    .related-memory > div > span
+  ) {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.app-shell
+  :is(
+    .sync-stats .sync-time,
+    .card-title h2,
+    .privacy-note h3,
+    .review-entity-heading h3,
+    .review-card-top h3,
+    .job-row > div > strong,
+    .revision-list strong,
+    .related-memory strong
+  ) {
+  font-size: 0.875rem;
+}
+.app-shell
+  :is(
+    .connection-banner,
+    .connection-banner strong,
+    .connection-banner div span,
+    .intro-icon,
+    .sync-orb
+  ) {
+  color: var(--success-ink);
+}
+.app-shell
+  :is(
+    .error-banner,
+    .error-banner strong,
+    .error-banner div span,
+    .job-error,
+    .danger-text,
+    .backfill-error
+  ) {
+  color: var(--danger-ink);
+}
+.app-shell
+  :is(
+    .info-banner,
+    .info-banner > button,
+    .archived-banner,
+    .sync-orb.paused,
+    .review-edit-label
+  ) {
+  color: var(--warning-ink);
+}
+.app-shell
+  :is(
+    .connection-banner strong,
+    .info-banner,
+    .backfill-empty,
+    .backfill-loading,
+    .backfill-feedback,
+    .backfill-error,
+    .archived-banner,
+    .job-error,
+    .settings-unconnected
+  ) {
+  font-size: 0.875rem;
+}
+.app-shell .connection-banner div span {
+  font-size: 0.75rem;
+}
+.app-shell .revision-diff del {
+  color: #78543c;
+  background: #faf0e8;
+}
+.app-shell .revision-diff ins {
+  color: var(--success-ink);
+  background: #edf4e8;
+}
+.app-shell :is(.revision-baseline, .revision-no-change) {
+  color: var(--muted) !important;
+}
+.app-shell .toast {
+  color: var(--success-ink);
+  font-size: 0.875rem;
+}
+.app-shell .toast-error {
+  color: var(--danger-ink);
+}
+.app-shell .toast > button {
+  color: inherit;
+}
+.app-shell
+  :is(
+    .icon-button,
+    .avatar-button,
+    .sidebar-bottom button,
+    .toast > button,
+    .review-open,
+    .code-details summary,
+    .revision-details > summary
+  ) {
+  min-width: 44px;
+  min-height: 44px;
+}
+.app-shell :is(.code-details summary, .revision-details > summary) {
+  display: flex;
+  align-items: center;
+}
+.app-shell :is(button, summary, input, select, textarea, [tabindex]) {
+  scroll-margin-block: 24px;
+}
+.app-shell :is(.button, .search-submit) {
+  white-space: normal;
+}
+.app-shell
+  :is(
+    .memory-row-title,
+    .review-card-top,
+    .drawer-actions,
+    .modal-actions,
+    .evidence-heading,
+    .evidence-footer,
+    .backfill-actions,
+    .backfill-actions > div,
+    .settings-actions,
+    .page-actions,
+    .index-states > div,
+    .detail-section h3
+  ) {
+  flex-wrap: wrap;
+}
+.app-shell
+  :is(
+    .memory-row h3,
+    .review-card-top h3,
+    .page-header h1,
+    .memory-description,
+    .review-entity-description,
+    .evidence-card,
+    .evidence-heading,
+    .evidence-footer,
+    .revision-list,
+    .detail-facts dd,
+    .settings-dl dd,
+    .diagnostic-fields strong,
+    .toast span,
+    .backfill-error p,
+    .backfill-feedback,
+    .job-error,
+    .job-row > div,
+    .review-relations,
+    .section-empty,
+    .subtle-note
+  ) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.app-shell :is(.detail-facts dt, .settings-dl dt) {
+  flex-shrink: 0;
+}
+.app-shell .settings-dl dd {
+  max-width: none;
+}
+.app-shell .brand strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.app-shell .sidebar {
+  overflow-y: auto;
+}
+.app-shell .sidebar nav {
+  flex-shrink: 0;
+}
+.app-shell .sidebar-note {
+  padding-top: 32px;
+}
+.app-shell .topbar {
+  height: auto;
+  min-height: 75px;
+  padding-block: 12px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.app-shell .breadcrumbs {
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.app-shell .settings-card {
+  min-width: 0;
+}
+.app-shell .card-title {
+  flex-wrap: wrap;
+}
+.app-shell .topbar-right {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.app-shell .drawer-top {
+  height: auto;
+  padding-block: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.app-shell .drawer-overlay > .overlay-panel {
+  height: 100dvh;
+}
+.app-shell .drawer-scroll {
+  min-height: 0;
+}
+.app-shell .modal-overlay > .overlay-panel {
+  max-height: calc(100dvh - 40px);
+}
+.app-shell .drawer-actions {
+  flex-shrink: 0;
+}
+.app-shell .backfill-session-group {
+  min-width: 0;
+  margin: 20px 0 0;
+  padding: 0;
+  border: 0;
+}
+.app-shell .backfill-session-group legend {
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.app-shell .backfill-sessions {
+  margin-top: 8px;
+}
+.app-shell .backfill-sessions > label {
+  min-height: 64px;
+}
+.app-shell .backfill-sessions input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.app-shell .backfill-sessions code {
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
+.app-shell .backfill-feedback {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  color: var(--ink);
+  border-radius: var(--radius-sm);
+}
+.app-shell .backfill-actions {
+  align-items: flex-start;
+}
+.app-shell .backfill-actions > div {
+  justify-content: flex-end;
+}
+.app-shell .backfill-actions .button {
+  font-size: 0.875rem;
+}
+.app-shell .search-options label {
+  min-height: 44px;
+}
+.app-shell input[type="checkbox"],
+.app-shell input[type="radio"] {
+  accent-color: var(--green);
+}
+
+@media (max-width: 650px) {
+  .app-shell .topbar {
+    min-height: 52px;
+  }
+  .app-shell .topbar .session-label {
+    display: none;
+  }
+  .app-shell .nav-item > svg {
+    display: block;
+  }
+  .app-shell .metric-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-shell .metric-card {
+    padding: 16px;
+  }
+  .app-shell .metric-value {
+    margin-block: 10px;
+  }
+  .app-shell .metric-value.metric-text {
+    font-size: 1.25rem;
+  }
+  .app-shell .memory-row-title {
+    gap: 6px;
+  }
+  .app-shell .memory-row-end {
+    white-space: normal;
+  }
+  .app-shell .pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .app-shell .pagination > span {
+    flex-basis: 100%;
+    text-align: center;
+  }
+  .app-shell .pagination > div {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .app-shell .section-heading {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .app-shell .section-heading > span {
+    max-width: none;
+    text-align: left;
+  }
+  .app-shell .sync-main {
+    flex-wrap: wrap;
+  }
+  .app-shell .sync-main > .button {
+    margin-left: 0;
+  }
+  .app-shell .sync-stats {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .app-shell .sync-stats > div {
+    border-right: 0;
+    padding: 0;
+  }
+  .app-shell .sync-stats strong {
+    margin-top: 4px;
+  }
+  .app-shell .settings-dl > div,
+  .app-shell .detail-facts > div {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .app-shell .drawer-top,
+  .app-shell .drawer-scroll,
+  .app-shell .drawer-actions {
+    padding-inline: 16px;
+  }
+  .app-shell .modal-overlay {
+    padding: 12px;
+  }
+  .app-shell .modal-overlay > .overlay-panel {
+    max-height: calc(100dvh - 24px);
+  }
+  .app-shell .modal-overlay form {
+    padding: 20px;
+  }
+  .app-shell .modal-actions {
+    margin: 22px -20px -20px;
+    padding: 16px 20px;
+  }
+  .app-shell .backfill-panel > summary {
+    flex-wrap: wrap;
+    padding: 16px;
+  }
+  .app-shell .backfill-body {
+    padding: 16px;
+  }
+  .app-shell .backfill-sessions > label {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 0;
+  }
+  .app-shell .backfill-sessions > label > span:first-of-type {
+    flex-basis: calc(100% - 65px);
+  }
+  .app-shell .session-source {
+    display: inline;
+    margin-left: 52px;
+  }
+  .app-shell .session-message-count {
+    min-width: 0;
+    text-align: left;
+  }
+  .app-shell .backfill-actions > div {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .app-shell .backfill-actions .button {
+    flex: 1 1 100%;
+  }
+  .app-shell .toast {
+    width: calc(100% - 24px);
+    max-width: 440px;
+    gap: 8px;
+  }
+  .app-shell .toast > button {
+    margin-left: auto;
+  }
+}
+
+@media (forced-colors: active) {
+  .app-shell :is(button, input, select, textarea, summary) {
+    forced-color-adjust: auto;
+  }
+  .app-shell
+    :is(
+      .button,
+      .icon-button,
+      .avatar-button,
+      .search-form,
+      .ontology-search-field > div,
+      .ontology-type-card
+    ) {
+    border: 1px solid ButtonText;
+  }
+  .app-shell
+    :is(
+      .nav-item.active,
+      [aria-pressed="true"],
+      [aria-selected="true"],
+      .ontology-type-card.is-selected
+    ) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .app-shell
+    :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 3px solid Highlight;
+    box-shadow: none;
+  }
+  .app-shell .connection-dot {
+    border: 1px solid CanvasText;
+  }
+  .app-shell .ontology-graph-node rect {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+  .app-shell .ontology-graph-node.is-selected rect {
+    stroke: Highlight;
+  }
+  .app-shell :is(.ontology-graph-edge, .ontology-graph-universal) {
+    color: CanvasText;
+  }
+  .app-shell .ontology-diagram text {
+    fill: CanvasText;
+  }
+  .app-shell .ontology-graph-edge > rect {
+    fill: Canvas;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *,
+  .app-shell *::before,
+  .app-shell *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -7,6 +7,32 @@ semantic search, source evidence, revision history, protected corrections,
 archive/restore, review batches and portable backups. The existing Hermes plugin
 and tool names remain compatible.
 
+The **知识图谱 / Knowledge Graph** workspace combines ontology, saved knowledge
+and review proposals in one interactive graph with type colors, layer and type
+visibility controls, global keyword search, focus, zoom and an equivalent node
+and relationship list. Types, saved facts and candidates retain distinct
+identities; selecting a node or edge uses one shared inspector for definitions,
+evidence, attributes, history and the existing protected review/edit flows.
+The “语义与停用” view preserves semantic lookup, archive/restore and permitted
+shared read-only details. Saved graph browsing is bounded and restricted to
+active records in the current namespace, including both ends of each edge.
+
+Use `?view=graph` on your workbench URL to bookmark the workspace; old
+`memories`, `ontology` and `reviews` bookmarks still resolve there. Graph
+browsing uses the existing authentication and makes no external model calls.
+Optional external query interpretation remains an explicit search submission.
+See the [complete product and UI/UX design](docs/product-ui-ux-design.md) for
+personas, storyboards, use cases, requirements and the Apple HIG mapping, and the
+[ontology UI verification](docs/ontology-ui-validation.md) for the initial feature.
+The [whole-workbench P0 verification](docs/web-p0-validation.md) records the
+subsequent search, correction, review, task, backfill, authentication and layout
+checks, including fault recovery, privacy and the remaining release gates.
+The [unified graph verification](docs/unified-graph-validation.md) tracks the
+consolidation of ontology, saved knowledge and review into one interactive
+workspace; results are distinguished from the earlier interface's evidence.
+Screen-reader, additional browser-engine and physical touch-device acceptance
+remain explicit requirements before release.
+
 ```bash
 docker compose up --build -d
 ```
@@ -90,13 +116,40 @@ Then create `$HERMES_HOME/kg.json`:
   "user": "neo4j",
   "password": "<your password>",
   "database": "neo4j",
-  "urn_prefix": "urn:hermes:kg:",
-  "user_person_urn": "urn:hermes:kg:person-bill",
-  "timezone": "Asia/Shanghai"
+  "urn_prefix": "urn:my-memory:kg:",
+  "user_person_urn": "urn:my-memory:kg:person-self",
+  "timezone": "UTC"
 }
 ```
 
-`HERMES_KG_*` (and the compatible legacy `NEO4J_*`) environment variables override any field. Credentials stay out of commands and out of model-visible output.
+Choose your namespace, user identifier and IANA timezone explicitly. Existing
+profiles retain their configured URNs, including `urn:hermes:kg:` identities.
+An omitted user identifier defaults to `<urn_prefix>person-self`; it never
+assumes a particular person's name. Fresh console setup generates a unique
+namespace and user ID, so independent profiles can safely use the same database.
+
+`KG_HOME` selects a memory profile without an agent-specific environment variable;
+`HERMES_HOME` remains supported. An explicit `--home` takes priority over both.
+Connection and identity overrides use `KG_BOLT_URL`, `KG_USER`, `KG_PASSWORD`,
+`KG_DATABASE`, `KG_URN_PREFIX`, `KG_USER_PERSON_URN` and `KG_TIMEZONE`.
+These override the compatible `HERMES_KG_*` and legacy `NEO4J_*` names, then
+`kg.json`. `KG_ENABLED`, `KG_QUERY_CADENCE`, `KG_QUERY_LIMIT`,
+`KG_CONNECTION_TIMEOUT`, `KG_QUERY_TIMEOUT`, `KG_DEFAULT_SHARED` and
+`KG_CONSOLE_URL` follow the same precedence. Credentials stay out of commands
+and out of model-visible output. The console, schema, storage and backup modules
+run without Hermes; transcript extraction and the `MemoryProvider` adapter use
+Hermes contracts.
+Console runtime settings also accept `KG_CONSOLE_TOKEN`, `KG_MODEL_CACHE`,
+`KG_STATIC_DIR` and `KG_DEMO_MODE`, with their `HERMES_KG_*` aliases supported.
+When an external scheduler already runs the sync runner, set
+`KG_SYNC_SCHEDULER_ENABLED=false` for the console to avoid duplicate schedules.
+Index maintenance and explicitly requested sync jobs remain available.
+
+Indexing prioritizes this profile's own memories before shared external data.
+Search applies requested namespace and entity-type filters before channel result
+limits. Neo4j 5 vector search uses a bounded global ANN oversample (up to 10,000
+chunks); a much larger competing profile can still reduce semantic recall.
+Exact and keyword search remain available independently of that ANN limit.
 
 Finally, activate the provider in `$HERMES_HOME/config.yaml`:
 
@@ -130,6 +183,12 @@ python scripts/kg_sync_runner.py                              # real run
 
 The runner never advances its cursor on a failed write, and a snapshot with no extractable facts still has to earn a receipt before it counts as done.
 
+A standalone console can use `KG_HERMES_PYTHON` to select the installed Hermes
+interpreter for model calls. Requests pass through stdin to that interpreter;
+the console keeps its own locked dependencies. Set `HERMES_AGENT_HOME` if the
+host checkout cannot be discovered. These are deployment settings, with no
+machine-specific paths embedded in the package.
+
 ---
 
 ## Tests
@@ -148,6 +207,11 @@ python scripts/run_tests.py
 The Alpha recognizes both the historical memory-review template and the two-store template introduced in `f02be54d73`. The provenance test remains a drift detector against the selected core checkout. A future unmatched upstream template must be reviewed before expanding the supported version set.
 
 See [known limitations](docs/known-issues.md) and the Alpha guide for compatibility and release checks.
+The [native Windows integration and real-profile migration record](docs/hermes-local-integration.md)
+documents the installed-Hermes checks, backup/recovery validation and remaining limits.
+The [real-model validation report](docs/real-model-validation.md) records the
+subsequent live cutover, actual Hermes engine/tool calls, external extraction
+quality and cached E5 inference, including the remaining failures.
 
 ---
 
@@ -161,6 +225,10 @@ See [known limitations](docs/known-issues.md) and the Alpha guide for compatibil
 | `skills/kg-memory/ontology/core.ttl` | RDF ontology, parsed by RDFLib and validated by `skills/kg-memory/scripts/validate.py`. |
 | `skills/kg-memory-sync/SKILL.md` | The extraction contract: snapshot analysis, evidence rules, staging and replay. |
 | `docs/known-issues.md` | Open problems, including the prompt-template drift above. |
+| `docs/product-ui-ux-design.md` | Product personas, scenarios, requirements, interaction design and Apple HIG references. |
+| `docs/ontology-ui-validation.md` | Ontology API, interface and responsive acceptance evidence and limitations. |
+| `docs/web-p0-validation.md` | Whole-workbench P0 behavior, fault recovery, privacy, accessibility evidence and remaining release gates. |
+| `docs/unified-graph-validation.md` | Unified ontology, saved knowledge and review graph requirements, acceptance evidence and release gates. |
 | `docs/catalog-entry.yaml` | A ready-to-submit plugin-catalog entry for the upstream `hermes-agent` catalog. |
 
 ---

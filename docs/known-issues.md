@@ -43,13 +43,20 @@ sentence.
 The core can change again, so the test is the thing that has to keep passing
 against `main`, not against a pinned core revision.
 
-## 2. `agent.memory_provider` is a core import
+## 2. Hermes adapter boundary
 
 `plugins/kg/provider.py` imports `MemoryProvider`, `RecallStatus` and
 `is_trivial_prompt` from `agent.memory_provider` in the Hermes core. The
-plugin therefore cannot be imported outside a Hermes installation, and its
-tests need a core checkout (see the README's Tests section). This is
-intentional — the plugin is a Hermes user plugin, not a standalone library.
+provider adapter therefore needs a Hermes installation, and host-contract tests
+need a core checkout (see the README's Tests section). The package itself,
+configuration, schema, storage, console and backups import without Hermes;
+`kg.register()` loads the host adapter lazily. Core installation discovery is
+independent of the memory profile, and neutral `KG_*` configuration is supported.
+
+The [local Hermes/migration verification](hermes-local-integration.md) records
+native Windows execution. The subsequent [real-model report](real-model-validation.md)
+records external extraction, real E5 and actual Hermes tool-chain results,
+including the remaining semantic and CLI bootstrap limitations.
 
 ## Alpha product boundaries
 
@@ -61,5 +68,5 @@ intentional — the plugin is a Hermes user plugin, not a standalone library.
 - Model download/index availability is reported explicitly; lexical fallback is
   supported. Explicit smart query interpretation requires an installed Hermes
   model route; the isolated Docker demo has no personal model credentials.
-- Native macOS/Windows checks are configured in CI. Local verification uses Linux
-  containers on this development host; the ten-user pilot is still required.
+- Native macOS/Windows checks are configured in CI. Local verification includes
+  native Windows Hermes and Linux Neo4j containers; the ten-user pilot is still required.

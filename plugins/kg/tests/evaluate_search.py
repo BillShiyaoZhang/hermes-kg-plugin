@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Optional synthetic retrieval evaluation against an explicit disposable Neo4j.
 
-Run inside the development Docker image, never against a personal memory graph.
+Run against an explicit validation database, never a personal production graph.
 KG_EVAL_NEO4J_URL and KG_EVAL_NEO4J_PASSWORD must be supplied. --seed changes only
 the fixture namespace. A real model run is opt-in, downloads require another
 explicit flag, and every report identifies whether it actually used the model.
@@ -12,6 +12,8 @@ import argparse
 import json
 import os
 import logging
+import math
+import re
 import sys
 import time
 import uuid
@@ -28,23 +30,34 @@ logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)
 FIXTURE = Path(__file__).parent / "fixtures" / "search_50.json"
 
 
-def load_fixture():
+def _fixture_namespace(value):
+    return value == 'urn:hermes-eval:kg:' or bool(re.fullmatch(r'urn:kg-eval-[0-9a-f]{32}:kg:', value))
+
+
+def load_fixture(namespace=None):
     data = json.loads(FIXTURE.read_text(encoding="utf-8"))
     if len(data["queries"]) != 50 or len({q["id"] for q in data["queries"]}) != 50:
         raise ValueError("The fixture must have exactly 50 uniquely identified queries")
+    if namespace is not None:
+        if not _fixture_namespace(namespace):
+            raise ValueError('Use a synthetic evaluation namespace: urn:kg-eval-<32 lowercase hex characters>:kg:')
+        original = data['namespace']
+        data['namespace'] = namespace
+        for query in data['queries']:
+            query['question'] = query['question'].replace(original, namespace)
     return data
 
 
 def seed_fixture(store, data):
     prefix = data["namespace"]
-    if store.config.urn_prefix != prefix or prefix != "urn:hermes-eval:kg:":
-        raise ValueError("Evaluation seeding is restricted to its fixed synthetic namespace")
+    if store.config.urn_prefix != prefix or not _fixture_namespace(prefix):
+        raise ValueError("Evaluation seeding is restricted to a synthetic evaluation namespace")
     ids = {e["id"]: prefix + e["type"].lower() + "-" + e["id"] for e in data["entities"]}
     with store.driver.session(database=store.config.database) as session:
         session.run("MATCH (n) WHERE n.uri STARTS WITH $prefix DETACH DELETE n", {"prefix": prefix}).consume()
         session.run("MATCH (c:KGSearchChunk {namespace:$prefix}) DELETE c", {"prefix": prefix}).consume()
-    entities = [{k: v for k, v in e.items() if k not in {"archived", "disabled"}} for e in data["entities"]]
-    entities.insert(0, {"id": "eval-user", "type": "Person", "name": "Synthetic evaluation user"})
+    entities = [{**{k: v for k, v in e.items() if k not in {"archived", "disabled"}}, 'shared': False} for e in data["entities"]]
+    entities.insert(0, {"id": "eval-user", "type": "Person", "name": "Synthetic evaluation user", 'shared': False})
     relations = [{"from": ids[r["from"]], "to": ids[r["to"]], "type": r["type"]} for r in data["relations"]]
     store.write_batch(entities, relations, source_session="synthetic-search-eval-" + uuid.uuid4().hex)
     # Exclusions are intentionally applied after indexing by the caller to test
@@ -63,7 +76,8 @@ def apply_exclusions(store, data, ids):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--seed", action="store_true", help="Replace the fixed synthetic namespace in the explicitly configured disposable DB")
+    parser.add_argument("--seed", action="store_true", help="Seed a random private synthetic namespace in the explicitly configured disposable DB")
+    parser.add_argument("--namespace", help="Reuse an explicit synthetic evaluation namespace; --seed otherwise generates a fresh one")
     parser.add_argument("--real-model", action="store_true", help="Load E5 locally and evaluate real vectors")
     parser.add_argument("--allow-download", action="store_true", help="Explicitly permit first-time pinned model download")
     parser.add_argument("--cache-dir", default="/models/kg-e5")
@@ -73,10 +87,11 @@ def main(argv=None):
         parser.error("Set KG_EVAL_NEO4J_URL and KG_EVAL_NEO4J_PASSWORD for a disposable evaluation DB")
     if args.allow_download and not args.real_model:
         parser.error("--allow-download requires --real-model")
-    data = load_fixture()
+    namespace = args.namespace or ('urn:kg-eval-' + uuid.uuid4().hex + ':kg:' if args.seed else None)
+    data = load_fixture(namespace)
     config = KGConfig(neo4j_url=url, user=os.environ.get("KG_EVAL_NEO4J_USER", "neo4j"), password=password,
                       database=os.environ.get("KG_EVAL_NEO4J_DATABASE", "neo4j"),
-                      urn_prefix=data["namespace"], user_person_urn=data["namespace"] + "person-eval-user")
+                      urn_prefix=data["namespace"], user_person_urn=data["namespace"] + "person-eval-user", default_shared=False)
     model = LocalEmbedder(args.cache_dir) if args.real_model else None
     if model is not None:
         model.prepare(allow_download=args.allow_download)
@@ -112,13 +127,17 @@ def main(argv=None):
                          "forbidden_returned": bool(forbidden_global.intersection(uris)),
                          "milliseconds": round((time.monotonic() - start) * 1000, 2), "uris": uris})
         measured = [row for row in rows if row["hit"] is not None]
-        report = {"fixture": FIXTURE.name, "synthetic": True, "real_model_requested": args.real_model,
+        latencies = sorted(row['milliseconds'] for row in rows)
+        report = {"fixture": FIXTURE.name, "namespace": data['namespace'], "synthetic": True, "real_model_requested": args.real_model,
                   "model": model.status() if model else None, "indexing": index_report,
                   "questions": len(rows), "hit_at_k": sum(r["hit"] for r in measured) / len(measured),
                   "positive_questions": len(measured),
                   "hit_at_5": sum(r["hit_at_5"] for r in measured) / len(measured),
                   "mean_recall_at_k": sum(r["recall"] for r in measured) / len(measured),
                   "mrr": sum(r["reciprocal_rank"] for r in measured) / len(measured),
+                  "latency_ms": {'p50': latencies[math.ceil(len(latencies) * .5) - 1],
+                                 'p95': latencies[math.ceil(len(latencies) * .95) - 1],
+                                 'min': latencies[0], 'max': latencies[-1]},
                   "forbidden_returned": sum(r["forbidden_returned"] for r in rows), "results": rows,
                   "interpretation": "Synthetic authored set; this is not evidence of performance on real user memory."}
         print(json.dumps(report, ensure_ascii=False, indent=2, default=str))

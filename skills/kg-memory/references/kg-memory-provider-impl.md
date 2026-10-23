@@ -65,6 +65,9 @@ Both Hermes and OpenClaw share the same Neo4j. Prefix collision avoided:
 | `plugins/memory/kg/` provider | Agent loop infrastructure: prefetch, sync_turn, tool dispatch |
 | `kg-memory-sync` cron | Deep LLM extraction: `run_full_sync.py` with MiniMax LLM |
 
-## Future Iteration
+## Current Reference
 
-For the LLM-driven iteration roadmap (Phase 1-3: session extraction → NL→Cypher → ontology alignment), see `references/kg-llm-iteration-research.md` and `~/.hermes/plans/kg-llm-iteration-proposal.md`.
+For the supported runtime and configuration contract, see the
+[plugin integration guide](../../../plugins/kg/README.md),
+[validated entity schema](entity-schema-verified.md), and
+[repository usage guide](../../../README.md).

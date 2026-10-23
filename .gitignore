@@ -35,8 +35,8 @@ build/
 dist/
 .venv-console/
 kg-console.token
-kg-console.json
-kg-console.json.*
+kg-console*.json
+kg-console*.json.*
 .model-cache/
 kg-sync/restore.lock
 kg-sync/restore-in-progress.json

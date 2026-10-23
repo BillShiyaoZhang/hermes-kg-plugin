@@ -105,14 +105,16 @@ class _RestoreLock:
 def encode(value):
     if value is None or isinstance(value,(str,int,float,bool)):
         return value
-    if isinstance(value,(list,tuple)):
-        return [encode(v) for v in value]
-    if isinstance(value,dict):
-        return {key:encode(v) for key,v in value.items()}
+    # Duration is a tuple subclass. Check the driver's temporal types before
+    # generic containers, including when a temporal occurs in an array/map.
     from neo4j.time import DateTime,Date,Time,Duration
     for kind in (DateTime,Date,Time,Duration):
         if isinstance(value,kind):
             return {"__kg_type__":kind.__name__,"value":value.iso_format()}
+    if isinstance(value,(list,tuple)):
+        return [encode(v) for v in value]
+    if isinstance(value,dict):
+        return {key:encode(v) for key,v in value.items()}
     raise ValueError("Unsupported backup property type: "+type(value).__name__)
 
 
@@ -161,7 +163,7 @@ def backup(store,path):
         raise ValueError("Backup destination already exists")
     files={}
     def collect(tx):
-        nodes=[dict(row) for row in tx.run(SELECT_NODES,{"prefix":store.config.urn_prefix,"labels":list(ENTITY_LABELS.values())})]
+        nodes=[dict(row) for row in tx.run(SELECT_NODES,{"prefix":store.config.urn_prefix,"labels":sorted(LABELS)})]
         ids=[row['id'] for row in nodes]
         relations=[dict(row) for row in tx.run("""MATCH (a)-[r]->(b)
             WHERE elementId(a) IN $ids AND elementId(b) IN $ids
@@ -243,7 +245,8 @@ def _validated_sqlite_files(files):
                         raise ValueError("Backup SQLite integrity check failed")
             console = folder / 'console.db'
             with closing(sqlite3.connect(console)) as conn:
-                conn.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+                from .console_state import SCHEMA_SQL
+                conn.executescript(SCHEMA_SQL)
                 conn.execute("INSERT INTO settings VALUES('paused','true') ON CONFLICT(key) DO UPDATE SET value='true'")
                 conn.commit()
             for name in DB_NAMES:
@@ -300,14 +303,19 @@ def _validate_graph(store, graph):
             if uri in uris:
                 raise ValueError("Duplicate backup entity URI")
             uris.add(uri)
-    allowed = set(RELATION_ALIASES.values())
+    # Preserve recognized historical spellings verbatim for audit/round-trip
+    # fidelity. The write API still normalizes new relationships. Testing exact
+    # alias membership also makes interpolating the preserved type into Cypher
+    # safe: no arbitrary identifier or backtick can enter the query.
+    def known_relation(value):
+        return isinstance(value, str) and value.upper() in RELATION_ALIASES
     for rel in graph['relations']:
-        if not isinstance(rel, dict) or rel.get('type') not in allowed or rel.get('source') not in ids or rel.get('target') not in ids or not isinstance(rel.get('props'), dict):
+        if not isinstance(rel, dict) or not known_relation(rel.get('type')) or rel.get('source') not in ids or rel.get('target') not in ids or not isinstance(rel.get('props'), dict):
             raise ValueError("Unsupported relationship or missing backup endpoint")
     if not isinstance(graph.get('external_relations', []), list):
         raise ValueError("Malformed external relationship references")
     for rel in graph.get('external_relations', []):
-        if not isinstance(rel, dict) or rel.get('source') not in ids or rel.get('type') not in allowed or not isinstance(rel.get('props'), dict):
+        if not isinstance(rel, dict) or rel.get('source') not in ids or not known_relation(rel.get('type')) or not isinstance(rel.get('props'), dict):
             raise ValueError("Malformed external relationship reference")
         uri = rel.get('target_uri')
         canonical_urn(uri, prefix=prefix)
@@ -371,7 +379,7 @@ def _restore_locked(store, files, graph, backup_hash):
     else:
         if any((folder / name).exists() for name in DB_NAMES):
             raise ValueError("Restore requires an empty destination sync directory")
-        if store.run_read(SELECT_NODES, {'prefix': store.config.urn_prefix, 'labels': list(ENTITY_LABELS.values())}):
+        if store.run_read(SELECT_NODES, {'prefix': store.config.urn_prefix, 'labels': sorted(LABELS)}):
             raise ValueError("Restore requires an empty destination namespace")
         guard = {'format': 1, 'namespace': store.config.urn_prefix, 'backup_hash': backup_hash,
             'operation_id': uuid.uuid4().hex, 'state': 'staging', 'installed': []}
@@ -392,25 +400,36 @@ def _restore_locked(store, files, graph, backup_hash):
             return {'nodes': receipt['restore_nodes'], 'relations': receipt['restore_relations'],
                 'external_relations_restored': receipt.get('restore_external_count', 0),
                 'external_relations_unresolved': json.loads(receipt.get('restore_unresolved_json', '[]'))}
-        if list(tx.run(SELECT_NODES, {'prefix': store.config.urn_prefix, 'labels': list(ENTITY_LABELS.values())})):
+        if list(tx.run(SELECT_NODES, {'prefix': store.config.urn_prefix, 'labels': sorted(LABELS)})):
             raise ValueError("Restore requires an empty destination namespace")
         id_map = {}
         node_by_id = {node['id']: node for node in graph['nodes']}
+        node_groups = {}
         for node in graph['nodes']:
-            labels = ':'.join('`' + label + '`' for label in node['labels'])
-            id_map[node['id']] = tx.run(f"CREATE (n:{labels}) SET n=$props RETURN elementId(n) AS id",
-                {'props': node['props']}).single()['id']
+            node_groups.setdefault(tuple(sorted(node['labels'])), []).append(node)
+        # Keep one atomic graph transaction while avoiding a Bolt round trip
+        # per node/edge. Even a modest historical graph can otherwise exceed
+        # the normal workspace transaction timeout before its receipt commits.
+        for label_set, nodes in node_groups.items():
+            labels = ':'.join('`' + label + '`' for label in label_set)
+            rows = tx.run(f"UNWIND $rows AS row CREATE (n:{labels}) SET n=row.props RETURN row.id AS original_id,elementId(n) AS id",
+                {'rows': [{'id': node['id'], 'props': node['props']} for node in nodes]})
+            id_map.update((row['original_id'], row['id']) for row in rows)
+        relation_groups = {}
         for rel in graph['relations']:
-            tx.run(f"MATCH (a),(b) WHERE elementId(a)=$source AND elementId(b)=$target CREATE (a)-[r:`{rel['type']}`]->(b) SET r=$props",
-                {'source': id_map[rel['source']], 'target': id_map[rel['target']], 'props': rel['props']}).consume()
+            relation_groups.setdefault(rel['type'], []).append({
+                'source': id_map[rel['source']], 'target': id_map[rel['target']], 'props': rel['props']})
+        for relation_type, rows in relation_groups.items():
+            tx.run(f"UNWIND $rows AS row MATCH (a),(b) WHERE elementId(a)=row.source AND elementId(b)=row.target CREATE (a)-[r:`{relation_type}`]->(b) SET r=row.props",
+                {'rows': rows}).consume()
         external_count, unresolved = 0, []
-        from .schema import RELATION_ENDPOINTS
+        from .schema import RELATION_ENDPOINTS, normalize_rel
         for rel in graph.get('external_relations', []):
             target = list(tx.run("""MATCH (b {uri:$uri}) WHERE b.shared=true
                 AND NOT b:KGQuarantined AND NOT b:KGLegacyAlias AND NOT b:KGLegacyUnresolved
                 AND coalesce(b.hermes_aliasConfirmed,false)=false
                 RETURN elementId(b) AS id,labels(b) AS labels""", {'uri': rel['target_uri']}))
-            expected = RELATION_ENDPOINTS.get(rel['type'])
+            expected = RELATION_ENDPOINTS.get(normalize_rel(rel['type']))
             source_labels = set(node_by_id[rel['source']]['labels'])
             if len(target) != 1 or not source_labels & set(ENTITY_LABELS.values()) or not set(target[0]['labels']) & set(ENTITY_LABELS.values()) or (expected and (not source_labels & expected[0] or not set(target[0]['labels']) & expected[1])):
                 unresolved.append({'target_uri': rel['target_uri'], 'type': rel['type']})

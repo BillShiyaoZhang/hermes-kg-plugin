@@ -100,6 +100,21 @@ def normalize_rel(value):
     return RELATION_ALIASES[key]
 
 
+def relationship_types(*names):
+    """Known stored spellings for canonical and historical relationships.
+
+    Reads must understand historical names without rewriting audit data. New
+    writes continue to use normalize_rel() and store only the canonical name.
+    """
+    canonical = {normalize_rel(name) for name in names} if names else set(RELATION_ALIASES.values())
+    return tuple(sorted(canonical | {alias for alias, target in RELATION_ALIASES.items() if target in canonical}))
+
+
+def relationship_pattern(*names):
+    """Build a typed Cypher pattern entirely from the relationship allowlist."""
+    return '|'.join('`' + name + '`' for name in relationship_types(*names))
+
+
 def parse_time(value, tz="Asia/Shanghai"):
     # Database reads return neo4j.time.DateTime/Date rather than stdlib objects.
     # Corrections of an unrelated field must preserve those stored timestamps.

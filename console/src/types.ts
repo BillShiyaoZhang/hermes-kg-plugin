@@ -58,6 +58,8 @@ export interface MemoryPage {
   offset: number;
   limit: number;
   mode?: string;
+  warnings: string[];
+  truncated: boolean;
 }
 export interface Review {
   id: string;
@@ -68,11 +70,21 @@ export interface Review {
   relations: JsonRecord[];
   expectedVersions?: Record<string, Version>;
 }
+export interface ReviewPage {
+  items: Review[];
+  total: number;
+  total_pending: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+}
 export interface SyncJob {
   id: string;
   status: string;
   createdAt?: string;
+  startedAt?: string;
   finishedAt?: string;
+  kind?: string;
   error?: string;
   summary?: string;
 }
@@ -88,6 +100,11 @@ export interface ConsoleStatus {
   counts: Record<string, number>;
   paused: boolean | null;
   pendingCount: number | null;
+  queuedCount: number | null;
+  failedCount: number | null;
+  schedulerEnabled: boolean | null;
+  sourceAvailable: boolean | null;
+  syncAvailable: boolean | null;
   lastRun?: string;
   jobs: SyncJob[];
   search: {

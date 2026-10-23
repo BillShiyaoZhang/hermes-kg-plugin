@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """Install this KG plugin into a Hermes profile home.
 
-The repository mirrors a Hermes profile home, so installing is a copy of five
-trees into the target home plus a locked dependency install:
+The repository mirrors a Hermes profile home. Install the distributable trees
+and explicitly selected helpers, then restore locked dependencies:
 
     plugins/kg/            ->  <home>/plugins/kg/
     skills/kg-memory/      ->  <home>/skills/kg-memory/
     skills/kg-memory-sync/ ->  <home>/skills/kg-memory-sync/
-    scripts/               ->  <home>/scripts/
-    kg-sync/               ->  <home>/kg-sync/
+    scripts/ CLI wrappers  ->  <home>/scripts/
+    kg-sync/ CLI helpers   ->  <home>/kg-sync/
 
 The plugin resolves its own paths relative to the home it is installed in, so
 the copy layout is part of the contract, not a convenience.
 
-Nothing here overwrites an existing kg.json, and no credential is written by
-this script. It prints every path it touches.
+Nothing here overwrites an existing kg.json or copies sync databases or local
+runtime state. No credential is written by this script.
 """
 from __future__ import annotations
 
@@ -32,21 +32,22 @@ TREES = (
     (Path("plugins") / "kg", Path("plugins") / "kg"),
     (Path("skills") / "kg-memory", Path("skills") / "kg-memory"),
     (Path("skills") / "kg-memory-sync", Path("skills") / "kg-memory-sync"),
-    (Path("kg-sync"), Path("kg-sync")),
 )
 # Individual files rather than whole trees.
 FILES = (
     (Path("scripts") / "kg_sync_runner.py", Path("scripts") / "kg_sync_runner.py"),
     (Path("scripts") / "kg_console.py", Path("scripts") / "kg_console.py"),
+    *((Path("kg-sync") / name, Path("kg-sync") / name) for name in (
+        "check_kg.py", "verify_counts.py", "mark_processed.py", "mark_sessions.py")),
 )
 
 # Never copied into a profile home.
-SKIP_NAMES = {"__pycache__", ".git", ".pytest_cache"}
-SKIP_SUFFIXES = {".pyc", ".pyo"}
+SKIP_NAMES = {"__pycache__", ".git", ".pytest_cache", "_vendor", ".cache", "cache", "tests"}
+SKIP_SUFFIXES = {".pyc", ".pyo", ".db", ".db-shm", ".db-wal", ".log"}
 
 
 def _is_ignored(path: Path) -> bool:
-    if path.name in SKIP_NAMES:
+    if any(part in SKIP_NAMES or part == ".env" or part.startswith(".env.") for part in path.parts):
         return True
     return path.suffix in SKIP_SUFFIXES
 
@@ -54,7 +55,7 @@ def _is_ignored(path: Path) -> bool:
 def _copy_tree(src: Path, dst: Path, dry_run: bool) -> list[str]:
     copied: list[str] = []
     for item in sorted(src.rglob("*")):
-        if _is_ignored(item.relative_to(src)):
+        if item.is_symlink() or _is_ignored(item.relative_to(src)):
             continue
         rel = item.relative_to(src)
         target = dst / rel
@@ -179,8 +180,9 @@ def main() -> int:
 
     if not args.skip_deps:
         code = install_dependencies(home, args.dry_run)
-        if code != 0 and not args.dry_run:
+        if code != 0:
             print("  ! dependency install failed; the plugin will not load without them", file=sys.stderr)
+            return code
 
     kg_json = home / "kg.json"
     if kg_json.exists():
@@ -189,8 +191,8 @@ def main() -> int:
         print(f"  ! {kg_json} does not exist; create it with the connection settings")
         print('    {"enabled": true, "bolt_url": "bolt://127.0.0.1:7687", "user": "neo4j",')
         print('     "password": "<password>", "database": "neo4j",')
-        print('     "urn_prefix": "urn:hermes:kg:", "user_person_urn": "urn:hermes:kg:person-bill",')
-        print('     "timezone": "Asia/Shanghai"}')
+        print('     "urn_prefix": "urn:my-memory:kg:", "user_person_urn": "urn:my-memory:kg:person-self",')
+        print('     "timezone": "UTC"}')
 
     print("  next: set `memory.provider: kg` in config.yaml, then restart the gateway")
     print(f"  {len(changed)} file(s) written")

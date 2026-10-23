@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install -r requirements-console.lock jsonschema
+      - run: python -m pip install -r requirements-console.lock jsonschema "setuptools>=75"
       - run: python scripts/run_tests.py
       - run: python -c "from kg.embedding import LocalEmbedder; import onnxruntime; print(onnxruntime.get_available_providers())"
         env:
@@ -43,7 +43,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install -r requirements-console.lock jsonschema
+      - run: python -m pip install -r requirements-console.lock jsonschema "setuptools>=75"
       - run: python scripts/run_tests.py
         env:
           KG_TEST_BOLT_URL: bolt://127.0.0.1:7687

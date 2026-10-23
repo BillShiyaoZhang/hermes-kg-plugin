@@ -14,10 +14,21 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "plugins"))
 from kg import runner
+from kg.hermes_runtime import discover_core
 from kg.config import KGConfig
 
 
 class RunnerPackagingTests(unittest.TestCase):
+    def test_console_doctor_does_not_prepare_agent_model_runtime(self):
+        from kg.console_cli import main
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.dict(os.environ,{},clear=False), \
+             patch('kg.console_cli._core',return_value='/installed-core'), \
+             patch('kg.console_cli.doctor',return_value={'ok':True}), \
+             patch('kg.hermes_runtime.prepare_runtime') as prepare:
+            self.assertEqual(main(['--home',directory,'doctor']),0)
+            prepare.assert_not_called()
+
     def load_wrapper(self, path=None):
         spec = importlib.util.spec_from_file_location("legacy_runner_contract", path or ROOT / "scripts/kg_sync_runner.py")
         module = importlib.util.module_from_spec(spec)
@@ -42,6 +53,13 @@ class RunnerPackagingTests(unittest.TestCase):
         with patch.dict(os.environ, {"HERMES_HOME": "/environment"}), patch.object(runner, "main", return_value=0) as main:
             legacy.main(["--verify-only"])
             self.assertIsNone(main.call_args.kwargs["default_home"])
+        with patch.dict(os.environ, {"HERMES_HOME": "", "KG_HOME": "/product-profile"}), \
+             patch.object(runner, "run", return_value=(0, {})) as run, \
+             patch.object(runner, "main", return_value=0) as main:
+            legacy.run(verify_only=True)
+            self.assertIsNone(run.call_args.kwargs["home"])
+            legacy.main(["--verify-only"])
+            self.assertIsNone(main.call_args.kwargs["default_home"])
 
     def test_bootstrap_uses_explicit_profile_core_without_requiring_checkout_scripts(self):
         original = list(sys.path)
@@ -55,6 +73,29 @@ class RunnerPackagingTests(unittest.TestCase):
                 self.assertEqual(sys.path[0], str(core))
         finally:
             sys.path[:] = original
+
+    def test_core_discovery_finds_running_interpreter_install_without_profile_coupling(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            core = base / "application" / "hermes-agent"
+            (core / "agent").mkdir(parents=True)
+            (core / "agent" / "memory_provider.py").write_text("")
+            executable = core / "venv" / "Scripts" / "python.exe"
+            with patch.dict(os.environ, {"HERMES_AGENT_HOME": "", "LOCALAPPDATA": ""}), \
+                 patch.object(sys, "path", []), patch.object(sys, "executable", str(executable)), \
+                 patch("kg.hermes_runtime.Path.home", return_value=base / "user"):
+                self.assertEqual(discover_core(base / "separate-profile"), core.resolve())
+
+    def test_core_discovery_accepts_localappdata_install(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            core = base / "local" / "hermes" / "hermes-agent"
+            (core / "agent").mkdir(parents=True)
+            (core / "agent" / "memory_provider.py").write_text("")
+            with patch.dict(os.environ, {"HERMES_AGENT_HOME": "", "LOCALAPPDATA": str(base / "local")}), \
+                 patch.object(sys, "path", []), patch.object(sys, "executable", str(base / "python.exe")), \
+                 patch("kg.hermes_runtime.Path.home", return_value=base / "user"):
+                self.assertEqual(discover_core(base / "separate-profile"), core.resolve())
 
     def test_copied_profile_cron_runs_from_unrelated_working_directory(self):
         with tempfile.TemporaryDirectory() as directory:
