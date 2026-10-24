@@ -1,0 +1,424 @@
+.gw-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #15231ed9;
+  backdrop-filter: blur(5px);
+}
+.gw-dialog {
+  width: min(620px, 100%);
+  max-height: min(880px, calc(100dvh - 48px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ccd8cd;
+  background: #fffefb;
+  color: #23362a;
+  border-radius: 16px;
+  box-shadow: 0 24px 100px #0f251c3d;
+  overflow: hidden;
+  outline: none;
+}
+.gw-dialog-wide {
+  width: min(1560px, 100%);
+}
+.gw-dialog *,
+.gw-dialog *::before,
+.gw-dialog *::after {
+  box-sizing: border-box;
+  min-width: 0;
+}
+.gw-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 22px;
+  border-bottom: 1px solid #dfe6dc;
+  flex-shrink: 0;
+}
+.gw-dialog-header h2 {
+  font-size: 1.125rem;
+  line-height: 1.5;
+  font-weight: 650;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.gw-dialog-body {
+  padding: 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+}
+.gw-dialog p {
+  color: #56665a;
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+.gw-dialog h3 {
+  font-size: 0.9375rem;
+  margin: 0 0 8px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.gw-dialog h4 {
+  font-size: 0.75rem;
+  margin: 0 0 12px;
+  text-transform: none;
+  letter-spacing: 0.025em;
+  color: #3c5641;
+}
+.gw-dialog button {
+  font: inherit;
+  cursor: pointer;
+}
+.gw-dialog button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.gw-dialog :is(button, input, summary):focus-visible,
+.gw-comparison-scroll:focus-visible {
+  outline: 3px solid #517660;
+  outline-offset: 3px;
+}
+.gw-dialog-button,
+.gw-dialog-icon {
+  border: 1px solid #c9d5c9;
+  background: #f8faf5;
+  color: #36533e;
+  min-height: 44px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 12px;
+}
+.gw-dialog-button:hover:not(:disabled),
+.gw-dialog-icon:hover:not(:disabled) {
+  background: #eaf1e7;
+  border-color: #96ae97;
+}
+.gw-dialog-icon {
+  min-width: 44px;
+  padding: 8px;
+  flex-shrink: 0;
+}
+.gw-dialog-primary {
+  background: #365c43;
+  border-color: #365c43;
+  color: #fff;
+}
+.gw-dialog-primary:hover:not(:disabled) {
+  background: #2a4935;
+  color: #fff;
+}
+.gw-dialog .gw-dialog-notice {
+  font-size: 0.75rem;
+  background: #f5efe3;
+  color: #745c34;
+  border: 1px solid #e6d7bc;
+  padding: 9px 11px;
+  border-radius: 7px;
+}
+.gw-dialog .gw-dialog-local-note {
+  padding: 12px;
+  border: 1px solid #dce6d6;
+  background: #f2f6ee;
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+.gw-dialog .gw-dialog-error {
+  padding: 12px;
+  background: #fbefea;
+  color: #8c4131;
+  border: 1px solid #e7c4b9;
+  border-radius: 8px;
+}
+.gw-dialog .gw-dialog-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #edf6eb;
+  color: #365d32;
+  border-radius: 7px;
+}
+.gw-dialog .gw-dialog-success svg {
+  flex-shrink: 0;
+}
+.gw-dialog-empty {
+  padding: 18px 0;
+  color: #69766b;
+}
+.gw-comparison-toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.gw-comparison-toolbar p {
+  margin: 0;
+  max-width: 700px;
+}
+.gw-comparison-toolbar .gw-dialog-button {
+  flex-shrink: 0;
+}
+.gw-comparison-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: 10px;
+}
+.gw-comparison-grid {
+  display: grid;
+  gap: 14px;
+  align-items: start;
+}
+.gw-comparison-card {
+  background: #fff;
+  border: 1px solid #dce5d9;
+  border-radius: 10px;
+  padding: 16px;
+  overflow: hidden;
+}
+.gw-comparison-card > header {
+  border-bottom: 1px solid #e4ebe0;
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+}
+.gw-comparison-card > header > p {
+  font-size: 0.6875rem;
+  margin-bottom: 5px;
+}
+.gw-comparison-card > header > h3 {
+  margin: 10px 0 7px;
+}
+.gw-comparison-identity {
+  display: inline-block;
+  font-size: 0.625rem;
+  line-height: 1.5;
+  padding: 3px 6px;
+  border: 1px solid #bfd0bd;
+  border-radius: 5px;
+  background: #edf4e9;
+  color: #415e3d;
+}
+.gw-comparison-candidate,
+.gw-comparison-review {
+  border-style: dashed;
+  background: #faf2e5;
+  border-color: #c4ad7f;
+  color: #75572e;
+}
+.gw-comparison-aggregate,
+.gw-comparison-group {
+  background: #edf1f7;
+  border-color: #b4c1d3;
+  color: #4b5f7c;
+}
+.gw-comparison-schema {
+  border-radius: 2px;
+  background: #f0f1f3;
+  border-color: #bec5cc;
+  color: #52606a;
+}
+.gw-comparison-card section {
+  margin-top: 20px;
+}
+.gw-comparison-card p {
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+}
+.gw-comparison-card dl {
+  margin: 0;
+  font-size: 0.75rem;
+}
+.gw-comparison-card dl > div {
+  padding: 9px 0;
+  border-bottom: 1px solid #edf0e8;
+}
+.gw-comparison-card dt {
+  font-size: 0.6875rem;
+  color: #5c705e;
+  margin-bottom: 4px;
+}
+.gw-comparison-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.gw-comparison-card code {
+  font-size: 0.6875rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.gw-comparison-card details {
+  margin-top: 10px;
+}
+.gw-comparison-card summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.6875rem;
+  color: #536e57;
+}
+.gw-comparison-card summary::before {
+  content: "+";
+  font-size: 1rem;
+}
+.gw-comparison-card details[open] > summary::before {
+  content: "−";
+}
+.gw-comparison-card ul {
+  padding-left: 17px;
+}
+.gw-comparison-card h4 small {
+  font-weight: 400;
+  margin-left: 5px;
+  color: #68796c;
+}
+.gw-comparison-evidence {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gw-comparison-evidence > li {
+  padding: 12px 0;
+  border-bottom: 1px solid #e4ebe0;
+}
+.gw-comparison-evidence > li:first-child {
+  padding-top: 0;
+}
+.gw-comparison-evidence blockquote {
+  font-size: 0.75rem;
+  margin: 0;
+  background: #f3f6ef;
+  border-left: 2px solid #a4bca0;
+  border-radius: 0 6px 6px 0;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gw-comparison-evidence dl {
+  margin-top: 7px;
+}
+.gw-comparison-evidence dl > div {
+  border-bottom: 0;
+  padding: 4px 0;
+}
+.gw-view-save {
+  margin: 20px 0 16px;
+}
+.gw-view-save > label {
+  display: block;
+  font-size: 0.75rem;
+  color: #4f6853;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.gw-view-save > div {
+  display: flex;
+  gap: 8px;
+}
+.gw-view-save input {
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #b6c8b5;
+  border-radius: 7px;
+  padding: 9px 11px;
+  font: inherit;
+  background: white;
+  color: #304a36;
+}
+.gw-view-save .gw-dialog-button {
+  flex-shrink: 0;
+}
+.gw-view-save > p {
+  font-size: 0.6875rem;
+  margin-top: 5px;
+}
+.gw-view-list-heading {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #dfe7da;
+  padding-top: 20px;
+  margin-top: 20px;
+}
+.gw-view-list-heading h3 {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+.gw-view-list-heading > span {
+  font-size: 0.6875rem;
+  color: #69786b;
+}
+.gw-view-list {
+  padding: 0;
+  margin: 10px 0 0;
+  list-style: none;
+}
+.gw-view-list > li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #e5ebdf;
+  padding: 12px 0;
+}
+.gw-view-list > li > div:first-child {
+  flex: 1;
+}
+.gw-view-list strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.8125rem;
+}
+.gw-view-list small {
+  display: block;
+  font-size: 0.6875rem;
+  color: #647667;
+  margin-top: 3px;
+}
+.gw-view-list > li > div:last-child {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .gw-modal {
+    padding: 10px;
+  }
+  .gw-dialog {
+    max-height: calc(100dvh - 20px);
+    border-radius: 12px;
+  }
+  .gw-dialog-header {
+    padding: 12px 14px;
+  }
+  .gw-dialog-body {
+    padding: 16px 14px;
+  }
+  .gw-comparison-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .gw-view-list > li {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gw-modal {
+    backdrop-filter: none;
+  }
+}

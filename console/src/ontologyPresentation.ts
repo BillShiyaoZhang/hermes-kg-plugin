@@ -219,8 +219,12 @@ function copyFor(
 }
 
 export function ontologyPropertyTitle(
-  property: Pick<OntologyProperty, "key" | "label" | "description" | "iri">,
+  property: Pick<
+    OntologyProperty,
+    "key" | "label" | "description" | "iri" | "customized_fields"
+  >,
 ): string {
+  if (property.customized_fields?.includes("label")) return property.label;
   return (
     copyFor(property, properties, propertyAliases)?.title ||
     property.label ||
@@ -229,8 +233,13 @@ export function ontologyPropertyTitle(
 }
 
 export function ontologyPropertyDescription(
-  property: Pick<OntologyProperty, "key" | "label" | "description" | "iri">,
+  property: Pick<
+    OntologyProperty,
+    "key" | "label" | "description" | "iri" | "customized_fields"
+  >,
 ): string {
+  if (property.customized_fields?.includes("description"))
+    return property.description;
   return (
     copyFor(property, properties, propertyAliases)?.description ||
     property.description ||
@@ -241,6 +250,8 @@ export function ontologyPropertyDescription(
 export function ontologyDefinitionDescription(
   definition: OntologyEntityDefinition | OntologyRelationDefinition,
 ): string {
+  if (definition.customized_fields?.includes("description"))
+    return definition.description;
   return (
     copyFor(definition, definitions, definitionAliases)?.description ||
     definition.description ||

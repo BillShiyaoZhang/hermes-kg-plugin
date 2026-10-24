@@ -7,12 +7,23 @@ semantic search, source evidence, revision history, protected corrections,
 archive/restore, review batches and portable backups. The existing Hermes plugin
 and tool names remain compatible.
 
-The **知识图谱 / Knowledge Graph** workspace combines ontology, saved knowledge
-and review proposals in one interactive graph with type colors, layer and type
-visibility controls, global keyword search, focus, zoom and an equivalent node
-and relationship list. Types, saved facts and candidates retain distinct
-identities; selecting a node or edge uses one shared inspector for definitions,
-evidence, attributes, history and the existing protected review/edit flows.
+The **知识图谱 / Knowledge Graph** workspace offers **本体 / 探索 / 审阅**
+perspectives with separate, recoverable cameras, filters and selections. Small
+graphs show all records; larger graphs use complete server-side type and
+relationship aggregates, with member paging and incremental neighborhood
+exploration. The SVG canvas supports drag/pin, multiple and box selection,
+topological layouts, spotlight, minimap, history, view undo, bounded paths,
+comparison, local saved views and PNG/SVG export. Definitions, actual record
+collections, saved facts and candidates retain distinct identities. One shared
+inspector preserves evidence, attributes and the protected review/edit flows;
+pending writes and drafts prevent accidental navigation away.
+The ontology inspector also supports versioned editing of existing types,
+properties and relations within the current namespace. Preview changes and
+affected records before publishing; structural restrictions must remain
+compatible with the built-in storage contract and existing active data.
+Concurrent updates retain the draft for explicit review. Technical identifiers
+and new storage types remain outside this editor. See the
+[ontology editing verification](docs/ontology-editing-validation.md).
 The “语义与停用” view preserves semantic lookup, archive/restore and permitted
 shared read-only details. Saved graph browsing is bounded and restricted to
 active records in the current namespace, including both ends of each edge.
@@ -27,9 +38,8 @@ personas, storyboards, use cases, requirements and the Apple HIG mapping, and th
 The [whole-workbench P0 verification](docs/web-p0-validation.md) records the
 subsequent search, correction, review, task, backfill, authentication and layout
 checks, including fault recovery, privacy and the remaining release gates.
-The [unified graph verification](docs/unified-graph-validation.md) tracks the
-consolidation of ontology, saved knowledge and review into one interactive
-workspace; results are distinguished from the earlier interface's evidence.
+The [v3 verification record](docs/graph-v3-validation.md) distinguishes current
+implementation checks from the historical [unified graph verification](docs/unified-graph-validation.md).
 Screen-reader, additional browser-engine and physical touch-device acceptance
 remain explicit requirements before release.
 

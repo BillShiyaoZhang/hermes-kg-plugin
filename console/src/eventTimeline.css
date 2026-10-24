@@ -1,0 +1,220 @@
+.evt-timeline {
+  font-size: 0.75rem;
+  color: #3c5543;
+  min-width: 0;
+}
+.evt-timeline *,
+.evt-timeline *::before,
+.evt-timeline *::after {
+  box-sizing: border-box;
+  min-width: 0;
+}
+.evt-timeline > header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.evt-timeline > header h3 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+.evt-timeline > header button {
+  padding: 7px 9px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 6px;
+  background: #edf3e9;
+  color: #3e6547;
+  font: inherit;
+  cursor: pointer;
+}
+.evt-timeline > header button:hover:not(:disabled) {
+  background: #e0ecd9;
+}
+.evt-timeline > header button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.evt-timeline .evt-scope,
+.evt-timeline .evt-selection {
+  font-size: 0.6875rem;
+  line-height: 1.75;
+  color: #5c705f;
+  margin: 7px 0 10px;
+}
+.evt-chart-wrap {
+  height: 90px;
+  border-radius: 7px 7px 0 0;
+  background: linear-gradient(to bottom, #f5f8f0, #fff);
+  overflow: hidden;
+}
+.evt-chart-wrap svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.evt-baseline {
+  stroke: #cbd9c5;
+  stroke-width: 1;
+}
+.evt-bucket-selected {
+  fill: #4e7957;
+}
+.evt-bucket-dimmed {
+  fill: #c4d2bf;
+}
+.evt-bucket-empty {
+  fill: #dce5d6;
+}
+.evt-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #647565;
+  font-size: 0.625rem;
+  margin: 1px 0 9px;
+}
+.evt-timeline .evt-bucket-note {
+  margin: 3px 0 9px;
+  color: #657566;
+  font-size: 0.625rem;
+}
+.evt-brush > label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  min-height: 24px;
+  font-size: 0.6875rem;
+  color: #526b55;
+}
+.evt-brush output {
+  font-variant-numeric: tabular-nums;
+}
+.evt-brush input[type="range"] {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  margin: 0 0 5px;
+  accent-color: #4a7350;
+  background: transparent;
+  cursor: ew-resize;
+  border: 0;
+  box-shadow: none;
+}
+.evt-brush input[type="range"]:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.evt-dates {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px;
+  margin-top: 10px;
+}
+.evt-dates label {
+  display: block;
+  color: #556d59;
+  font-size: 0.6875rem;
+}
+.evt-dates input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 5px;
+  margin-top: 5px;
+  border: 1px solid #bccdb8;
+  border-radius: 6px;
+  background: white;
+  color: #3c5d41;
+  font: inherit;
+}
+.evt-dates input:disabled {
+  opacity: 0.55;
+}
+.evt-timeline .evt-unknown {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  color: #4d6651;
+  margin: 9px 0 3px;
+  cursor: pointer;
+}
+.evt-unknown input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  accent-color: #4a7350;
+  flex-shrink: 0;
+}
+.evt-unknown strong {
+  margin-left: auto;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #5a705d;
+}
+.evt-no-dates {
+  padding: 14px 10px;
+  background: #f1f5ec;
+  border-radius: 7px;
+  color: #657466;
+  font-size: 0.6875rem;
+  margin-top: 11px;
+}
+.evt-timeline .evt-selection {
+  border-top: 1px solid #e2e9dc;
+  padding-top: 9px;
+  margin-top: 4px;
+}
+.evt-timeline :is(input, button, summary):focus-visible {
+  outline: 3px solid #51765a;
+  outline-offset: 3px;
+}
+.evt-distribution-table {
+  font-size: 0.6875rem;
+  margin-top: 5px;
+}
+.evt-distribution-table summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #55705a;
+}
+.evt-distribution-table summary::before {
+  content: "+";
+  font-size: 1rem;
+}
+.evt-distribution-table[open] summary::before {
+  content: "−";
+}
+.evt-distribution-table table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.625rem;
+}
+.evt-distribution-table th {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.evt-distribution-table td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.evt-distribution-table th,
+.evt-distribution-table td {
+  padding: 6px 3px;
+  border-bottom: 1px solid #e6ecdf;
+}
+@media (max-width: 330px) {
+  .evt-dates {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

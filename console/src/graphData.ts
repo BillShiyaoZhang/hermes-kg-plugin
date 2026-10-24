@@ -32,6 +32,7 @@ export interface GraphQuery {
   focus_uri?: string | null;
   node_limit?: number;
   edge_limit?: number;
+  relation_types?: string[];
 }
 export const REVIEW_PAGE_SIZE = 20;
 export const CANDIDATE_NODE_LIMIT = 60;
@@ -107,6 +108,11 @@ export function workspaceGraph(
       layer: "saved",
       uri: record.uri,
       description: record.description,
+      eventTime:
+        typeof record.properties?.hermes_eventTime === "string"
+          ? record.properties.hermes_eventTime
+          : undefined,
+      updatedAt: record.updated_at,
     });
     edges.push({
       id: `instance:${record.uri}`,
@@ -127,6 +133,7 @@ export function workspaceGraph(
         label: edge.relation_type,
       }),
       description: edge.relation_type,
+      relationType: edge.relation_type,
     });
   }
   const pending = reviews.filter((r) => isPendingReview(r.status));

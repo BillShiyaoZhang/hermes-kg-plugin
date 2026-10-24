@@ -3,6 +3,7 @@ import copy
 import json
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -121,7 +122,10 @@ class ReviewedMemoryTests(unittest.TestCase):
         provider = KGMemoryProvider(KGConfig(), store_factory=lambda config: capture)
         provider.initialize('fixture')
         self.addCleanup(provider.shutdown)
-        answer = json.loads(provider.handle_tool_call('kg_search', {'question': 'Old reading title'}))
+        # This unit test must use CaptureStore even when a local console/token
+        # is present in the developer's default profile.
+        with patch('urllib.request.urlopen', side_effect=OSError('Synthetic console unavailable')):
+            answer = json.loads(provider.handle_tool_call('kg_search', {'question': 'Old reading title'}))
         fact = answer['result']['kg_results'][0]
         self.assertEqual(fact['status'], 'historical')
         self.assertEqual(fact['semantic_scope'], 'Reading interest, not completed reading')

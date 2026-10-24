@@ -73,9 +73,37 @@ class GraphQueryBody(BaseModel):
     model_config = {'extra': 'forbid', 'strict': True}
     q: str = Field(default='',max_length=200)
     types: list[str] = Field(default_factory=list,max_length=6)
+    relation_types: list[str] = Field(default_factory=list,max_length=9)
     focus_uri: str | None = Field(default=None,min_length=1,max_length=2000)
     node_limit: int = Field(default=120,ge=1,le=200)
     edge_limit: int = Field(default=240,ge=1,le=500)
+
+
+class GraphOverviewBody(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+    q: str = Field(default='',max_length=200)
+    types: list[str] = Field(default_factory=list,max_length=6)
+    relation_types: list[str] = Field(default_factory=list,max_length=9)
+
+
+class GraphNeighborsBody(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+    center_uri: str = Field(min_length=1,max_length=2000)
+    direction: Literal['in','out','both'] = 'both'
+    relation_types: list[str] = Field(default_factory=list,max_length=9)
+    cursor: str | None = Field(default=None,min_length=1,max_length=4000)
+    limit: int = Field(default=30,ge=1,le=100)
+
+
+class GraphPathsBody(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+    source_uri: str = Field(min_length=1,max_length=2000)
+    target_uri: str = Field(min_length=1,max_length=2000)
+    mode: Literal['shortest','common_neighbors'] = 'shortest'
+    relation_types: list[str] = Field(default_factory=list,max_length=9)
+    direction: Literal['out','both'] = 'both'
+    max_hops: int = Field(default=6,ge=1,le=6)
+    limit: int = Field(default=5,ge=1,le=5)
 
 
 class ReviewQueryBody(BaseModel):
@@ -83,6 +111,44 @@ class ReviewQueryBody(BaseModel):
     q: str = Field(default='',max_length=200)
     offset: int = Field(default=0,ge=0,le=1000000)
     limit: int = Field(default=20,ge=1,le=50)
+
+
+class OntologyEntityPatch(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+    label: str = Field(default=None,min_length=1,max_length=120)
+    description: str = Field(default=None,max_length=4000)
+
+
+class OntologyPropertyPatch(OntologyEntityPatch):
+    aliases: list[str] = Field(default=None,max_length=24)
+    required_for: list[str] = Field(default=None,max_length=6)
+    domain: list[str] = Field(default=None,min_length=1,max_length=6)
+    range: list[str] = Field(default=None,min_length=1,max_length=1)
+
+
+class OntologyRelationPatch(OntologyEntityPatch):
+    aliases: list[str] = Field(default=None,max_length=24)
+    domain: list[str] = Field(default=None,min_length=1,max_length=6)
+    range: list[str] = Field(default=None,min_length=1,max_length=6)
+
+
+class OntologyPatch(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+    entity_types: dict[str,OntologyEntityPatch] = Field(default_factory=dict,max_length=32)
+    properties: dict[str,OntologyPropertyPatch] = Field(default_factory=dict,max_length=32)
+    relations: dict[str,OntologyRelationPatch] = Field(default_factory=dict,max_length=32)
+
+
+class OntologyValidateBody(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+    expected_namespace: str = Field(min_length=1,max_length=2000)
+    expected_version: int = Field(ge=0)
+    patch: OntologyPatch
+
+
+class OntologyPublishBody(OntologyValidateBody):
+    operation_id: str = Field(min_length=8,max_length=160)
+    reason: str = Field(default='',max_length=2000)
 
 
 def console_token(home):
@@ -293,6 +359,22 @@ def create_app(config=None, *, token=None, memory=None, search=None, background=
     def ontology_schema():
         return invoke(ontology.describe)
 
+    def ontology_edit(action, body):
+        from .ontology_editing import OntologyEditor, OntologyEditError
+        from fastapi.responses import JSONResponse
+        try:
+            return _json(getattr(OntologyEditor(config,memory.store),action)(**body.model_dump(exclude_unset=True)))
+        except OntologyEditError as exc:
+            return JSONResponse(exc.response(),status_code=exc.status)
+
+    @app.post('/api/v1/ontology/validate')
+    def ontology_validate(body:OntologyValidateBody):
+        return ontology_edit('validate',body)
+
+    @app.post('/api/v1/ontology/publish')
+    def ontology_publish(body:OntologyPublishBody):
+        return ontology_edit('publish',body)
+
     @app.get('/api/v1/ontology/entities')
     def ontology_entities(type:str|None=None,q:str='',offset:int=0,limit:int=20):
         return invoke(ontology.entities,type=type,q=q,offset=offset,limit=limit)
@@ -312,7 +394,19 @@ def create_app(config=None, *, token=None, memory=None, search=None, background=
     @app.post('/api/v1/graph/query')
     def graph_query(body:GraphQueryBody):
         return invoke(ontology.graph,q=body.q,types=body.types,focus_uri=body.focus_uri,
-                      node_limit=body.node_limit,edge_limit=body.edge_limit)
+                      relation_types=body.relation_types,node_limit=body.node_limit,edge_limit=body.edge_limit)
+
+    @app.post('/api/v1/graph/overview/query')
+    def graph_overview_query(body:GraphOverviewBody):
+        return invoke(ontology.graph_overview,**body.model_dump())
+
+    @app.post('/api/v1/graph/neighbors/query')
+    def graph_neighbors_query(body:GraphNeighborsBody):
+        return invoke(ontology.graph_neighbors,**body.model_dump())
+
+    @app.post('/api/v1/graph/paths/query')
+    def graph_paths_query(body:GraphPathsBody):
+        return invoke(ontology.graph_paths,**body.model_dump())
 
     @app.get("/api/v1/status")
     def status():

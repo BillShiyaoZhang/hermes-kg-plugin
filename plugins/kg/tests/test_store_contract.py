@@ -36,6 +36,8 @@ class FakeTransaction:
     def run(self, query, params=None):
         assert isinstance(query, str), "Transaction.run must receive strings"
         params = params or {}
+        if 'MATCH (s:KGOntologySchema' in query:
+            return Result()
         if "MERGE (w:KGWorkspace" in query:
             return Result()
         if "AS candidate_uri" in query:
@@ -113,6 +115,9 @@ class FakeDriver:
         result = callback(FakeTransaction(pending), *args)
         self.state = pending
         return result
+
+    def execute_read(self, callback, *args):
+        return callback(FakeTransaction(copy.deepcopy(self.state)), *args)
 
     def close(self):
         self.closed = True

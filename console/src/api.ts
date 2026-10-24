@@ -1,5 +1,12 @@
 import type { GraphQuery, GraphSnapshot } from "./graphData";
 import type {
+  GraphOverview,
+  NeighborQuery,
+  NeighborSnapshot,
+  PathQuery,
+  PathSnapshot,
+} from "./graphWorkspace";
+import type {
   ConsoleStatus,
   EntityType,
   Evidence,
@@ -17,6 +24,10 @@ import type {
   OntologySchema,
   OntologyEntityPage,
   OntologyRelationPage,
+  OntologyEditRequest,
+  OntologyPublishRequest,
+  OntologyValidationResult,
+  OntologyPublishResult,
 } from "./ontologyTypes";
 
 export const API_ROOT = "/api/v1";
@@ -442,7 +453,9 @@ export function createApi(
             response.status,
             response.status >= 500 || response.status === 401
               ? undefined
-              : detail,
+              : path.startsWith("/ontology/") && response.status === 409
+                ? r
+                : detail,
           );
         }
         return data;
@@ -510,6 +523,37 @@ export function createApi(
   return {
     status: async (signal?: AbortSignal) =>
       normalizeStatus(await request("/status", { signal })),
+    graphOverview: async (
+      query: GraphQuery = {},
+      signal?: AbortSignal,
+    ): Promise<GraphOverview> =>
+      (await request("/graph/overview/query", {
+        method: "POST",
+        body: JSON.stringify({
+          q: query.q ?? "",
+          types: query.types ?? [],
+          relation_types: query.relation_types ?? [],
+        }),
+        signal,
+      })) as GraphOverview,
+    graphNeighbors: async (
+      query: NeighborQuery,
+      signal?: AbortSignal,
+    ): Promise<NeighborSnapshot> =>
+      (await request("/graph/neighbors/query", {
+        method: "POST",
+        body: JSON.stringify(query),
+        signal,
+      })) as NeighborSnapshot,
+    graphPaths: async (
+      query: PathQuery,
+      signal?: AbortSignal,
+    ): Promise<PathSnapshot> =>
+      (await request("/graph/paths/query", {
+        method: "POST",
+        body: JSON.stringify(query),
+        signal,
+      })) as PathSnapshot,
     graph: async (
       query: GraphQuery = {},
       signal?: AbortSignal,
@@ -521,6 +565,44 @@ export function createApi(
       })) as GraphSnapshot,
     ontologySchema: async (signal?: AbortSignal): Promise<OntologySchema> =>
       (await request("/ontology", { signal })) as OntologySchema,
+    ontologyValidate: async (
+      input: OntologyEditRequest,
+      signal?: AbortSignal,
+    ): Promise<OntologyValidationResult> =>
+      (await request("/ontology/validate", {
+        method: "POST",
+        body: JSON.stringify(input),
+        signal,
+      })) as OntologyValidationResult,
+    ontologyPublish: async (
+      input: OntologyPublishRequest,
+    ): Promise<OntologyPublishResult> => {
+      const result = record(
+        await request("/ontology/publish", {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
+      );
+      const publishedSchema = record(result.schema);
+      if (
+        result.ok !== true ||
+        result.namespace !== input.expected_namespace ||
+        !Number.isInteger(result.version) ||
+        !result.schema ||
+        result.operation_id !== input.operation_id ||
+        publishedSchema.namespace !== result.namespace ||
+        publishedSchema.version !== result.version ||
+        !Array.isArray(publishedSchema.entity_types) ||
+        !Array.isArray(publishedSchema.relations) ||
+        !Array.isArray(publishedSchema.properties)
+      ) {
+        throw new ApiError(
+          "服务未返回完整本体发布回执。草稿已保留，请读取当前版本核对后重试。",
+          502,
+        );
+      }
+      return result as unknown as OntologyPublishResult;
+    },
     ontologyEntities: async (
       query: {
         type?: string;

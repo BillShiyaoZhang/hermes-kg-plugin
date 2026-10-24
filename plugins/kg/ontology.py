@@ -21,7 +21,8 @@ GRAPH_NAME_LIMIT = 240
 GRAPH_DESCRIPTION_LIMIT = 1200
 GRAPH_PROVENANCE_ITEMS = 8
 GRAPH_NODE_PREVIEW_KEYS = ('uri', 'foaf_name', 'hermes_name', 'hermes_description', 'hermes_revision',
-                           'hermes_updatedAt', 'hermes_enabled', 'hermes_status', 'hermes_aliasConfirmed')
+                           'hermes_updatedAt', 'hermes_enabled', 'hermes_status', 'hermes_aliasConfirmed',
+                           'hermes_eventTime', 'hermes_timePrecision')
 GRAPH_EDGE_PREVIEW_KEYS = ('hermes_relLabel', 'hermes_origin', 'hermes_createdAt', 'hermes_updatedAt',
                            'hermes_sourceSession', 'hermes_sourceSessions', 'hermes_extractionIds')
 
@@ -179,6 +180,16 @@ def _stored_relation(value):
     return RELATION_ALIASES.get(value.upper(), value)
 
 
+def _graph_relation_aliases(relation_types):
+    if relation_types is None:
+        relation_types = []
+    if (not isinstance(relation_types, list) or len(relation_types) > 9
+            or any(not isinstance(value, str) for value in relation_types)):
+        raise ValueError('relation_types must be a list of at most nine supported relationships')
+    canonical = {normalize_rel(value) for value in relation_types}
+    return sorted(alias for alias, target in RELATION_ALIASES.items() if target in canonical)
+
+
 def _node(row):
     props = dict(row['properties'])
     kind = next(key for key, label in ENTITY_LABELS.items() if label in row['labels'])
@@ -194,6 +205,8 @@ def _graph_node_properties(alias):
         foaf_name:left(toString(coalesce({alias}.foaf_name,{alias}['foaf:name'])),$name_limit),
         hermes_name:left(toString({alias}.hermes_name),$name_limit),
         hermes_description:left(toString({alias}.hermes_description),$description_limit),
+        hermes_eventTime:left(toString({alias}.hermes_eventTime),$name_limit),
+        hermes_timePrecision:left(toString({alias}.hermes_timePrecision),$name_limit),
         hermes_revision:{alias}.hermes_revision,hermes_updatedAt:left(toString({alias}.hermes_updatedAt),$name_limit),
         hermes_enabled:{alias}.hermes_enabled,hermes_status:left(toString({alias}.hermes_status),$name_limit),
         hermes_aliasConfirmed:{alias}.hermes_aliasConfirmed}}'''
@@ -210,6 +223,9 @@ def _graph_node(row):
     if source.get('hermes_name') is not None:
         props['hermes_name'] = str(source['hermes_name'])[:GRAPH_NAME_LIMIT]
     props['hermes_description'] = str(source.get('hermes_description') or '')[:GRAPH_DESCRIPTION_LIMIT]
+    for key in ('hermes_eventTime', 'hermes_timePrecision'):
+        if source.get(key) is not None:
+            props[key] = str(source[key])[:GRAPH_NAME_LIMIT]
     return {**_node({'labels': row['labels'], 'properties': props}), 'preview': True,
             'properties_truncated': True,
             'content_truncated': bool(row.get('content_truncated')) or any(
@@ -254,8 +270,19 @@ class OntologyService:
 
     def describe(self):
         result = deepcopy(_schema())
+        overlay_reader = getattr(self.store, 'ontology_overlay', None)
+        overlay_error = None
+        if callable(overlay_reader):
+            try:
+                from .ontology_editing import effective_schema
+                result = effective_schema(self.config, overlay_reader())
+            except Exception as exc:
+                overlay_error = {'error_type': type(exc).__name__}
+                result.update(version=None, editing={'scope': 'namespace_overlay', 'can_edit': False}, overlay_error=overlay_error)
         result.update(namespace=self.config.urn_prefix, scope=SCOPE, read_only=True,
                       stats_available=False, stats_error=None, stats={'entities': None, 'relationships': None, 'unmapped_relationships': None})
+        if callable(overlay_reader) and overlay_error is None:
+            result['read_only'] = False
         for item in result['entity_types'] + result['relations']:
             item['count'] = None
         try:
@@ -335,7 +362,7 @@ class OntologyService:
                           'properties': row['properties']})
         return self._result(items, total, offset, limit)
 
-    def graph(self, *, q='', types=None, focus_uri=None, node_limit=120, edge_limit=240):
+    def graph(self, *, q='', types=None, relation_types=None, focus_uri=None, node_limit=120, edge_limit=240):
         """Return a bounded, profile-only induced graph for interactive browsing.
 
         Search is evaluated against the whole active namespace before limiting.
@@ -350,6 +377,7 @@ class OntologyService:
         if not isinstance(types, list) or len(types) > len(ENTITY_LABELS) or any(not isinstance(kind, str) for kind in types):
             raise ValueError('types must be a list of at most six supported entity types')
         selected_labels = sorted({ENTITY_LABELS[entity_type(kind)] for kind in types}) or list(ENTITY_LABELS.values())
+        relation_aliases = _graph_relation_aliases(relation_types)
         for name, value, maximum in (('node_limit', node_limit, 200), ('edge_limit', edge_limit, 500)):
             if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= maximum:
                 raise ValueError(f'{name} must be an integer from 1 to {maximum}')
@@ -362,6 +390,7 @@ class OntologyService:
                   'truncated_nodes': False, 'truncated_edges': False,
                   'focus_found': None if focus_uri is None else False}
         params = {**self._params(), 'query': q.strip().lower(), 'selected_labels': selected_labels,
+                  'relation_aliases': relation_aliases,
                   'focus_uri': focus_uri, 'node_limit': node_limit, 'edge_limit': edge_limit,
                   'name_limit': GRAPH_NAME_LIMIT, 'description_limit': GRAPH_DESCRIPTION_LIMIT,
                   'provenance_items': GRAPH_PROVENANCE_ITEMS}
@@ -380,7 +409,8 @@ class OntologyService:
         match = f'''MATCH (n) WHERE {_active('n')}
             AND (($focus_uri IS NOT NULL AND n.uri=$focus_uri) OR ({selection}))
             AND ($focus_uri IS NULL OR n.uri=$focus_uri OR EXISTS {{
-                MATCH (focus)-[]-(n) WHERE focus.uri=$focus_uri AND {_active('focus')}
+                MATCH (focus)-[neighbor_relation]-(n) WHERE focus.uri=$focus_uri AND {_active('focus')}
+                    AND (size($relation_aliases)=0 OR toUpper(type(neighbor_relation)) IN $relation_aliases)
             }})'''
         total = self.store.run_read(match + ' RETURN count(n) AS total', params)[0]['total']
         rows = self.store.run_read(match + f''' RETURN labels(n) AS labels,{_graph_node_properties('n')} AS properties,
@@ -395,7 +425,8 @@ class OntologyService:
             return result
         params['node_uris'] = [node['uri'] for node in nodes]
         edge_match = f'''MATCH (a)-[r]->(b) WHERE {_active('a')} AND {_active('b')}
-            AND a.uri IN $node_uris AND b.uri IN $node_uris'''
+            AND a.uri IN $node_uris AND b.uri IN $node_uris
+            AND (size($relation_aliases)=0 OR toUpper(type(r)) IN $relation_aliases)'''
         edge_total = self.store.run_read(edge_match + ' RETURN count(r) AS total', params)[0]['total']
         rows = self.store.run_read(edge_match + f''' RETURN labels(a) AS source_labels,{_graph_node_properties('a')} AS source_properties,
             labels(b) AS target_labels,{_graph_node_properties('b')} AS target_properties,type(r) AS type,
@@ -407,7 +438,8 @@ class OntologyService:
             source = {'labels': row['source_labels'], 'properties': row['source_properties']}
             target = {'labels': row['target_labels'], 'properties': row['target_properties']}
             if (not _safe_node(source, self.config.urn_prefix) or not _safe_node(target, self.config.urn_prefix)
-                    or source['properties']['uri'] not in allowed_uris or target['properties']['uri'] not in allowed_uris):
+                    or source['properties']['uri'] not in allowed_uris or target['properties']['uri'] not in allowed_uris
+                    or (relation_aliases and row['type'].upper() not in relation_aliases)):
                 continue
             # Opaque, stable within the stored graph, and distinct for parallel
             # relationships. The database's internal identifier is not exposed.
@@ -421,3 +453,15 @@ class OntologyService:
         edges = edges[:edge_limit]
         result.update(edges=edges, total_edges=edge_total, truncated_edges=edge_total > len(edges))
         return result
+
+    def graph_overview(self, **kwargs):
+        from .graph_exploration import GraphExploration
+        return GraphExploration(self.config, self.store).overview(**kwargs)
+
+    def graph_neighbors(self, **kwargs):
+        from .graph_exploration import GraphExploration
+        return GraphExploration(self.config, self.store).neighbors(**kwargs)
+
+    def graph_paths(self, **kwargs):
+        from .graph_exploration import GraphExploration
+        return GraphExploration(self.config, self.store).paths(**kwargs)

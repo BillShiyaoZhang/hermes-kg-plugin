@@ -1,0 +1,504 @@
+.ov3-inspector {
+  color: var(--ink, #1d2924);
+  min-width: 0;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+}
+.ov3-inspector *,
+.ov3-inspector *::before,
+.ov3-inspector *::after {
+  box-sizing: border-box;
+  min-width: 0;
+}
+.ov3-heading {
+  padding: 22px 20px 16px;
+}
+.ov3-eyebrow {
+  color: #586c61;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.075em;
+}
+.ov3-inspector h2 {
+  margin: 8px 0;
+  font-size: 1.375rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.ov3-inspector h3 {
+  margin: 0 0 8px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.ov3-inspector p {
+  color: #53635b;
+  margin: 8px 0 12px;
+  overflow-wrap: anywhere;
+}
+.ov3-inspector code {
+  font-size: 0.6875rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ov3-inspector button {
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  min-height: 44px;
+  border-radius: 7px;
+  background: #f2f5f1;
+  padding: 8px 12px;
+  border: 1px solid #d8e0d9;
+}
+.ov3-inspector button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.ov3-inspector button:hover:not(:disabled) {
+  background: #e7eee8;
+}
+.ov3-inspector :is(button, input, summary):focus-visible,
+.ov3-instance-results:focus-visible {
+  outline: 3px solid #426f58;
+  outline-offset: 3px;
+}
+.ov3-tabs {
+  display: flex;
+  padding: 0 12px;
+  border-bottom: 1px solid #dde5dd;
+  overflow-x: auto;
+  gap: 2px;
+}
+.ov3-tabs button {
+  flex: 1 0 auto;
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  padding: 10px 9px;
+  color: #647368;
+  font-size: 0.75rem;
+  position: relative;
+}
+.ov3-tabs button[aria-selected="true"] {
+  color: #264b38;
+  background: #f0f5f0;
+  font-weight: 650;
+}
+.ov3-tabs button[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 0;
+  height: 2px;
+  background: #3c624c;
+}
+.ov3-panel {
+  padding: 18px 20px 24px;
+}
+.ov3-rule-note {
+  background: #f0f4ef;
+  border: 1px solid #e0e8dd;
+  padding: 11px 12px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+.ov3-metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 10px;
+  margin: 18px 0;
+}
+.ov3-metrics > div {
+  padding: 13px 12px;
+  background: #f8faf6;
+  border: 1px solid #e6ebe3;
+  border-radius: 9px;
+}
+.ov3-metrics dt {
+  color: #617165;
+  font-size: 0.6875rem;
+}
+.ov3-metrics dd {
+  margin: 7px 0 0;
+  font-size: 1.75rem;
+  font-weight: 550;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.ov3-metrics small {
+  display: block;
+  color: #617165;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  margin-top: 5px;
+}
+.ov3-endpoint-flow,
+.ov3-record-flow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+}
+.ov3-endpoint-flow > span {
+  flex: 1;
+  background: #f7f9f5;
+  padding: 10px;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.ov3-endpoint-flow small,
+.ov3-record-flow small {
+  display: block;
+  color: #617165;
+  font-size: 0.6875rem;
+  margin-bottom: 5px;
+}
+.ov3-endpoint-flow > svg,
+.ov3-record-flow > svg {
+  flex-shrink: 0;
+  color: #667769;
+}
+.ov3-inspector .ov3-primary {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  background: #345b45;
+  border-color: #345b45;
+  color: #fff;
+}
+.ov3-inspector .ov3-primary:hover:not(:disabled) {
+  background: #294c38;
+}
+.ov3-technical {
+  margin-top: 16px;
+  border-top: 1px solid #e5ebe2;
+}
+.ov3-technical summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: #506458;
+}
+.ov3-technical summary::before {
+  content: "+";
+  font-size: 1rem;
+  line-height: 1;
+}
+.ov3-technical[open] > summary::before {
+  content: "−";
+}
+.ov3-inspector .ov3-technical dl,
+.ov3-details {
+  margin: 4px 0 12px;
+}
+.ov3-inspector .ov3-technical dl > div,
+.ov3-details > div {
+  padding: 8px 0;
+  border-top: 1px solid #edf0e9;
+}
+.ov3-inspector .ov3-technical dt,
+.ov3-details dt {
+  color: #607064;
+  font-size: 0.6875rem;
+}
+.ov3-inspector .ov3-technical dd,
+.ov3-details dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+.ov3-warning {
+  background: #fcf5e8;
+  color: #765523;
+  padding: 10px 12px;
+  border: 1px solid #eadabd;
+  border-radius: 8px;
+}
+.ov3-warning ul {
+  padding-left: 18px;
+  margin: 0;
+}
+.ov3-warning li {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.ov3-warning p {
+  color: inherit;
+}
+.ov3-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid #bbcbbf;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0 10px;
+}
+.ov3-search svg {
+  color: #6c7b6e;
+  flex-shrink: 0;
+}
+.ov3-search input {
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 0;
+  color: #24372c;
+  font: inherit;
+}
+.ov3-search input::placeholder {
+  color: #6e7b71;
+}
+.ov3-property-filters {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.ov3-property-filters button {
+  flex: 1;
+  font-size: 0.6875rem;
+  padding: 7px 8px;
+  min-height: 44px;
+  white-space: nowrap;
+  background: transparent;
+}
+.ov3-property-filters button[aria-pressed="true"] {
+  background: #e8f0e7;
+  border-color: #8eaa91;
+  color: #2d5038;
+  font-weight: 650;
+}
+.ov3-result-note {
+  font-size: 0.6875rem;
+  color: #657366;
+}
+.ov3-property {
+  padding: 16px 0;
+  border-bottom: 1px solid #e5ebe2;
+}
+.ov3-property:first-child {
+  padding-top: 4px;
+}
+.ov3-property:last-child {
+  border-bottom: 0;
+}
+.ov3-property-title {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.ov3-property-title > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.ov3-property-title span {
+  border-radius: 4px;
+  padding: 1px 5px;
+  background: #edf2e9;
+  color: #4a6348;
+  white-space: nowrap;
+  font-size: 0.625rem;
+}
+.ov3-property p {
+  font-size: 0.75rem;
+  margin: 4px 0 8px;
+}
+.ov3-value-type {
+  color: #596c60;
+  font-size: 0.6875rem;
+}
+.ov3-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 9px;
+}
+.ov3-values code {
+  padding: 2px 6px;
+  background: #f2f4ef;
+  border-radius: 4px;
+}
+.ov3-property .ov3-condition {
+  border-left: 2px solid #b7c9b6;
+  padding-left: 9px;
+  margin-top: 9px;
+}
+.ov3-empty {
+  padding: 16px 0;
+}
+.ov3-relation-group {
+  margin-bottom: 24px;
+}
+.ov3-relation-group > h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ov3-relation-group > h3 small {
+  color: #68776c;
+  font-weight: 400;
+  font-size: 0.6875rem;
+}
+.ov3-relation {
+  padding: 9px 0 12px;
+  border-bottom: 1px solid #e7ece3;
+}
+.ov3-inspector .ov3-relation-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  padding: 4px 0;
+  border: 0;
+}
+.ov3-relation p {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+}
+.ov3-relation > small {
+  color: #69786b;
+  font-size: 0.6875rem;
+}
+.ov3-instance-search {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin: 16px 0;
+}
+.ov3-instance-search > button {
+  flex-shrink: 0;
+  padding: 8px 10px;
+}
+.ov3-inspector .ov3-text-button {
+  background: transparent;
+  border: 0;
+  padding: 3px 0;
+  text-align: left;
+  min-height: 44px;
+  color: #315c46;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ov3-inspector .ov3-text-button:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+}
+.ov3-browse {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ov3-instance-results {
+  outline-offset: 4px;
+}
+.ov3-instance {
+  padding: 14px 0;
+  border-top: 1px solid #e5ebe2;
+}
+.ov3-instance p {
+  font-size: 0.75rem;
+  margin: 5px 0 8px;
+}
+.ov3-instance > small {
+  color: #657369;
+  font-size: 0.6875rem;
+}
+.ov3-instance .ov3-technical {
+  margin-top: 7px;
+  border-top: 0;
+}
+.ov3-record-flow > div {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.ov3-record-flow {
+  align-items: flex-start;
+}
+.ov3-record-flow > svg {
+  margin-top: 20px;
+}
+.ov3-pagination {
+  border-top: 1px solid #dfe7dc;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  margin-top: 12px;
+}
+.ov3-pagination > span {
+  font-size: 0.6875rem;
+  color: #5c705e;
+}
+.ov3-pagination > div {
+  display: flex;
+  gap: 5px;
+}
+.ov3-pagination button {
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+@media (max-width: 390px) {
+  .ov3-heading,
+  .ov3-panel {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .ov3-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ov3-property-title {
+    flex-wrap: wrap;
+  }
+  .ov3-property-title > div {
+    justify-content: flex-start;
+  }
+}
+.ov3-edit-entry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  margin-top: 9px;
+  padding: 7px 11px;
+  color: #36553d;
+  border: 1px solid #c3d3bd;
+  border-radius: 7px;
+  background: #f4f8f0;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.ov3-edit-entry:hover {
+  background: #e8f0e2;
+}
+.ov3-edit-entry:focus-visible {
+  outline: 2px solid #5b8056;
+  outline-offset: 2px;
+}
+.ov3-edit-entry:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ov3-edit-property {
+  margin-top: 12px;
+}

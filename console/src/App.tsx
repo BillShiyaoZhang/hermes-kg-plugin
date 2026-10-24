@@ -366,6 +366,25 @@ export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [selected, setSelected] = useState<Memory | null>(null);
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
+  const [graphActionLocked, setGraphActionLocked] = useState(false);
+  const graphActionLock = useRef(false);
+  graphActionLock.current = graphActionLocked;
+  const changeGraphInteractionLock = useCallback((locked: boolean) => {
+    graphActionLock.current = locked;
+    setGraphActionLocked(locked);
+  }, []);
+  const selectionIdentity = useRef({
+    uri: selected?.uri,
+    review: selectedReview?.id,
+  });
+  selectionIdentity.current = {
+    uri: selected?.uri,
+    review: selectedReview?.id,
+  };
+  const currentPage = useRef(page);
+  currentPage.current = page;
+  const graphInteractionMessage =
+    "有未完成的写入或编辑草稿，请先在检查器完成操作，或明确放弃草稿。";
   const [authOpen, setAuthOpen] = useState(!token);
   const [notice, setNotice] = useState<Notification | null>(null);
   const [lastStatusAt, setLastStatusAt] = useState<string>();
@@ -398,6 +417,10 @@ export default function App() {
   const navigate = useCallback(
     (next: Page) => {
       if (next !== page) {
+        if (graphActionLock.current) {
+          notify(graphInteractionMessage);
+          return;
+        }
         window.history.pushState(
           null,
           "",
@@ -408,20 +431,44 @@ export default function App() {
         setSelectedReview(null);
       }
     },
-    [page],
+    [page, notify],
   );
-  const selectMemory = useCallback((memory: Memory) => {
-    setSelectedReview(null);
-    setSelected(memory);
-  }, []);
-  const selectReview = useCallback((review: Review) => {
-    setSelected(null);
-    setSelectedReview(review);
-  }, []);
+  const selectMemory = useCallback(
+    (memory: Memory) => {
+      if (
+        graphActionLock.current &&
+        selectionIdentity.current.uri !== memory.uri
+      ) {
+        notify(graphInteractionMessage);
+        return;
+      }
+      setSelectedReview(null);
+      setSelected(memory);
+    },
+    [notify],
+  );
+  const selectReview = useCallback(
+    (review: Review) => {
+      if (
+        graphActionLock.current &&
+        selectionIdentity.current.review !== review.id
+      ) {
+        notify(graphInteractionMessage);
+        return;
+      }
+      setSelected(null);
+      setSelectedReview(review);
+    },
+    [notify],
+  );
   const clearSelection = useCallback(() => {
+    if (graphActionLock.current) {
+      notify(graphInteractionMessage);
+      return;
+    }
     setSelected(null);
     setSelectedReview(null);
-  }, []);
+  }, [notify]);
   useEffect(() => {
     window.history.replaceState(
       null,
@@ -432,13 +479,22 @@ export default function App() {
       ),
     );
     const restorePage = () => {
+      if (graphActionLock.current) {
+        window.history.replaceState(
+          null,
+          "",
+          pageLocation(currentPage.current, window.location.href),
+        );
+        notify(graphInteractionMessage);
+        return;
+      }
       setPage(pageFromSearch(window.location.search));
       setSelected(null);
       setSelectedReview(null);
     };
     window.addEventListener("popstate", restorePage);
     return () => window.removeEventListener("popstate", restorePage);
-  }, []);
+  }, [notify]);
   const previousPage = useRef(page);
   useEffect(() => {
     document.title = `${PAGE_LABELS[page]} · 记忆工作台`;
@@ -490,6 +546,10 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [notice]);
   const disconnect = () => {
+    if (graphActionLock.current) {
+      notify(graphInteractionMessage);
+      return;
+    }
     saveToken("");
     setToken("");
     setStatus(null);
@@ -648,6 +708,11 @@ export default function App() {
           {page === "graph" && (
             <GraphExplorer
               api={api}
+              interactionLocked={graphActionLocked}
+              interactionMessage={graphInteractionMessage}
+              writeEnabled={writeEnabled}
+              onInteractionLockChange={changeGraphInteractionLock}
+              onReconnect={() => setAuthOpen(true)}
               enabled={!!token}
               refreshKey={refreshKey}
               refresh={refresh}
@@ -669,6 +734,7 @@ export default function App() {
                     writeEnabled={writeEnabled}
                     onReconnect={() => setAuthOpen(true)}
                     embedded
+                    onInteractionLockChange={changeGraphInteractionLock}
                   />
                 ) : selectedReview ? (
                   <ReviewDrawer
@@ -688,6 +754,7 @@ export default function App() {
                     writeEnabled={writeEnabled}
                     onReconnect={() => setAuthOpen(true)}
                     embedded
+                    onInteractionLockChange={changeGraphInteractionLock}
                   />
                 ) : null
               }
@@ -2061,6 +2128,7 @@ function MemoryDrawer({
   writeEnabled = true,
   onReconnect,
   embedded = false,
+  onInteractionLockChange,
 }: {
   api: ConsoleApi;
   selected: Memory;
@@ -2071,6 +2139,7 @@ function MemoryDrawer({
   writeEnabled?: boolean;
   onReconnect?: () => void;
   embedded?: boolean;
+  onInteractionLockChange?: (locked: boolean) => void;
 }) {
   const [memory, setMemory] = useState(selected),
     [loading, setLoading] = useState(true),
@@ -2080,6 +2149,14 @@ function MemoryDrawer({
     [revisionKey, setRevisionKey] = useState(0);
   const [writeError, setWriteError] = useState<unknown>(null);
   const restoreLock = useRef(false);
+  const interactionLocked = restoring || edit !== null;
+  useEffect(() => {
+    onInteractionLockChange?.(interactionLocked);
+  }, [interactionLocked, onInteractionLockChange]);
+  useEffect(
+    () => () => onInteractionLockChange?.(false),
+    [onInteractionLockChange],
+  );
   const restoreIntent = useRef<ReturnType<typeof operationForIntent> | null>(
     null,
   );
@@ -2135,6 +2212,7 @@ function MemoryDrawer({
   const restore = async () => {
     if (!canEdit || restoreLock.current) return;
     restoreLock.current = true;
+    onInteractionLockChange?.(true);
     setRestoring(true);
     setWriteError(null);
     try {
@@ -2504,7 +2582,10 @@ function MemoryDrawer({
               <button
                 className="button button-quiet danger-text"
                 disabled={!canEdit}
-                onClick={() => setEdit("archive")}
+                onClick={() => {
+                  onInteractionLockChange?.(true);
+                  setEdit("archive");
+                }}
               >
                 <Pause size={15} />
                 停用记忆
@@ -2512,7 +2593,10 @@ function MemoryDrawer({
               <button
                 className="button button-primary"
                 disabled={!canEdit}
-                onClick={() => setEdit("correct")}
+                onClick={() => {
+                  onInteractionLockChange?.(true);
+                  setEdit("correct");
+                }}
               >
                 <PencilLine size={15} />
                 纠正内容
@@ -3006,6 +3090,35 @@ function EditMemoryDialog({
   );
 }
 
+export function reviewInteractionState({
+  busy,
+  refreshing,
+  editing,
+  editedCount,
+  rejecting,
+  reason,
+  resolved,
+  pending,
+}: {
+  busy: boolean;
+  refreshing: boolean;
+  editing: boolean;
+  editedCount: number;
+  rejecting: boolean;
+  reason: string;
+  resolved: boolean;
+  pending: boolean;
+}): { locked: boolean; hasDraft: boolean } {
+  const hasDraft = !resolved && pending && (editedCount > 0 || !!reason.trim());
+  return {
+    hasDraft,
+    locked:
+      busy ||
+      refreshing ||
+      (!resolved && pending && (editing || rejecting || hasDraft)),
+  };
+}
+
 function ReviewDrawer({
   api,
   review,
@@ -3016,6 +3129,7 @@ function ReviewDrawer({
   onReconnect,
   embedded = false,
   onResolved,
+  onInteractionLockChange,
 }: {
   api: ConsoleApi;
   review: Review;
@@ -3026,6 +3140,7 @@ function ReviewDrawer({
   onReconnect?: () => void;
   embedded?: boolean;
   onResolved?: (status: "approved" | "rejected") => void;
+  onInteractionLockChange?: (locked: boolean) => void;
 }) {
   const [busy, setBusy] = useState(""),
     [error, setError] = useState<unknown>(null),
@@ -3039,6 +3154,7 @@ function ReviewDrawer({
     "approved" | "rejected" | "deferred" | null
   >(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
   const [latestMemories, setLatestMemories] = useState<Memory[]>([]);
   const [versions, setVersions] = useState(review.expectedVersions);
   const [conflictDetected, setConflictDetected] = useState(false);
@@ -3051,7 +3167,8 @@ function ReviewDrawer({
   const invalidDraft = Object.values(drafts).some(
     (draft) => !draft.name.trim(),
   );
-  const setDraft = (memory: Memory, key: "name" | "content", value: string) =>
+  const setDraft = (memory: Memory, key: "name" | "content", value: string) => {
+    onInteractionLockChange?.(true);
     setDrafts((current) => ({
       ...current,
       [memory.uri]: {
@@ -3060,10 +3177,39 @@ function ReviewDrawer({
         [key]: value,
       },
     }));
-  const close = useCallback(() => {
-    if (!requestLock.current || refreshing) onClose();
-  }, [onClose, refreshing]);
+  };
   const isPending = !resolved && isPendingReview(review.status);
+  const interaction = reviewInteractionState({
+    busy: !!busy,
+    refreshing,
+    editing: editingUri !== null,
+    editedCount,
+    rejecting,
+    reason,
+    resolved: !!resolved,
+    pending: isPendingReview(review.status),
+  });
+  useEffect(() => {
+    onInteractionLockChange?.(interaction.locked);
+  }, [interaction.locked, onInteractionLockChange]);
+  useEffect(
+    () => () => onInteractionLockChange?.(false),
+    [onInteractionLockChange],
+  );
+  const close = useCallback(() => {
+    if (requestLock.current || busy || refreshing) return;
+    if (interaction.hasDraft) setConfirmClose(true);
+    else onClose();
+  }, [onClose, busy, refreshing, interaction.hasDraft]);
+  const discardAndClose = () => {
+    if (requestLock.current || busy || refreshing) return;
+    setDrafts({});
+    setReason("");
+    setRejecting(false);
+    setEditingUri(null);
+    setConfirmClose(false);
+    onClose();
+  };
   const conflict =
     conflictDetected || (error instanceof ApiError && error.status === 409);
   const readOnlyEntities = review.entities.some((memory) => memory.readOnly);
@@ -3076,6 +3222,7 @@ function ReviewDrawer({
   const loadLatest = async () => {
     if (requestLock.current) return;
     requestLock.current = true;
+    onInteractionLockChange?.(true);
     setRefreshing(true);
     try {
       const originalVersions =
@@ -3146,6 +3293,7 @@ function ReviewDrawer({
     )
       return;
     requestLock.current = true;
+    onInteractionLockChange?.(true);
     setBusy(action);
     setError(null);
     try {
@@ -3203,353 +3351,408 @@ function ReviewDrawer({
     }
   };
   return (
-    <DetailSurface
-      embedded={embedded}
-      onClose={close}
-      className="drawer-overlay review-drawer-overlay"
-      labelledBy="review-title"
-    >
-      <div className="drawer-top">
-        <span>
-          <Inbox size={17} />
-          批次审阅
-        </span>
-        <button
-          className="icon-button"
-          onClick={close}
-          disabled={!!busy}
-          aria-label="关闭批次审阅"
-        >
-          <X size={19} />
-        </button>
-      </div>
-      <div className="drawer-scroll">
-        <div className="detail-title">
-          <div className="section-eyebrow">REVIEW BEFORE REMEMBERING</div>
-          <h2 id="review-title">这批内容，值得记住吗？</h2>
-          <div className="detail-meta">
-            <span>{formatDate(review.createdAt, true)}</span>
-            <span>
-              {review.entities.length} 条记忆 · {review.relations.length} 条关系
-            </span>
-          </div>
-        </div>
-        {review.reason && (
-          <div className="info-banner">
-            <CircleHelp size={17} />
-            <span>{reviewReason(review.reason)}</span>
-          </div>
-        )}
-        <div className="review-checklist">
-          <ShieldCheck size={16} />
-          <p>
-            核对是否为用户确认的事实，注意否定、假设、转述与时间。批准将提交整个批次。
-          </p>
-        </div>
-        <PendingFeedback
-          active={!!busy || refreshing}
-          message={
-            refreshing
-              ? "读取最新记录需要一些时间，你可以稍后重试。更正输入仍保留。"
-              : "仍在等待服务确认，请保留本页；超时后先核对状态再重试。"
-          }
-        />
-        {!writeEnabled && (
-          <div className="info-banner" role="status">
-            <span>服务不可写，请恢复连接后重试。更正输入仍保留。</span>
-            {onReconnect && (
-              <button className="button button-secondary" onClick={onReconnect}>
-                重新连接
-              </button>
-            )}
-          </div>
-        )}
-        {readOnlyEntities && (
-          <div className="info-banner">
-            <LockKeyhole size={16} />
-            <span>批次包含仅可查看的记录，不能在此更正或批准。</span>
-          </div>
-        )}
-        {(!!error || resolved) && (
-          <div
-            ref={resultRegion}
-            tabIndex={-1}
-            role={error ? "alert" : "status"}
-            aria-label="批次处理结果"
+    <>
+      <DetailSurface
+        embedded={embedded}
+        onClose={close}
+        className="drawer-overlay review-drawer-overlay"
+        labelledBy="review-title"
+      >
+        <div className="drawer-top">
+          <span>
+            <Inbox size={17} />
+            批次审阅
+          </span>
+          <button
+            className="icon-button"
+            onClick={close}
+            disabled={!!busy || refreshing}
+            aria-label="关闭批次审阅"
           >
-            {!!error && <ErrorBox error={error} compact />}
-            {conflict && (
-              <button
-                className="button button-secondary"
-                disabled={!!busy || refreshing || !writeEnabled}
-                onClick={() => void loadLatest()}
-              >
-                {refreshing ? "正在读取最新记录" : "读取最新记录并核对"}
-              </button>
-            )}
-            {resolved && (
-              <div className="info-banner">
-                <span>
-                  {resolved === "approved"
-                    ? "已应用：服务器已确认这批内容写入，列表将同步更新。"
-                    : resolved === "rejected"
-                      ? "已拒绝：服务器已确认该批次不会写入，列表将同步更新。"
-                      : "仍待审：服务已接收请求，但尚未应用内容，请返回列表核对后续处理。"}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-        {latestMemories.length > 0 && (
-          <section
-            ref={latestRegion}
-            tabIndex={-1}
-            className="detail-section"
-            aria-label="最新关联记录核对"
-          >
-            <h3>最新关联记录</h3>
-            <p className="field-note">
-              更正输入仍保留。请与下列最新内容核对，再明确批准整个批次。
-            </p>
-            {latestMemories.map((memory) => (
-              <div className="review-entity" key={memory.uri}>
-                <strong>
-                  {memory.name} · 版本 {memory.version}
-                </strong>
-                <p>{memory.description || "没有附加描述"}</p>
-              </div>
-            ))}
-          </section>
-        )}
-        {review.entities.map((memory, index) => (
-          <section className="review-entity" key={memory.uri || index}>
-            <div className="review-entity-heading">
-              <TypeIcon type={memory.type} size={16} />
-              <div>
-                <Badge>{typeLabels[memory.type]}</Badge>
-                <h3>{drafts[memory.uri]?.name ?? memory.name}</h3>
-              </div>
-              {isPending && memory.uri && !memory.readOnly && (
-                <button
-                  className="icon-button review-edit-button"
-                  onClick={() =>
-                    setEditingUri(editingUri === memory.uri ? null : memory.uri)
-                  }
-                  disabled={!!busy || refreshing}
-                  aria-label={`修改${memory.name}`}
-                  title="更正名称与描述"
-                >
-                  <PencilLine size={14} />
-                </button>
-              )}
-              <span className="entity-index">
-                {String(index + 1).padStart(2, "0")}
+            <X size={19} />
+          </button>
+        </div>
+        <div className="drawer-scroll">
+          <div className="detail-title">
+            <div className="section-eyebrow">REVIEW BEFORE REMEMBERING</div>
+            <h2 id="review-title">这批内容，值得记住吗？</h2>
+            <div className="detail-meta">
+              <span>{formatDate(review.createdAt, true)}</span>
+              <span>
+                {review.entities.length} 条记忆 · {review.relations.length}{" "}
+                条关系
               </span>
             </div>
-            {editingUri === memory.uri ? (
-              <div className="review-edit-fields">
-                <label className="field-label">
-                  名称
-                  <input
-                    value={drafts[memory.uri]?.name ?? memory.name}
-                    onChange={(event) =>
-                      setDraft(memory, "name", event.target.value)
-                    }
-                    maxLength={300}
-                    disabled={!!busy || refreshing}
-                  />
-                </label>
-                <label className="field-label">
-                  {memory.type === "decision" ? "决策内容" : "描述"}
-                  <textarea
-                    rows={3}
-                    disabled={!!busy || refreshing}
-                    value={drafts[memory.uri]?.content ?? memory.description}
-                    onChange={(event) =>
-                      setDraft(memory, "content", event.target.value)
-                    }
-                  />
-                </label>
-                <div>
-                  <span className="field-note">
-                    仅更正当前条目，保留身份与关系端点。
-                  </span>
-                  <button
-                    className="button button-quiet"
-                    onClick={() => {
-                      setDrafts((current) => {
-                        const next = { ...current };
-                        delete next[memory.uri];
-                        return next;
-                      });
-                      setEditingUri(null);
-                    }}
-                    disabled={!!busy || refreshing}
-                  >
-                    撤销更正
-                  </button>
-                  <button
-                    className="button button-secondary"
-                    onClick={() => setEditingUri(null)}
-                    disabled={!!busy || refreshing}
-                  >
-                    完成编辑
-                  </button>
-                </div>
-              </div>
-            ) : (
-              (drafts[memory.uri]?.content ?? memory.description) && (
-                <p className="review-entity-description">
-                  {drafts[memory.uri]?.content ?? memory.description}
-                </p>
-              )
-            )}
-            {!!changes[memory.uri] && (
-              <div className="review-edit-label">
-                <PencilLine size={11} />
-                有人工更正 · 原引文将保留为来源背景
-              </div>
-            )}
-            {memory.eventTime && (
-              <div className="review-date">
-                <CalendarDays size={13} />
-                {formatDate(memory.eventTime, memory.timePrecision !== "day")}
-              </div>
-            )}
-            <EvidenceList memory={memory} />
-          </section>
-        ))}
-        {!review.entities.length && (
-          <div className="no-evidence">
-            <FileText size={20} />
-            <p>服务未提供可展示的实体。请确认该批次内容与关系后再批准。</p>
           </div>
-        )}
-        {review.relations.length > 0 && (
-          <section className="detail-section">
-            <h3>
-              <Layers3 size={15} />
-              关系核对
-            </h3>
-            <div className="review-relations">
-              {review.relations.map((relation, index) => (
-                <div key={index}>
-                  <code>
-                    {textValue(
-                      relation.from ?? relation.from_urn ?? relation.source,
-                    )}
-                  </code>
+          {review.reason && (
+            <div className="info-banner">
+              <CircleHelp size={17} />
+              <span>{reviewReason(review.reason)}</span>
+            </div>
+          )}
+          <div className="review-checklist">
+            <ShieldCheck size={16} />
+            <p>
+              核对是否为用户确认的事实，注意否定、假设、转述与时间。批准将提交整个批次。
+            </p>
+          </div>
+          <PendingFeedback
+            active={!!busy || refreshing}
+            message={
+              refreshing
+                ? "读取最新记录需要一些时间，你可以稍后重试。更正输入仍保留。"
+                : "仍在等待服务确认，请保留本页；超时后先核对状态再重试。"
+            }
+          />
+          {!writeEnabled && (
+            <div className="info-banner" role="status">
+              <span>服务不可写，请恢复连接后重试。更正输入仍保留。</span>
+              {onReconnect && (
+                <button
+                  className="button button-secondary"
+                  onClick={onReconnect}
+                >
+                  重新连接
+                </button>
+              )}
+            </div>
+          )}
+          {readOnlyEntities && (
+            <div className="info-banner">
+              <LockKeyhole size={16} />
+              <span>批次包含仅可查看的记录，不能在此更正或批准。</span>
+            </div>
+          )}
+          {(!!error || resolved) && (
+            <div
+              ref={resultRegion}
+              tabIndex={-1}
+              role={error ? "alert" : "status"}
+              aria-label="批次处理结果"
+            >
+              {!!error && <ErrorBox error={error} compact />}
+              {conflict && (
+                <button
+                  className="button button-secondary"
+                  disabled={!!busy || refreshing || !writeEnabled}
+                  onClick={() => void loadLatest()}
+                >
+                  {refreshing ? "正在读取最新记录" : "读取最新记录并核对"}
+                </button>
+              )}
+              {resolved && (
+                <div className="info-banner">
                   <span>
-                    <ArrowRight size={12} />
-                    {textValue(relation.type ?? relation.relation_type)}
+                    {resolved === "approved"
+                      ? "已应用：服务器已确认这批内容写入，列表将同步更新。"
+                      : resolved === "rejected"
+                        ? "已拒绝：服务器已确认该批次不会写入，列表将同步更新。"
+                        : "仍待审：服务已接收请求，但尚未应用内容，请返回列表核对后续处理。"}
                   </span>
-                  <code>
-                    {textValue(
-                      relation.to ?? relation.to_urn ?? relation.target,
-                    )}
-                  </code>
+                </div>
+              )}
+            </div>
+          )}
+          {latestMemories.length > 0 && (
+            <section
+              ref={latestRegion}
+              tabIndex={-1}
+              className="detail-section"
+              aria-label="最新关联记录核对"
+            >
+              <h3>最新关联记录</h3>
+              <p className="field-note">
+                更正输入仍保留。请与下列最新内容核对，再明确批准整个批次。
+              </p>
+              {latestMemories.map((memory) => (
+                <div className="review-entity" key={memory.uri}>
+                  <strong>
+                    {memory.name} · 版本 {memory.version}
+                  </strong>
+                  <p>{memory.description || "没有附加描述"}</p>
                 </div>
               ))}
-            </div>
-          </section>
-        )}
-        {(rejecting || editedCount > 0) && (
-          <label className="field-label reject-reason">
-            {rejecting ? "拒绝原因" : "更正说明"}
-            <textarea
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              rows={3}
-              disabled={!!busy || refreshing || !!resolved}
-              placeholder={
-                rejecting
-                  ? "简要说明不应保存的原因"
-                  : "简要说明这次人工更正的依据"
-              }
-              autoFocus={rejecting}
-            />
-          </label>
-        )}
-        <div className="detail-uri">
-          <span>批次标识</span>
-          <code>{review.id}</code>
-        </div>
-      </div>
-      <div className="drawer-actions">
-        {isPending ? (
-          rejecting ? (
-            <>
-              <button
-                className="button button-quiet"
-                onClick={() => setRejecting(false)}
-                disabled={!!busy || refreshing}
-              >
-                返回核对
-              </button>
-              <button
-                className="button button-danger"
-                onClick={() => void act("reject")}
-                disabled={!!busy || refreshing || !writeEnabled}
-              >
-                {busy === "reject" ? (
-                  <LoaderCircle size={15} className="spin" />
-                ) : (
-                  <X size={15} />
+            </section>
+          )}
+          {review.entities.map((memory, index) => (
+            <section className="review-entity" key={memory.uri || index}>
+              <div className="review-entity-heading">
+                <TypeIcon type={memory.type} size={16} />
+                <div>
+                  <Badge>{typeLabels[memory.type]}</Badge>
+                  <h3>{drafts[memory.uri]?.name ?? memory.name}</h3>
+                </div>
+                {isPending && memory.uri && !memory.readOnly && (
+                  <button
+                    className="icon-button review-edit-button"
+                    onClick={() => {
+                      if (editingUri !== memory.uri)
+                        onInteractionLockChange?.(true);
+                      setEditingUri(
+                        editingUri === memory.uri ? null : memory.uri,
+                      );
+                    }}
+                    disabled={!!busy || refreshing}
+                    aria-label={`修改${memory.name}`}
+                    title="更正名称与描述"
+                  >
+                    <PencilLine size={14} />
+                  </button>
                 )}
-                {busy === "reject" ? "正在拒绝" : "拒绝此批次"}
-              </button>
-            </>
+                <span className="entity-index">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+              </div>
+              {editingUri === memory.uri ? (
+                <div className="review-edit-fields">
+                  <label className="field-label">
+                    名称
+                    <input
+                      value={drafts[memory.uri]?.name ?? memory.name}
+                      onChange={(event) =>
+                        setDraft(memory, "name", event.target.value)
+                      }
+                      maxLength={300}
+                      disabled={!!busy || refreshing}
+                    />
+                  </label>
+                  <label className="field-label">
+                    {memory.type === "decision" ? "决策内容" : "描述"}
+                    <textarea
+                      rows={3}
+                      disabled={!!busy || refreshing}
+                      value={drafts[memory.uri]?.content ?? memory.description}
+                      onChange={(event) =>
+                        setDraft(memory, "content", event.target.value)
+                      }
+                    />
+                  </label>
+                  <div>
+                    <span className="field-note">
+                      仅更正当前条目，保留身份与关系端点。
+                    </span>
+                    <button
+                      className="button button-quiet"
+                      onClick={() => {
+                        setDrafts((current) => {
+                          const next = { ...current };
+                          delete next[memory.uri];
+                          return next;
+                        });
+                        setEditingUri(null);
+                      }}
+                      disabled={!!busy || refreshing}
+                    >
+                      撤销更正
+                    </button>
+                    <button
+                      className="button button-secondary"
+                      onClick={() => setEditingUri(null)}
+                      disabled={!!busy || refreshing}
+                    >
+                      完成编辑
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                (drafts[memory.uri]?.content ?? memory.description) && (
+                  <p className="review-entity-description">
+                    {drafts[memory.uri]?.content ?? memory.description}
+                  </p>
+                )
+              )}
+              {!!changes[memory.uri] && (
+                <div className="review-edit-label">
+                  <PencilLine size={11} />
+                  有人工更正 · 原引文将保留为来源背景
+                </div>
+              )}
+              {memory.eventTime && (
+                <div className="review-date">
+                  <CalendarDays size={13} />
+                  {formatDate(memory.eventTime, memory.timePrecision !== "day")}
+                </div>
+              )}
+              <EvidenceList memory={memory} />
+            </section>
+          ))}
+          {!review.entities.length && (
+            <div className="no-evidence">
+              <FileText size={20} />
+              <p>服务未提供可展示的实体。请确认该批次内容与关系后再批准。</p>
+            </div>
+          )}
+          {review.relations.length > 0 && (
+            <section className="detail-section">
+              <h3>
+                <Layers3 size={15} />
+                关系核对
+              </h3>
+              <div className="review-relations">
+                {review.relations.map((relation, index) => (
+                  <div key={index}>
+                    <code>
+                      {textValue(
+                        relation.from ?? relation.from_urn ?? relation.source,
+                      )}
+                    </code>
+                    <span>
+                      <ArrowRight size={12} />
+                      {textValue(relation.type ?? relation.relation_type)}
+                    </span>
+                    <code>
+                      {textValue(
+                        relation.to ?? relation.to_urn ?? relation.target,
+                      )}
+                    </code>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          {(rejecting || editedCount > 0) && (
+            <label className="field-label reject-reason">
+              {rejecting ? "拒绝原因" : "更正说明"}
+              <textarea
+                value={reason}
+                onChange={(event) => {
+                  onInteractionLockChange?.(true);
+                  setReason(event.target.value);
+                }}
+                rows={3}
+                disabled={!!busy || refreshing || !!resolved}
+                placeholder={
+                  rejecting
+                    ? "简要说明不应保存的原因"
+                    : "简要说明这次人工更正的依据"
+                }
+                autoFocus={rejecting}
+              />
+            </label>
+          )}
+          <div className="detail-uri">
+            <span>批次标识</span>
+            <code>{review.id}</code>
+          </div>
+        </div>
+        <div className="drawer-actions">
+          {isPending ? (
+            rejecting ? (
+              <>
+                <button
+                  className="button button-quiet"
+                  onClick={() => setRejecting(false)}
+                  disabled={!!busy || refreshing}
+                >
+                  返回核对
+                </button>
+                <button
+                  className="button button-danger"
+                  onClick={() => void act("reject")}
+                  disabled={!!busy || refreshing || !writeEnabled}
+                >
+                  {busy === "reject" ? (
+                    <LoaderCircle size={15} className="spin" />
+                  ) : (
+                    <X size={15} />
+                  )}
+                  {busy === "reject" ? "正在拒绝" : "拒绝此批次"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="button button-quiet danger-text"
+                  onClick={() => {
+                    onInteractionLockChange?.(true);
+                    setRejecting(true);
+                  }}
+                  disabled={!!busy || refreshing || !writeEnabled}
+                >
+                  <X size={15} />
+                  拒绝批次
+                </button>
+                <button
+                  className="button button-primary"
+                  onClick={() => void act("approve")}
+                  disabled={
+                    !!busy ||
+                    refreshing ||
+                    !writeEnabled ||
+                    readOnlyEntities ||
+                    conflict ||
+                    invalidDraft ||
+                    (editedCount > 0 && !reason.trim())
+                  }
+                >
+                  {busy === "approve" ? (
+                    <LoaderCircle size={15} className="spin" />
+                  ) : (
+                    <CheckCheck size={15} />
+                  )}
+                  {busy === "approve"
+                    ? "正在批准"
+                    : editedCount
+                      ? "保存更正并批准"
+                      : "批准此批次"}
+                </button>
+              </>
+            )
           ) : (
             <>
-              <button
-                className="button button-quiet danger-text"
-                onClick={() => setRejecting(true)}
-                disabled={!!busy || refreshing || !writeEnabled}
-              >
-                <X size={15} />
-                拒绝批次
-              </button>
-              <button
-                className="button button-primary"
-                onClick={() => void act("approve")}
-                disabled={
-                  !!busy ||
-                  refreshing ||
-                  !writeEnabled ||
-                  readOnlyEntities ||
-                  conflict ||
-                  invalidDraft ||
-                  (editedCount > 0 && !reason.trim())
-                }
-              >
-                {busy === "approve" ? (
-                  <LoaderCircle size={15} className="spin" />
-                ) : (
-                  <CheckCheck size={15} />
-                )}
-                {busy === "approve"
-                  ? "正在批准"
-                  : editedCount
-                    ? "保存更正并批准"
-                    : "批准此批次"}
+              <Badge tone={jobTone(resolved ?? review.status)}>
+                {resolved === "deferred"
+                  ? "仍待审"
+                  : (jobLabels[resolved ?? review.status] ??
+                    "状态未知 · 仅可查看")}
+              </Badge>
+              <button className="button button-secondary" onClick={close}>
+                关闭
               </button>
             </>
-          )
-        ) : (
-          <>
-            <Badge tone={jobTone(resolved ?? review.status)}>
-              {resolved === "deferred"
-                ? "仍待审"
-                : (jobLabels[resolved ?? review.status] ??
-                  "状态未知 · 仅可查看")}
-            </Badge>
-            <button className="button button-secondary" onClick={close}>
-              关闭
+          )}
+        </div>
+      </DetailSurface>
+      {confirmClose && (
+        <Overlay
+          onClose={() => setConfirmClose(false)}
+          className="modal-overlay nested-modal"
+          labelledBy="review-discard-title"
+        >
+          <div className="modal-header">
+            <span className="modal-icon amber-icon">
+              <PencilLine size={21} />
+            </span>
+            <button
+              className="icon-button"
+              aria-label="继续核对并关闭提示"
+              onClick={() => setConfirmClose(false)}
+            >
+              <X size={18} />
             </button>
-          </>
-        )}
-      </div>
-    </DetailSurface>
+          </div>
+          <h2 id="review-discard-title">放弃未提交的审阅草稿？</h2>
+          <p className="modal-subtitle">
+            当前更正或原因尚未提交。继续核对会保留输入；放弃只清除本地草稿，不批准或拒绝此批次。
+          </p>
+          <div className="modal-actions">
+            <button
+              className="button button-secondary"
+              onClick={() => setConfirmClose(false)}
+            >
+              继续核对
+            </button>
+            <button
+              className="button button-danger"
+              disabled={!!busy || refreshing}
+              onClick={discardAndClose}
+            >
+              放弃草稿并关闭
+            </button>
+          </div>
+        </Overlay>
+      )}
+    </>
   );
 }
 

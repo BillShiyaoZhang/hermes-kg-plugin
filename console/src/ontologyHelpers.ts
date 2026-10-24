@@ -26,8 +26,12 @@ export function displayCount(value: number | null | undefined): string {
 }
 
 export function relationLabel(
-  relation: Pick<OntologyRelationDefinition, "key" | "label">,
+  relation: Pick<
+    OntologyRelationDefinition,
+    "key" | "label" | "customized_fields"
+  >,
 ): string {
+  if (relation.customized_fields?.includes("label")) return relation.label;
   return relationLabels[relation.key] || relation.label || relation.key;
 }
 

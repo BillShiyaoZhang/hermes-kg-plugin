@@ -1,0 +1,240 @@
+.ri-impact {
+  margin: 0 0 18px;
+  color: var(--ink, #22332b);
+  font-size: 13px;
+  min-width: 0;
+}
+.ri-summary {
+  border: 1px solid var(--line, #dce3dc);
+  border-radius: 10px;
+  background: var(--paper, #fff);
+  overflow: hidden;
+}
+.ri-summary > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px;
+  cursor: pointer;
+  background: var(--soft, #f2f5ef);
+}
+.ri-summary > summary > span:first-child {
+  display: grid;
+  gap: 3px;
+  flex: 1;
+}
+.ri-disclosure {
+  flex-shrink: 0;
+  color: var(--muted, #58675f);
+}
+.ri-summary:not([open]) .ri-disclosure {
+  transform: rotate(-90deg);
+}
+.ri-summary > summary strong {
+  font-size: 14px;
+}
+.ri-summary small,
+.ri-count,
+.ri-meta,
+.ri-note,
+.ri-column-label {
+  color: var(--muted, #58675f);
+}
+.ri-count {
+  font-size: 11px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.ri-body {
+  padding: 0 14px 12px;
+}
+.ri-note {
+  margin: 10px 0;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.ri-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  margin: 10px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.ri-totals span {
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: var(--soft, #f2f5ef);
+}
+.ri-entity {
+  padding: 12px 0;
+  border-top: 1px solid var(--line, #dce3dc);
+}
+.ri-entity > header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.ri-entity > header > strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.ri-badge {
+  border: 1px solid var(--line, #dce3dc);
+  color: var(--muted, #58675f);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 11px;
+}
+.ri-meta {
+  margin: 4px 0 8px;
+  font-size: 11px;
+}
+.ri-warning {
+  border-left: 3px solid #825a15;
+  background: #fbf6eb;
+  padding: 7px 9px;
+  color: #725019;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.ri-fields {
+  margin: 0;
+}
+.ri-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px 10px;
+  margin-top: 9px;
+}
+.ri-field dt {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 500;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.ri-field-status {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted, #58675f);
+}
+.ri-field dd {
+  min-width: 0;
+  margin: 0;
+  padding: 7px 8px;
+  border-radius: 5px;
+  background: #f5f6f3;
+  overflow-wrap: anywhere;
+}
+.ri-field-changed dd:last-child {
+  background: #edf5ee;
+  border: 1px solid #d3e3d4;
+}
+.ri-column-label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10px;
+}
+.ri-value,
+.ri-unknown {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+.ri-unknown {
+  color: var(--muted, #58675f);
+}
+.ri-long-value > summary {
+  cursor: pointer;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.ri-long-value > summary > span {
+  color: var(--green, #315c45);
+  font-size: 11px;
+}
+.ri-long-value pre {
+  margin: 7px 0 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ri-technical,
+.ri-unchanged {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted, #58675f);
+}
+.ri-technical > summary,
+.ri-unchanged > summary {
+  cursor: pointer;
+  padding: 3px 0;
+}
+.ri-technical code {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ri-relations {
+  border-top: 1px solid var(--line, #dce3dc);
+  padding-top: 10px;
+}
+.ri-relations h4 {
+  margin: 0;
+  font-size: 13px;
+}
+.ri-relations ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.ri-relations li {
+  padding: 7px 0;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.ri-relation-label {
+  color: var(--muted, #58675f);
+}
+.ri-retry {
+  min-height: 36px;
+  margin: 5px 0 12px;
+  font-size: 12px;
+}
+.ri-footer {
+  margin-bottom: 0;
+}
+.ri-impact summary:focus-visible {
+  outline: 3px solid var(--green, #315c45);
+  outline-offset: -3px;
+  border-radius: 4px;
+}
+@media (max-width: 420px) {
+  .ri-summary > summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ri-count {
+    text-align: left;
+  }
+  .ri-body {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+@media (forced-colors: active) {
+  .ri-badge,
+  .ri-field dd,
+  .ri-warning {
+    border: 1px solid CanvasText;
+  }
+}

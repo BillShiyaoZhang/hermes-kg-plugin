@@ -1,6 +1,13 @@
-export type GraphLayer = "schema" | "saved" | "candidate" | "review";
+export type GraphLayer =
+  "schema" | "saved" | "candidate" | "review" | "aggregate" | "group";
 export type GraphEdgeKind =
-  "definition" | "instance" | "saved" | "candidate" | "review";
+  | "definition"
+  | "instance"
+  | "saved"
+  | "candidate"
+  | "review"
+  | "aggregate"
+  | "group";
 
 export interface GraphNode {
   id: string;
@@ -10,6 +17,10 @@ export interface GraphNode {
   uri?: string;
   reviewId?: string;
   description?: string;
+  count?: number;
+  memberIds?: string[];
+  eventTime?: string;
+  updatedAt?: string;
 }
 
 export interface GraphEdge {
@@ -20,6 +31,9 @@ export interface GraphEdge {
   kind: GraphEdgeKind;
   reviewId?: string;
   description?: string;
+  count?: number;
+  relationType?: string;
+  memberIds?: string[];
 }
 
 export interface PositionedGraphNode extends GraphNode {
@@ -45,6 +59,8 @@ export const GRAPH_LAYER_LABELS: Record<GraphLayer, string> = {
   saved: "已保存",
   candidate: "待审候选",
   review: "审阅事项",
+  aggregate: "实际记录集合",
+  group: "当前视图分组",
 };
 
 export const GRAPH_TYPE_LABELS: Record<string, string> = {
@@ -88,6 +104,8 @@ const LAYER_ORDER: Record<GraphLayer, number> = {
   saved: 1,
   candidate: 2,
   review: 3,
+  aggregate: 4,
+  group: 5,
 };
 
 const compareIds = (a: GraphNode, b: GraphNode) =>
@@ -122,8 +140,9 @@ export function graphEdgeGeometry(
 ) {
   if (source.id === target.id) {
     const radius = 104 + Math.max(0, loopIndex) * 28;
-    const endpointX = source.layer === "schema" ? 42 : 28;
-    const endpointY = source.layer === "schema" ? -34 : -8;
+    const collection = source.layer === "aggregate" || source.layer === "group";
+    const endpointX = source.layer === "schema" || collection ? 42 : 28;
+    const endpointY = collection ? -37 : source.layer === "schema" ? -34 : -8;
     return {
       d: `M ${source.x + endpointX} ${source.y + endpointY} C ${source.x + radius} ${source.y - radius}, ${source.x - radius} ${source.y - radius}, ${source.x - endpointX} ${source.y + endpointY}`,
       x: source.x,
@@ -140,9 +159,11 @@ export function graphEdgeGeometry(
   const clearance = (node: GraphNode) =>
     node.layer === "schema"
       ? Math.min(71 / Math.abs(ux), 29 / Math.abs(uy)) + 5
-      : node.layer === "review"
-        ? 33 / (Math.abs(ux) + Math.abs(uy)) + 5
-        : 32;
+      : node.layer === "aggregate" || node.layer === "group"
+        ? Math.min(56 / Math.abs(ux), 32 / Math.abs(uy)) + 5
+        : node.layer === "review"
+          ? 33 / (Math.abs(ux) + Math.abs(uy)) + 5
+          : 32;
   const sourceClearance = clearance(source),
     targetClearance = clearance(target);
   const sx = source.x + ux * sourceClearance;

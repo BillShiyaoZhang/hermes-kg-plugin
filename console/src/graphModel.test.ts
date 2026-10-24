@@ -183,6 +183,27 @@ describe("stable graph layout", () => {
     expect(firstLoop.d).not.toBe(secondLoop.d);
     expect(secondLoop.y).toBeLessThan(firstLoop.y);
   });
+  it.each(["aggregate", "group"] as const)(
+    "keeps %s relationship arrows outside collection cards, including self-loops",
+    (layer) => {
+      const source = { ...nodes[0], layer, id: "a", x: 0, y: 0 };
+      const horizontal = graphEdgeGeometry(
+        source,
+        { ...source, id: "b", x: 300 },
+        0,
+      );
+      expect(horizontal.d).toBe("M 61 0 Q 150 0 239 0");
+      const vertical = graphEdgeGeometry(
+        source,
+        { ...source, id: "b", y: 300 },
+        0,
+      );
+      expect(vertical.d).toBe("M 0 37 Q 0 150 0 263");
+      const loop = graphEdgeGeometry(source, source, 0);
+      expect(loop.d.startsWith("M 42 -37 C ")).toBe(true);
+      expect(loop.d.endsWith(", -42 -37")).toBe(true);
+    },
+  );
   it("is deterministic under input ordering, including type definitions and review nodes", () => {
     const expanded: GraphNode[] = [
       ...nodes,

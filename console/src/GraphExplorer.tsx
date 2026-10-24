@@ -1,70 +1,200 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
-  Search,
-  X,
-  RefreshCw,
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Check,
+  Command,
+  Download,
+  Expand,
+  Eye,
+  Filter,
   GitBranch,
   List,
-  Focus,
-  ArrowLeft,
+  Maximize2,
+  PanelLeftClose,
+  PanelRightClose,
+  Pin,
+  RefreshCw,
+  RotateCcw,
+  RotateCw,
+  Save,
+  Search,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 import type { ConsoleApi } from "./api";
 import { normalizeMemory } from "./api";
 import type { Memory, Review, ReviewPage } from "./types";
-import type {
-  OntologySchema,
-  OntologyEntityDefinition,
-  OntologyRelationDefinition,
-} from "./ontologyTypes";
+import type { OntologyEntityPage, OntologySchema } from "./ontologyTypes";
 import GraphCanvas from "./GraphCanvas";
+import type { CanvasState } from "./GraphCanvas";
 import type { GraphNode, GraphEdge } from "./graphModel";
-import { GRAPH_TYPE_COLORS } from "./graphModel";
-import {
-  workspaceGraph,
-  visibleWorkspace,
-  savedId,
-  reviewId,
-  REVIEW_PAGE_SIZE,
-} from "./graphData";
+import { GRAPH_LAYER_LABELS, GRAPH_TYPE_COLORS } from "./graphModel";
+import { workspaceGraph, savedId, reviewId } from "./graphData";
 import type { GraphSnapshot } from "./graphData";
-import { describeTypes, relationLabel } from "./ontologyHelpers";
-import { errorMessage, typeLabels, textValue } from "./lib";
-import PendingFeedback from "./PendingFeedback";
 import {
-  ontologyPropertyTitle,
-  ontologyPropertyDescription,
-  propertyValueTitle,
-} from "./ontologyPresentation";
+  aggregateGraph,
+  boundGraph,
+  emptySnapshot,
+  groupGraph,
+  mergeSnapshots,
+  presentationMode,
+  timeVisible,
+  TYPE_KEYS,
+  typeTitle,
+} from "./graphWorkspace";
+import type {
+  Expansion,
+  GraphLens,
+  GraphOverview,
+  LayoutMode,
+  NeighborQuery,
+  PathSnapshot,
+  TemporaryGroup,
+} from "./graphWorkspace";
+import {
+  ontologyDefinitionLabel,
+  ontologyGraph,
+  searchOntology,
+} from "./ontologyV3";
+import OntologyInspector from "./OntologyInspector";
+import EventTimeline from "./EventTimeline";
+import ReviewImpact from "./ReviewImpact";
+import {
+  WorkspaceDialog,
+  CompareDialog,
+  SavedViewsDialog,
+} from "./WorkspaceDialogs";
+import { errorMessage, textValue } from "./lib";
+import { relationLabel } from "./ontologyHelpers";
+import { propertyValueTitle } from "./ontologyPresentation";
+import PendingFeedback from "./PendingFeedback";
 import "./graphWorkspace.css";
+import "./graphWorkspaceV3.css";
 
-const TYPE_KEYS = [
-  "person",
-  "event",
-  "preference",
-  "decision",
-  "location",
-  "concept",
-];
-const typeName = (type: string) =>
-  typeLabels[type as keyof typeof typeLabels] ||
-  (
-    { relation: "关系定义", any: "任意类型", review: "审阅批次" } as Record<
-      string,
-      string
-    >
-  )[type] ||
-  type;
-const layerName = (layer: string) =>
-  (
-    ({
-      schema: "类型定义",
-      saved: "已保存",
-      candidate: "待审候选",
-      review: "待审批次",
-    }) as Record<string, string>
-  )[layer] || layer;
+interface ViewState {
+  types: string[];
+  relations: string[];
+  filterQuery: string;
+  search: string;
+  layout: LayoutMode;
+  canvases: Record<LayoutMode, CanvasState>;
+  selected: string[];
+  primary: string | null;
+  edge: string | null;
+  focusUri: string | null;
+  label: string;
+  expansions: Record<string, Expansion>;
+  spotlight: string | null;
+  groups: TemporaryGroup[];
+  path: PathSnapshot | null;
+  pathIndex: number;
+  representation: "graph" | "list" | "library";
+  start: string;
+  end: string;
+  includeUnknown: boolean;
+  sidebar: boolean;
+  inspector: boolean;
+  width: number;
+  reviewPage: number;
+}
+type Views = Record<GraphLens, ViewState>;
+type Entry = {
+  snapshot: GraphSnapshot | null;
+  overview: GraphOverview | null;
+  initialMode: ReturnType<typeof presentationMode>;
+  error?: unknown;
+  snapshotStale?: boolean;
+};
+type Navigation = { lens: GraphLens; views: Views };
+const LENSES = [
+  { key: "ontology", label: "本体", icon: BookOpen },
+  { key: "explore", label: "探索", icon: GitBranch },
+  { key: "review", label: "审阅", icon: Check },
+] as const;
+const canvas = (): CanvasState => ({
+  view: { x: 0, y: 0, zoom: 1 },
+  positions: {},
+  pinnedIds: [],
+  hiddenIds: [],
+});
+const initialView = (lens: GraphLens): ViewState => ({
+  types: [...TYPE_KEYS],
+  relations: [],
+  filterQuery: "",
+  search: "",
+  layout: lens === "ontology" ? "direction" : "relation",
+  canvases: {
+    relation: canvas(),
+    direction: canvas(),
+    type: canvas(),
+    center: canvas(),
+  },
+  selected: [],
+  primary: null,
+  edge: null,
+  focusUri: null,
+  label: "全图",
+  expansions: {},
+  spotlight: null,
+  groups: [],
+  path: null,
+  pathIndex: 0,
+  representation: "graph",
+  start: "",
+  end: "",
+  includeUnknown: true,
+  sidebar: lens !== "explore",
+  inspector: false,
+  width: 370,
+  reviewPage: 0,
+});
+const initialViews = (): Views => ({
+  ontology: initialView("ontology"),
+  explore: initialView("explore"),
+  review: initialView("review"),
+});
+const expansionKey = (q: NeighborQuery) =>
+  JSON.stringify([q.center_uri, q.direction, [...q.relation_types].sort()]);
+const cleanView = (v: ViewState) => ({ ...v, expansions: {}, path: null });
+function validView(value: unknown): value is ViewState {
+  if (!value || typeof value !== "object") return false;
+  const v = value as ViewState;
+  return (
+    Array.isArray(v.types) &&
+    v.types.every((t) => TYPE_KEYS.includes(t)) &&
+    Array.isArray(v.relations) &&
+    v.relations.every((t) => typeof t === "string") &&
+    typeof v.filterQuery === "string" &&
+    typeof v.search === "string" &&
+    typeof v.label === "string" &&
+    ["relation", "direction", "type", "center"].includes(v.layout) &&
+    ["graph", "list", "library"].includes(v.representation) &&
+    !!v.canvases &&
+    ["relation", "direction", "type", "center"].every((k) => {
+      const c = v.canvases[k as LayoutMode];
+      return (
+        !!c &&
+        !!c.view &&
+        [c.view.x, c.view.y, c.view.zoom].every(Number.isFinite) &&
+        c.view.zoom > 0 &&
+        (!c.viewport ||
+          [c.viewport.width, c.viewport.height].every(
+            (value) =>
+              typeof value === "number" && Number.isFinite(value) && value > 0,
+          )) &&
+        !!c.positions &&
+        Array.isArray(c.pinnedIds) &&
+        Array.isArray(c.hiddenIds)
+      );
+    }) &&
+    Array.isArray(v.selected) &&
+    Array.isArray(v.groups) &&
+    typeof v.width === "number"
+  );
+}
 
 export default function GraphExplorer({
   api,
@@ -79,6 +209,11 @@ export default function GraphExplorer({
   selectedReviewStatus,
   detail,
   library,
+  interactionLocked: externalInteractionLocked = false,
+  interactionMessage = "请先完成当前操作，或关闭当前编辑并处理未提交草稿。",
+  writeEnabled = true,
+  onInteractionLockChange,
+  onReconnect,
 }: {
   api: ConsoleApi;
   enabled: boolean;
@@ -92,1022 +227,2789 @@ export default function GraphExplorer({
   selectedReviewStatus?: string;
   detail: ReactNode;
   library: ReactNode;
+  interactionLocked?: boolean;
+  interactionMessage?: string;
+  writeEnabled?: boolean;
+  onInteractionLockChange?: (locked: boolean) => void;
+  onReconnect?: () => void;
 }) {
+  const [ontologyEditing, setOntologyEditing] = useState(false);
+  const ontologyEditLock = useRef(false);
+  const interactionLocked = externalInteractionLocked || ontologyEditing;
+  const changeOntologyInteractionLock = useCallback(
+    (locked: boolean) => {
+      ontologyEditLock.current = locked;
+      setOntologyEditing(locked);
+      onInteractionLockChange?.(locked);
+    },
+    [onInteractionLockChange],
+  );
+  useEffect(
+    () => () => {
+      if (ontologyEditLock.current) onInteractionLockChange?.(false);
+    },
+    [onInteractionLockChange],
+  );
+  const [lens, setLens] = useState<GraphLens>("explore"),
+    [views, setViews] = useState<Views>(initialViews);
+  const v = views[lens],
+    c = v.canvases[v.layout];
+  const live = useRef({ lens, views });
+  live.current = { lens, views };
   const [schema, setSchema] = useState<OntologySchema | null>(null),
-    [snapshot, setSnapshot] = useState<GraphSnapshot | null>(null);
-  const [schemaError, setSchemaError] = useState<unknown>(null),
-    [graphError, setGraphError] = useState<unknown>(null);
-  const [loading, setLoading] = useState(false),
-    [schemaLoading, setSchemaLoading] = useState(false);
-  const [mode, setMode] = useState<"graph" | "list" | "library">("graph");
-  const [input, setInput] = useState(""),
-    [query, setQuery] = useState(""),
-    [searchKey, setSearchKey] = useState(0);
-  const [types, setTypes] = useState(TYPE_KEYS),
-    [layers, setLayers] = useState(["schema", "saved", "candidate"]);
-  const [membership, setMembership] = useState(false),
-    [edgeKind, setEdgeKind] = useState("all");
-  const [focus, setFocus] = useState<string | null>(null),
-    [focusUri, setFocusUri] = useState<string | null>(null);
-  const [localSelection, setLocalSelection] = useState<string | null>(null),
-    [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
-  const [reviewPage, setReviewPage] = useState(0),
-    [limit, setLimit] = useState(120),
-    [loadedAt, setLoadedAt] = useState("");
-  const [reviewResult, setReviewResult] = useState<ReviewPage | null>(null);
-  const [reviewsLoading, setReviewsLoading] = useState(false),
-    [reviewsError, setReviewsError] = useState<unknown>(null);
-  const [reviewTick, setReviewTick] = useState(0);
-  const reviews = reviewResult?.items ?? [];
-  const reviewTotal = reviewResult?.total ?? 0;
-  const reviewScope = JSON.stringify([query, reviewPage]);
-  const lastReviewScope = useRef("");
-  const beforeFocus = useRef<{
-    types: string[];
-    layers: string[];
-    membership: boolean;
-  } | null>(null);
-  const searchInput = useRef<HTMLInputElement>(null);
-  const inspector = useRef<HTMLElement>(null);
-  const stage = useRef<HTMLDivElement>(null);
-  const graphScope = JSON.stringify([query, types, focusUri, limit]);
-  const lastScope = useRef("");
+    [schemaError, setSchemaError] = useState<unknown>(null),
+    [schemaLoading, setSchemaLoading] = useState(false),
+    [schemaScopeChanged, setSchemaScopeChanged] = useState(false);
+  const schemaContext = useRef(schema);
+  schemaContext.current = schema;
+  const schemaReadGeneration = useRef(0);
+  const typeName = (key: string) => {
+    const definition = schema?.entity_types.find((item) => item.key === key);
+    return definition ? ontologyDefinitionLabel(definition) : typeTitle(key);
+  };
+  const relationName = (item: Parameters<typeof relationLabel>[0]) =>
+    relationLabel(
+      schema?.relations.find((definition) => definition.key === item.key) ??
+        item,
+    );
+  const [data, setData] = useState<Record<string, Entry>>({}),
+    [loading, setLoading] = useState(false);
+  const [reviewPage, setReviewPage] = useState<ReviewPage | null>(null),
+    [reviewsError, setReviewsError] = useState<unknown>(null),
+    [reviewsLoading, setReviewsLoading] = useState(false),
+    [reviewTick, setReviewTick] = useState(0);
+  const pending = reviewPage?.items ?? [];
+  const [context, setContext] = useState<GraphSnapshot | null>(null);
+  const [busy, setBusy] = useState(false),
+    [operationError, setOperationError] = useState<unknown>(null),
+    [notice, setNotice] = useState("");
+  useEffect(() => {
+    if (!interactionLocked)
+      setNotice((current) => (current === interactionMessage ? "" : current));
+  }, [interactionLocked, interactionMessage]);
+  const [searchOpen, setSearchOpen] = useState(false),
+    [searchTerm, setSearchTerm] = useState(""),
+    [searchOffset, setSearchOffset] = useState(0),
+    [searchResults, setSearchResults] = useState<OntologyEntityPage | null>(
+      null,
+    ),
+    [searchReviews, setSearchReviews] = useState<ReviewPage | null>(null),
+    [searchBusy, setSearchBusy] = useState(false),
+    [searchError, setSearchError] = useState<unknown>(null);
+  const [members, setMembers] = useState<OntologyEntityPage | null>(null),
+    [memberPage, setMemberPage] = useState(0),
+    [memberBusy, setMemberBusy] = useState(false),
+    [memberError, setMemberError] = useState<unknown>(null);
+  const [direction, setDirection] = useState<"in" | "out" | "both">("both"),
+    [expandRelation, setExpandRelation] = useState("");
+  const [pathMode, setPathMode] = useState<"shortest" | "common_neighbors">(
+      "shortest",
+    ),
+    [pathDirection, setPathDirection] = useState<"out" | "both">("both");
+  const [commandsOpen, setCommandsOpen] = useState(false),
+    [commandSearch, setCommandSearch] = useState("");
+  const [seedRevision, setSeedRevision] = useState(0);
+  const [compareIds, setCompareIds] = useState<string[] | null>(null),
+    [savedOpen, setSavedOpen] = useState(false),
+    [timeOpen, setTimeOpen] = useState(false),
+    [groupOpen, setGroupOpen] = useState(false),
+    [groupName, setGroupName] = useState("分组");
+  const [command, setCommand] = useState<{
+    id: number;
+    type: "fit" | "fit-selection" | "export-svg" | "export-png";
+    label?: string;
+  }>();
+  const [, forceHistory] = useState(0);
+  const host = useRef<HTMLDivElement>(null),
+    stage = useRef<HTMLElement>(null),
+    inspector = useRef<HTMLElement>(null),
+    searchInput = useRef<HTMLInputElement>(null);
+  const navigation = useRef<{ past: Navigation[]; future: Navigation[] }>({
+    past: [],
+    future: [],
+  });
+  const undo = useRef<
+    Record<GraphLens, { past: ViewState[]; future: ViewState[] }>
+  >({
+    ontology: { past: [], future: [] },
+    explore: { past: [], future: [] },
+    review: { past: [], future: [] },
+  });
+  const interaction = useRef<ViewState | null>(null),
+    operation = useRef<AbortController | null>(null),
+    generation = useRef(0),
+    namespace = useRef("");
+  const seeds = useRef<Partial<Record<GraphLens, NeighborQuery[]>>>({});
+  const restoringReview = useRef<string | null>(null);
+  const query = useMemo(
+    () => ({
+      q: v.filterQuery,
+      types: v.types,
+      relation_types: v.relations.filter((r) => r !== "__none__"),
+      focus_uri: v.focusUri,
+      node_limit: 200,
+      edge_limit: 500,
+    }),
+    [v.filterQuery, v.types, v.relations, v.focusUri],
+  );
+  const key = JSON.stringify([schema?.namespace ?? "", query]);
+  const previousEntries = useRef<Partial<Record<GraphLens, Entry>>>({});
+  const requestedEntry = data[key],
+    base = requestedEntry ?? previousEntries.current[lens];
+  const stale =
+    !!base &&
+    (!requestedEntry || !!requestedEntry.snapshotStale) &&
+    lens !== "ontology";
+  useEffect(() => {
+    if (requestedEntry) previousEntries.current[lens] = requestedEntry;
+  }, [requestedEntry, lens]);
+  const batchCache = useRef(new Map<string, Review>());
+  pending.forEach((batch) => batchCache.current.set(batch.id, batch));
+  const selectedBatch =
+    pending.find(
+      (r) =>
+        r.id === selectedReviewId ||
+        v.primary === reviewId(r.id) ||
+        v.primary?.startsWith(`candidate:${r.id}:`) ||
+        v.primary?.startsWith(`candidate-endpoint:${r.id}:`),
+    ) ??
+    (selectedReviewId ? batchCache.current.get(selectedReviewId) : undefined);
+  const completed =
+    selectedReviewStatus === "approved" || selectedReviewStatus === "rejected";
+  const update = useCallback(
+    (
+      patch: Partial<ViewState> | ((view: ViewState) => ViewState),
+      target?: GraphLens,
+    ) => {
+      const targetLens = target ?? live.current.lens;
+      setViews((all) => ({
+        ...all,
+        [targetLens]:
+          typeof patch === "function"
+            ? patch(all[targetLens])
+            : { ...all[targetLens], ...patch },
+      }));
+    },
+    [],
+  );
+  const commit = useCallback(
+    (patch: Partial<ViewState> | ((view: ViewState) => ViewState)) => {
+      const now = live.current;
+      undo.current[now.lens].past = [
+        ...undo.current[now.lens].past,
+        now.views[now.lens],
+      ].slice(-40);
+      undo.current[now.lens].future = [];
+      update(patch);
+      forceHistory((t) => t + 1);
+    },
+    [update],
+  );
+  const restoreSelection = (next: ViewState) => {
+    restoringReview.current = null;
+    if (next.primary?.startsWith("saved:"))
+      onSelectMemory(normalizeMemory({ uri: next.primary.slice(6) }));
+    else {
+      const batch = [...pending, ...batchCache.current.values()].find(
+        (r) =>
+          next.primary === reviewId(r.id) ||
+          next.primary?.includes(`:${r.id}:`),
+      );
+      if (batch) {
+        restoringReview.current = null;
+        onSelectReview(batch);
+      } else {
+        restoringReview.current =
+          next.primary?.startsWith("review:") ||
+          next.primary?.startsWith("candidate:") ||
+          next.primary?.startsWith("candidate-endpoint:")
+            ? next.primary
+            : null;
+        onClearSelection();
+      }
+    }
+  };
+  const navigate = (target: GraphLens, patch: Partial<ViewState> = {}) => {
+    if (interactionLocked) {
+      setNotice(interactionMessage);
+      return;
+    }
+    const now = live.current;
+    navigation.current.past = [
+      ...navigation.current.past,
+      { lens: now.lens, views: now.views },
+    ].slice(-40);
+    navigation.current.future = [];
+    operation.current?.abort();
+    generation.current++;
+    setBusy(false);
+    setSearchOpen(false);
+    setOperationError(null);
+    const next = { ...now.views[target], ...patch };
+    setLens(target);
+    setViews({ ...now.views, [target]: next });
+    restoreSelection(next);
+    forceHistory((t) => t + 1);
+  };
+  const go = (way: "back" | "forward") => {
+    if (interactionLocked) {
+      setNotice(interactionMessage);
+      return;
+    }
+    const h = navigation.current,
+      next = way === "back" ? h.past.pop() : h.future.shift();
+    if (!next) return;
+    const now = { lens: live.current.lens, views: live.current.views };
+    if (way === "back") h.future.unshift(now);
+    else h.past.push(now);
+    operation.current?.abort();
+    generation.current++;
+    setBusy(false);
+    setLens(next.lens);
+    setViews(next.views);
+    restoreSelection(next.views[next.lens]);
+    setSearchOpen(false);
+    forceHistory((t) => t + 1);
+  };
+  const undoView = (redo = false) => {
+    if (interactionLocked) {
+      setNotice(interactionMessage);
+      return;
+    }
+    const now = live.current,
+      h = undo.current[now.lens],
+      next = redo ? h.future.shift() : h.past.pop();
+    if (!next) return;
+    if (redo) h.past.push(now.views[now.lens]);
+    else h.future.unshift(now.views[now.lens]);
+    update(next);
+    restoreSelection(next);
+    forceHistory((t) => t + 1);
+  };
+  const clear = () => {
+    if (interactionLocked) {
+      setNotice(interactionMessage);
+      return;
+    }
+    update({ selected: [], primary: null, edge: null, spotlight: null });
+    onClearSelection();
+    stage.current?.focus({ preventScroll: true });
+  };
+
   useEffect(() => {
     if (!enabled) {
-      setReviewResult(null);
-      setReviewsLoading(false);
-      setReviewsError(null);
+      if (!ontologyEditLock.current) {
+        setSchema(null);
+        setData({});
+      }
+      setReviewPage(null);
+      operation.current?.abort();
       return;
     }
     const controller = new AbortController();
-    if (lastReviewScope.current !== reviewScope) setReviewResult(null);
-    setReviewsLoading(true);
-    setReviewsError(null);
-    api
-      .reviewPage(
-        {
-          q: query,
-          offset: reviewPage * REVIEW_PAGE_SIZE,
-          limit: REVIEW_PAGE_SIZE,
-        },
-        controller.signal,
-      )
-      .then((value) => {
-        if (controller.signal.aborted) return;
-        if (value.total > 0 && value.offset >= value.total) {
-          setReviewPage(Math.floor((value.total - 1) / REVIEW_PAGE_SIZE));
-          return;
-        }
-        lastReviewScope.current = reviewScope;
-        setReviewResult(value);
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) setReviewsError(error);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setReviewsLoading(false);
-      });
-    return () => controller.abort();
-  }, [api, enabled, reviewScope, refreshKey, reviewTick, searchKey]);
-  useEffect(() => {
-    if (!enabled || reviewsLoading) return;
-    const timer = window.setTimeout(() => setReviewTick((t) => t + 1), 30000);
-    return () => window.clearTimeout(timer);
-  }, [enabled, reviewsLoading, reviewTick]);
-  useEffect(() => {
-    if (!enabled) {
-      setSchema(null);
-      setSchemaError(null);
-      setSchemaLoading(false);
-      return;
-    }
-    const controller = new AbortController();
+    const requestGeneration = ++schemaReadGeneration.current;
     setSchemaLoading(true);
+    setSchemaError(null);
     api
       .ontologySchema(controller.signal)
-      .then((value) => {
-        if (!controller.signal.aborted) {
-          setSchema(value);
-          setSchemaError(null);
+      .then((s) => {
+        if (
+          controller.signal.aborted ||
+          requestGeneration !== schemaReadGeneration.current
+        )
+          return;
+        if (
+          ontologyEditLock.current &&
+          schemaContext.current &&
+          schemaContext.current.namespace !== s.namespace
+        ) {
+          setSchemaScopeChanged(true);
+          setSchemaError(
+            new Error(
+              "服务当前空间已经改变。本体草稿仍保留，请复制需要的内容或明确放弃后再切换空间。",
+            ),
+          );
+          return;
         }
+        setSchemaScopeChanged(false);
+        setSchema(s);
       })
-      .catch((error) => {
-        if (!controller.signal.aborted) setSchemaError(error);
+      .catch((e) => {
+        if (
+          !controller.signal.aborted &&
+          requestGeneration === schemaReadGeneration.current
+        )
+          setSchemaError(e);
       })
       .finally(() => {
-        if (!controller.signal.aborted) setSchemaLoading(false);
+        if (
+          !controller.signal.aborted &&
+          requestGeneration === schemaReadGeneration.current
+        )
+          setSchemaLoading(false);
       });
     return () => controller.abort();
-  }, [api, enabled, refreshKey]);
+  }, [api, enabled, refreshKey, ontologyEditing]);
   useEffect(() => {
-    if (!enabled) {
-      setSnapshot(null);
-      setGraphError(null);
+    if (!enabled || lens === "ontology") return;
+    const controller = new AbortController();
+    setLoading(true);
+    if (!v.types.length) {
+      setData((all) => ({
+        ...all,
+        [key]: {
+          snapshot: emptySnapshot(schema?.namespace),
+          overview: null,
+          initialMode: "partial",
+        },
+      }));
       setLoading(false);
       return;
     }
-    const controller = new AbortController();
-    if (lastScope.current !== graphScope) setSnapshot(null);
-    setLoading(true);
-    setGraphError(null);
-    api
-      .graph(
-        {
-          q: query,
-          types,
-          focus_uri: focusUri,
-          node_limit: limit,
-          edge_limit: 400,
-        },
-        controller.signal,
-      )
-      .then((value) => {
-        if (!controller.signal.aborted) {
-          lastScope.current = graphScope;
-          setSnapshot(value);
-          setLoadedAt(new Date().toLocaleTimeString());
+    Promise.allSettled([
+      api.graph(query, controller.signal),
+      api.graphOverview(query, controller.signal),
+    ])
+      .then(([s, o]) => {
+        if (controller.signal.aborted) return;
+        let snapshot = s.status === "fulfilled" ? s.value : null,
+          overview = o.status === "fulfilled" ? o.value : null;
+        if (v.relations.includes("__none__")) {
+          if (snapshot)
+            snapshot = {
+              ...snapshot,
+              edges: [],
+              total_edges: 0,
+              truncated_edges: false,
+            };
+          if (overview)
+            overview = { ...overview, total_edges: 0, relations: [] };
         }
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) setGraphError(error);
+        setData((all) => ({
+          ...all,
+          [key]: {
+            snapshot:
+              snapshot ??
+              all[key]?.snapshot ??
+              previousEntries.current[lens]?.snapshot ??
+              null,
+            snapshotStale: !snapshot,
+            overview,
+            initialMode:
+              all[key]?.initialMode ??
+              presentationMode(overview, snapshot, !!v.focusUri),
+            error:
+              s.status === "rejected"
+                ? s.reason
+                : o.status === "rejected"
+                  ? o.reason
+                  : undefined,
+          },
+        }));
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [api, enabled, graphScope, refreshKey, searchKey]); // graphScope includes every private read parameter.
+  }, [api, enabled, lens, key, refreshKey]);
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    setReviewsLoading(true);
+    setReviewsError(null);
+    api
+      .reviewPage(
+        {
+          q: lens === "review" ? v.filterQuery : "",
+          offset: v.reviewPage * 20,
+          limit: 20,
+        },
+        controller.signal,
+      )
+      .then((page) => {
+        if (!controller.signal.aborted) {
+          if (page.total && page.offset >= page.total)
+            update({ reviewPage: Math.floor((page.total - 1) / 20) });
+          else setReviewPage(page);
+        }
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted) setReviewsError(e);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setReviewsLoading(false);
+      });
+    return () => controller.abort();
+  }, [api, enabled, lens, v.filterQuery, v.reviewPage, reviewTick, refreshKey]);
+  useEffect(() => {
+    if (!enabled || reviewsLoading) return;
+    const timer = setTimeout(() => setReviewTick((t) => t + 1), 30000);
+    return () => clearTimeout(timer);
+  }, [enabled, reviewsLoading, reviewTick]);
+  useEffect(() => {
+    if (
+      lens === "review" &&
+      restoringReview.current === v.primary &&
+      selectedBatch &&
+      !selectedReviewId
+    ) {
+      restoringReview.current = null;
+      onSelectReview(selectedBatch);
+    }
+  }, [lens, v.primary, selectedBatch, selectedReviewId, onSelectReview]);
+  useEffect(() => {
+    setContext(null);
+    if (!enabled || lens !== "review" || !selectedBatch) return;
+    const controller = new AbortController();
+    const uris = [
+      ...new Set([
+        ...selectedBatch.entities.map((e) => e.uri),
+        ...selectedBatch.relations
+          .flatMap((r) => [
+            r.from_urn ?? r.from ?? r.source,
+            r.to_urn ?? r.to ?? r.target,
+          ])
+          .filter((s): s is string => typeof s === "string"),
+      ]),
+    ].slice(0, 30);
+    Promise.all(
+      uris.map((uri) =>
+        api
+          .graph(
+            { focus_uri: uri, node_limit: 1, edge_limit: 1 },
+            controller.signal,
+          )
+          .catch(() => emptySnapshot()),
+      ),
+    ).then((results) => {
+      if (!controller.signal.aborted)
+        setContext(
+          mergeSnapshots(
+            null,
+            Object.fromEntries(
+              results.map((s, i) => [
+                String(i),
+                {
+                  query: {
+                    center_uri: uris[i],
+                    direction: "both",
+                    relation_types: [],
+                  },
+                  snapshot: {
+                    ...s,
+                    center_uri: uris[i],
+                    total_neighbors: 0,
+                    next_cursor: null,
+                    has_more: false,
+                    relation_counts: [],
+                  },
+                },
+              ]),
+            ),
+          ),
+        );
+    });
+    return () => controller.abort();
+  }, [api, enabled, lens, selectedBatch?.id, refreshKey]);
+  useEffect(() => {
+    operation.current?.abort();
+    generation.current++;
+    setBusy(false);
+    return () => operation.current?.abort();
+  }, [key, lens, enabled]);
+  useEffect(() => {
+    if (!schema?.namespace || namespace.current === schema.namespace) return;
+    if (namespace.current) {
+      setViews(initialViews());
+      setData({});
+      previousEntries.current = {};
+      batchCache.current.clear();
+      seeds.current = {};
+      navigation.current = { past: [], future: [] };
+      undo.current = {
+        ontology: { past: [], future: [] },
+        explore: { past: [], future: [] },
+        review: { past: [], future: [] },
+      };
+      onClearSelection();
+    }
+    namespace.current = schema.namespace;
+    try {
+      const saved = JSON.parse(
+        sessionStorage.getItem(`kg-v3-session:${schema.namespace}`) ?? "null",
+      );
       if (
-        (event.ctrlKey || event.metaKey) &&
-        event.key.toLowerCase() === "k" &&
-        mode !== "library" &&
-        !event.isComposing &&
-        !document.querySelector('[aria-modal="true"]')
+        saved &&
+        ["ontology", "explore", "review"].includes(saved.lens) &&
+        saved.views &&
+        Object.keys(saved.views).length === 3 &&
+        Object.values(saved.views).every(validView)
       ) {
-        event.preventDefault();
-        searchInput.current?.focus();
+        setLens(saved.lens);
+        setViews(saved.views);
+        seeds.current = saved.seeds ?? {};
+        setSeedRevision((t) => t + 1);
+        restoreSelection(saved.views[saved.lens]);
       }
+    } catch {
+      setNotice("本地会话状态无法读取，已使用默认工作区。");
+    }
+  }, [schema?.namespace]);
+  useEffect(() => {
+    if (!schema?.namespace || namespace.current !== schema.namespace) return;
+    const timer = setTimeout(() => {
+      try {
+        sessionStorage.setItem(
+          `kg-v3-session:${schema.namespace}`,
+          JSON.stringify({
+            lens,
+            views: Object.fromEntries(
+              Object.entries(views).map(([l, view]) => [l, cleanView(view)]),
+            ),
+            seeds: Object.fromEntries(
+              Object.entries(views).map(([l, view]) => [
+                l,
+                [
+                  ...new Map(
+                    [
+                      ...(seeds.current[l as GraphLens] ?? []),
+                      ...Object.values(view.expansions).map((e) => e.query),
+                    ].map((query) => [
+                      expansionKey(query),
+                      { ...query, cursor: null },
+                    ]),
+                  ).values(),
+                ],
+              ]),
+            ),
+          }),
+        );
+      } catch {
+        /* Disabled storage does not prevent live exploration. */
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [schema?.namespace, views, lens]);
+  useEffect(() => {
+    const pendingSeeds = seeds.current[lens];
+    if (!enabled || !base?.snapshot || !pendingSeeds?.length) return;
+    const controller = new AbortController();
+    Promise.all(
+      pendingSeeds
+        .slice(0, 20)
+        .map((q) =>
+          api
+            .graphNeighbors({ ...q, cursor: null }, controller.signal)
+            .then(
+              (snapshot) =>
+                [
+                  expansionKey(q),
+                  { query: { ...q, cursor: null }, snapshot },
+                ] as const,
+            ),
+        ),
+    )
+      .then((items) => {
+        if (!controller.signal.aborted) {
+          if (seeds.current[lens] === pendingSeeds) delete seeds.current[lens];
+          update({ expansions: Object.fromEntries(items) });
+        }
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted) {
+          seeds.current[lens] = pendingSeeds;
+          setOperationError(e);
+        }
+      });
+    return () => controller.abort();
+  }, [api, enabled, lens, !!base?.snapshot, seedRevision, refreshKey]);
+
+  const ontology = useMemo(
+    () =>
+      schema
+        ? ontologyGraph(schema)
+        : { nodes: [], edges: [], definitions: new Map() },
+    [schema],
+  );
+  const retained = useRef<Partial<Record<GraphLens, GraphSnapshot>>>({});
+  const retainedIds = useMemo(
+    () => [
+      ...new Set([
+        ...Object.values(v.canvases).flatMap((state) => state.pinnedIds),
+        ...v.groups.flatMap((group) => group.memberIds),
+      ]),
+    ],
+    [v.canvases, v.groups],
+  );
+  const merged = useMemo(
+    () =>
+      mergeSnapshots(
+        base?.snapshot ?? null,
+        v.expansions,
+        retainedIds,
+        retained.current[lens],
+        v.path,
+      ),
+    [base?.snapshot, v.expansions, retainedIds, v.path, lens],
+  );
+  useEffect(() => {
+    retained.current[lens] = merged;
+  }, [merged, lens]);
+  const local =
+    !!v.focusUri || !!v.path || Object.keys(v.expansions).length > 0;
+  const inferred = presentationMode(
+    base?.overview ?? null,
+    base?.snapshot ?? null,
+    local,
+  );
+  const displayMode = stale
+    ? "partial"
+    : !local && base?.initialMode === "complete" && inferred === "aggregate"
+      ? "partial"
+      : inferred;
+  const raw = useMemo(() => {
+    if (lens === "ontology") {
+      const matches =
+        v.filterQuery && schema
+          ? new Set(searchOntology(schema, v.filterQuery))
+          : null;
+      const matchingEdgeIds = new Set(
+        ontology.edges
+          .filter((e) => matches?.has(e.id))
+          .flatMap((e) => [e.source, e.target]),
+      );
+      return {
+        ...ontology,
+        nodes: ontology.nodes.filter(
+          (n) =>
+            (!TYPE_KEYS.includes(n.type) || v.types.includes(n.type)) &&
+            (!matches || matches.has(n.id) || matchingEdgeIds.has(n.id)),
+        ),
+        edges: ontology.edges.filter(
+          (e) =>
+            !matches ||
+            matches.has(e.id) ||
+            matches.has(e.source) ||
+            matches.has(e.target),
+        ),
+        omittedCandidates: 0,
+      };
+    }
+    if (
+      lens === "explore" &&
+      displayMode === "aggregate" &&
+      base?.overview?.stats_available
+    ) {
+      const graph = aggregateGraph(base.overview);
+      return {
+        ...graph,
+        nodes: graph.nodes.map((item) => ({
+          ...item,
+          label: `${typeName(item.type)} · ${(item.count ?? 0).toLocaleString("zh-CN")} 条`,
+        })),
+        edges: graph.edges.map((item) => ({
+          ...item,
+          label: `${relationName({ key: item.relationType ?? "", label: item.relationType ?? "关系" })} · ${item.count ?? 0}`,
+        })),
+        definitions: new Map(),
+        omittedCandidates: 0,
+      };
+    }
+    const projection = workspaceGraph(
+      null,
+      lens === "review" ? context : merged,
+      lens === "review" ? (selectedBatch ? [selectedBatch] : pending) : [],
+    );
+    const status = completed
+      ? selectedReviewStatus === "approved"
+        ? "已批准"
+        : "已拒绝"
+      : null;
+    return {
+      ...projection,
+      nodes: projection.nodes
+        .filter(
+          (n) =>
+            n.layer !== "schema" &&
+            (lens !== "review" || !!selectedBatch || n.layer !== "saved"),
+        )
+        .filter(
+          (n) =>
+            ["review", "unknown"].includes(n.type) || v.types.includes(n.type),
+        )
+        .map((n) =>
+          status && n.reviewId === selectedReviewId
+            ? {
+                ...n,
+                label: `${n.label} · ${status}`,
+                description: `此批次${status}；这里保留处理时上下文，请以当前事实详情核对最终记录。`,
+              }
+            : n,
+        ),
+      edges: projection.edges
+        .filter((e) => e.kind !== "instance")
+        .map((e) => {
+          const label = e.relationType
+            ? relationName({ key: e.relationType, label: e.label })
+            : e.label;
+          return {
+            ...e,
+            label:
+              status && e.reviewId === selectedReviewId
+                ? `${label} · ${status}`
+                : label,
+          };
+        }),
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [mode]);
-  const graph = useMemo(
-    () => workspaceGraph(schema, snapshot, reviews),
-    [schema, snapshot, reviews],
+  }, [
+    lens,
+    ontology,
+    schema,
+    v.filterQuery,
+    merged,
+    context,
+    displayMode,
+    base?.overview,
+    pending,
+    selectedBatch,
+    v.types,
+    completed,
+    selectedReviewStatus,
+    selectedReviewId,
+  ]);
+  const timed = useMemo(
+    () => timeVisible(raw.nodes, v.start, v.end, v.includeUnknown),
+    [raw.nodes, v.start, v.end, v.includeUnknown],
+  );
+  const grouped = useMemo(
+    () => groupGraph(timed, raw.edges, v.groups),
+    [timed, raw.edges, v.groups],
   );
   const visible = useMemo(
     () =>
-      visibleWorkspace(graph.nodes, graph.edges, {
-        types: new Set(types),
-        layers: new Set(layers),
-        query,
-        showMembership: membership,
-        focusId: focus,
-      }),
-    [graph, types, layers, query, membership, focus, focusUri],
+      boundGraph(
+        grouped.nodes,
+        grouped.edges.filter(
+          (e) =>
+            !v.relations.length ||
+            e.kind === "review" ||
+            v.relations.includes(e.relationType ?? e.description ?? ""),
+        ),
+        c.hiddenIds,
+      ),
+    [grouped, v.relations, c.hiddenIds],
   );
-  const edges = visible.edges.filter(
-    (e) => edgeKind === "all" || e.kind === edgeKind,
+  const node: GraphNode | undefined =
+    raw.nodes.find((n) => n.id === v.primary) ??
+    visible.nodes.find((n) => n.id === v.primary) ??
+    (v.primary?.startsWith("saved:")
+      ? {
+          id: v.primary,
+          uri: v.primary.slice(6),
+          label:
+            searchResults?.items.find(
+              (item) => item.uri === v.primary?.slice(6),
+            )?.name ?? "所选记忆",
+          type: "unknown",
+          layer: "saved",
+        }
+      : undefined);
+  const edge: GraphEdge | undefined = raw.edges.find((e) => e.id === v.edge);
+  const definition = ontology.definitions.get(v.primary ?? v.edge ?? "");
+  const selectedSaved = v.selected
+    .map((id) => raw.nodes.find((n) => n.id === id))
+    .filter((n): n is GraphNode => !!n && n.layer === "saved" && !!n.uri);
+  const savedEdge = merged.edges.find((e) => `saved-edge:${e.id}` === v.edge);
+  const showDetail =
+    !!detail &&
+    ((!!selectedUri && v.primary === savedId(selectedUri)) ||
+      (!!selectedReviewId &&
+        (v.primary === reviewId(selectedReviewId) ||
+          v.primary?.includes(`:${selectedReviewId}:`) ||
+          node?.reviewId === selectedReviewId)));
+  const searchIds = useMemo(
+    () =>
+      lens === "ontology" && schema
+        ? searchOntology(schema, searchTerm)
+        : (searchResults?.items.map((item) => savedId(item.uri)) ?? []),
+    [lens, schema, searchTerm, searchResults],
   );
-  const selectedId = selectedUri
-    ? savedId(selectedUri)
-    : selectedReviewId
-      ? graph.nodes.find((n) => n.id === localSelection)?.reviewId ===
-        selectedReviewId
-        ? localSelection
-        : reviewId(selectedReviewId)
-      : localSelection;
-  const selectedNode = graph.nodes.find((node) => node.id === selectedId);
-  const definition = localSelection
-    ? (graph.definitions.get(localSelection) as
-        OntologyEntityDefinition | OntologyRelationDefinition | undefined)
-    : undefined;
-  const savedEdge = snapshot?.edges.find(
-    (e) => `saved-edge:${e.id}` === selectedEdge?.id,
-  );
-  const reviewForEdge = selectedEdge?.reviewId
-    ? reviews.find((r) => r.id === selectedEdge.reviewId)
-    : undefined;
-  const selectionHidden =
-    !!selectedId && !visible.nodes.some((n) => n.id === selectedId);
-  const completedReview =
-    selectedReviewStatus === "approved" || selectedReviewStatus === "rejected";
-  const revealDetail = () => {
-    inspector.current?.scrollIntoView({ block: "start" });
-    inspector.current?.focus({ preventScroll: true });
-  };
-  useEffect(() => {
-    if (
-      (selectedId || selectedEdge) &&
-      focus !== selectedId &&
-      window.matchMedia("(max-width:1000px)").matches
-    )
-      revealDetail();
-  }, [selectedId, selectedEdge?.id]);
-  useEffect(() => {
-    // A saved center temporarily leaves the snapshot while its neighborhood
-    // loads. Only review resolution can invalidate a local candidate focus.
-    if (
-      focus &&
-      !reviewsLoading &&
-      reviewResult &&
-      lastReviewScope.current === reviewScope &&
-      !focusUri &&
-      (focus.startsWith("candidate:") ||
-        focus.startsWith("candidate-endpoint:") ||
-        focus.startsWith("review:")) &&
-      !graph.nodes.some((n) => n.id === focus)
-    )
-      setFocus(null);
-  }, [focus, focusUri, graph.nodes, reviewsLoading, reviewResult, reviewScope]);
-  useEffect(() => {
-    const lastPage = Math.max(0, Math.ceil(reviewTotal / REVIEW_PAGE_SIZE) - 1);
-    if (reviewResult && reviewPage > lastPage) setReviewPage(lastPage);
-  }, [reviewTotal, reviewPage, reviewResult]);
-  const selectNode = (node: GraphNode) => {
-    setLocalSelection(node.id);
-    setSelectedEdge(null);
-    if (node.layer === "saved" && node.uri)
+  const pathIds = v.path?.paths[v.pathIndex]?.node_uris.map(savedId) ?? [];
+  const description = stale
+    ? "上次读取的图 · 当前范围尚未读取成功"
+    : lens === "ontology"
+      ? "本体规则 · 不代表已发生事实"
+      : lens === "review"
+        ? `审阅上下文 · ${reviewPage?.total_pending ?? "—"} 个待审批次`
+        : displayMode === "aggregate"
+          ? `全库聚合 · ${base?.overview?.total_nodes ?? "—"} 个实体 · ${base?.overview?.total_edges ?? "—"} 条实际关系`
+          : displayMode === "complete"
+            ? c.hiddenIds.length ||
+              v.groups.length ||
+              v.start ||
+              v.end ||
+              !v.includeUnknown
+              ? `当前可见 ${visible.nodes.length} 节点 / ${visible.edges.length} 连线 · 已加载 ${base?.snapshot?.nodes.length ?? 0} 个实体`
+              : `全量实体图 · ${base?.snapshot?.nodes.length ?? 0} 个实体 · ${base?.snapshot?.edges.length ?? 0} 条关系`
+            : `已加载${local ? "局部" : "部分"}图 · ${merged.nodes.length} 个实体 · ${merged.edges.length} 条关系`;
+
+  const selectNode = (item: GraphNode) => {
+    if (interactionLocked) {
+      setNotice(interactionMessage);
+      return;
+    }
+    update({
+      primary: item.id,
+      edge: null,
+      selected: [item.id],
+      inspector: true,
+    });
+    setMemberPage(0);
+    if (item.layer === "saved" && item.uri)
       onSelectMemory(
         normalizeMemory(
-          snapshot?.nodes.find((n) => n.uri === node.uri) ?? { uri: node.uri },
+          merged.nodes.find((n) => n.uri === item.uri) ??
+            context?.nodes.find((n) => n.uri === item.uri) ?? { uri: item.uri },
         ),
       );
-    else if (node.reviewId) {
-      const review = reviews.find((r) => r.id === node.reviewId);
-      if (review) onSelectReview(review);
+    else if (item.reviewId) {
+      const batch =
+        pending.find((r) => r.id === item.reviewId) ??
+        batchCache.current.get(item.reviewId);
+      if (batch) onSelectReview(batch);
+      else onClearSelection();
     } else onClearSelection();
   };
-  const selectEdge = (edge: GraphEdge) => {
-    onClearSelection();
-    setLocalSelection(null);
-    setSelectedEdge(edge);
-  };
-  const focusNode = (node: GraphNode) => {
-    if (!focus) beforeFocus.current = { types, layers, membership };
-    if (!node.reviewId) {
-      setQuery("");
-      setInput("");
-      setReviewPage(0);
+  const selectEdge = (item: GraphEdge) => {
+    if (interactionLocked) {
+      setNotice(interactionMessage);
+      return;
     }
-    setFocus(node.id);
-    setFocusUri(node.layer === "saved" ? (node.uri ?? null) : null);
-    // A type focus fetches its instances from the whole namespace. A record
-    // focus restores all types so its neighbors are not silently excluded.
-    setTypes(
-      node.layer === "schema" && TYPE_KEYS.includes(node.type)
-        ? [node.type]
-        : TYPE_KEYS,
-    );
-    setLayers((current) =>
-      current.includes(node.layer === "review" ? "candidate" : node.layer)
-        ? current
-        : [...current, node.layer === "review" ? "candidate" : node.layer],
-    );
-    if (node.layer === "schema") setMembership(true);
-    setEdgeKind("all");
-    selectNode(node);
-    setMode("graph");
-  };
-  const reset = () => {
-    beforeFocus.current = null;
-    setInput("");
-    setQuery("");
-    setFocus(null);
-    setFocusUri(null);
-    setTypes(TYPE_KEYS);
-    setLayers(["schema", "saved", "candidate"]);
-    setEdgeKind("all");
-    setMembership(false);
-    setReviewPage(0);
-    setLimit(120);
-    setLocalSelection(null);
-    setSelectedEdge(null);
+    update({ primary: null, edge: item.id, selected: [], inspector: true });
     onClearSelection();
   };
-  const focusLabel =
-    graph.nodes.find((node) => node.id === focus)?.label ||
-    (focusUri ? "所选记录" : "");
-  const layerSelection = (layer: string) => {
-    setFocus(null);
-    setFocusUri(null);
-    setLayers((current) =>
-      current.includes(layer)
-        ? current.filter((value) => value !== layer)
-        : [...current, layer],
+  const selectUri = (uri: string) => {
+    if (interactionLocked) {
+      setNotice(interactionMessage);
+      return;
+    }
+    update({
+      primary: savedId(uri),
+      edge: null,
+      selected: [savedId(uri)],
+      inspector: true,
+    });
+    onSelectMemory(
+      normalizeMemory(merged.nodes.find((n) => n.uri === uri) ?? { uri }),
     );
   };
+  const previousExternal = useRef({
+    uri: selectedUri,
+    review: selectedReviewId,
+  });
+  useEffect(() => {
+    const previous = previousExternal.current;
+    if (
+      selectedUri &&
+      previous.uri !== selectedUri &&
+      v.primary !== savedId(selectedUri)
+    )
+      update({
+        primary: savedId(selectedUri),
+        selected: [savedId(selectedUri)],
+        edge: null,
+        inspector: true,
+      });
+    else if (
+      !selectedUri &&
+      previous.uri &&
+      v.primary === savedId(previous.uri)
+    )
+      update({ primary: null, selected: [] });
+    if (
+      selectedReviewId &&
+      previous.review !== selectedReviewId &&
+      !v.primary?.includes(selectedReviewId)
+    )
+      update({
+        primary: reviewId(selectedReviewId),
+        selected: [reviewId(selectedReviewId)],
+        edge: null,
+        inspector: true,
+      });
+    else if (
+      !selectedReviewId &&
+      previous.review &&
+      v.primary?.includes(previous.review)
+    )
+      update({ primary: null, selected: [] });
+    previousExternal.current = { uri: selectedUri, review: selectedReviewId };
+  }, [selectedUri, selectedReviewId]);
+
+  const explore = (item: GraphNode) => {
+    if (item.layer === "group") {
+      commit({ groups: v.groups.filter((g) => g.id !== item.id) });
+      return;
+    }
+    if (item.layer === "aggregate") {
+      navigate("explore", {
+        types: [item.type],
+        label: `${typeName(item.type)}集合`,
+        primary: item.id,
+        selected: [item.id],
+        inspector: true,
+        focusUri: null,
+        expansions: {},
+        path: null,
+      });
+      setMemberPage(0);
+      return;
+    }
+    if (item.layer === "schema") {
+      if (TYPE_KEYS.includes(item.type))
+        navigate("explore", {
+          types: [item.type],
+          label: `${typeName(item.type)}实例`,
+          primary: null,
+          selected: [],
+          focusUri: null,
+          expansions: {},
+          path: null,
+          inspector: false,
+        });
+      return;
+    }
+    if (item.layer === "saved" && item.uri) {
+      navigate("explore", {
+        focusUri: item.uri,
+        label: item.label,
+        primary: item.id,
+        selected: [item.id],
+        layout: "center",
+        canvases: { ...live.current.views.explore.canvases, center: canvas() },
+        expansions: {},
+        path: null,
+        representation: "graph",
+        inspector: true,
+      });
+      onSelectMemory(
+        normalizeMemory(
+          merged.nodes.find((n) => n.uri === item.uri) ?? { uri: item.uri },
+        ),
+      );
+      return;
+    }
+    selectNode(item);
+  };
+  const expand = async (
+    item: GraphNode,
+    next = false,
+    options?: NeighborQuery,
+  ) => {
+    if (item.layer !== "saved" || !item.uri) {
+      explore(item);
+      return;
+    }
+    if (!enabled || busy) return;
+    const q: NeighborQuery = options
+      ? { ...options }
+      : {
+          center_uri: item.uri,
+          direction,
+          relation_types: expandRelation ? [expandRelation] : [],
+          limit: 30,
+        };
+    const id = expansionKey(q),
+      old = v.expansions[id];
+    q.cursor = next ? old?.snapshot.next_cursor : null;
+    const controller = new AbortController();
+    operation.current?.abort();
+    operation.current = controller;
+    const ticket = ++generation.current;
+    setBusy(true);
+    setOperationError(null);
+    try {
+      const result = await api.graphNeighbors(q, controller.signal);
+      if (controller.signal.aborted || ticket !== generation.current) return;
+      const snapshot =
+        next && old
+          ? {
+              ...result,
+              nodes: [
+                ...new Map(
+                  [...old.snapshot.nodes, ...result.nodes].map((n) => [
+                    n.uri,
+                    n,
+                  ]),
+                ).values(),
+              ],
+              edges: [
+                ...new Map(
+                  [...old.snapshot.edges, ...result.edges].map((e) => [
+                    e.id,
+                    e,
+                  ]),
+                ).values(),
+              ],
+            }
+          : result;
+      commit((view) => ({
+        ...view,
+        expansions: {
+          ...view.expansions,
+          [id]: { query: { ...q, cursor: null }, snapshot },
+        },
+        representation: "graph",
+      }));
+      setNotice(
+        `已加载 ${snapshot.nodes.filter((n) => n.uri !== item.uri).length} / ${result.total_neighbors} 个匹配邻居${result.has_more ? "，可继续加载" : ""}。合并图仅表示已加载关系。`,
+      );
+    } catch (e) {
+      if (!controller.signal.aborted) setOperationError(e);
+    } finally {
+      if (ticket === generation.current) setBusy(false);
+    }
+  };
+  const collapse = (item: GraphNode) => {
+    commit((view) => ({
+      ...view,
+      expansions: Object.fromEntries(
+        Object.entries(view.expansions).filter(
+          ([, e]) => e.query.center_uri !== item.uri,
+        ),
+      ),
+    }));
+    setNotice("已收起该次展开；其他展开引用或固定的节点仍保留。");
+  };
+  const pin = (ids: string[], pinned?: boolean) =>
+    commit((view) => {
+      const current = view.canvases[view.layout],
+        shouldPin =
+          pinned ?? !ids.every((id) => current.pinnedIds.includes(id));
+      return {
+        ...view,
+        canvases: {
+          ...view.canvases,
+          [view.layout]: {
+            ...current,
+            pinnedIds: shouldPin
+              ? [...new Set([...current.pinnedIds, ...ids])]
+              : current.pinnedIds.filter((id) => !ids.includes(id)),
+          },
+        },
+      };
+    });
+  const hide = (ids: string[]) => {
+    commit((view) => ({
+      ...view,
+      canvases: {
+        ...view.canvases,
+        [view.layout]: {
+          ...view.canvases[view.layout],
+          hiddenIds: [
+            ...new Set([...view.canvases[view.layout].hiddenIds, ...ids]),
+          ],
+        },
+      },
+    }));
+    setNotice("对象已从当前画布隐藏。可撤销或显示隐藏对象，知识不变。");
+  };
+  const issue = (type: NonNullable<typeof command>["type"]) => {
+    if (v.representation !== "graph") update({ representation: "graph" });
+    setCommand({ id: Date.now() + Math.random(), type, label: description });
+  };
+  const connect = async () => {
+    if (selectedSaved.length !== 2 || busy || !enabled) return;
+    const controller = new AbortController();
+    operation.current?.abort();
+    operation.current = controller;
+    const ticket = ++generation.current;
+    setBusy(true);
+    setOperationError(null);
+    try {
+      const result = await api.graphPaths(
+        {
+          source_uri: selectedSaved[0].uri!,
+          target_uri: selectedSaved[1].uri!,
+          mode: pathMode,
+          direction: pathDirection,
+          relation_types: v.relations.filter((r) => r !== "__none__"),
+          max_hops: 6,
+          limit: 5,
+        },
+        controller.signal,
+      );
+      if (controller.signal.aborted || ticket !== generation.current) return;
+      commit({ path: result, pathIndex: 0 });
+      setNotice(
+        result.timed_out
+          ? "查询预算耗尽，返回结果可能不完整。"
+          : result.paths.length
+            ? `找到 ${result.paths.length} 条连接${result.truncated ? "，结果已截断" : ""}。`
+            : `在当前查询预算及 ${result.max_hops} 跳范围内未找到连接${result.truncated ? "；不能据此排除其他连接" : ""}。`,
+      );
+    } catch (e) {
+      if (!controller.signal.aborted) setOperationError(e);
+    } finally {
+      if (ticket === generation.current) setBusy(false);
+    }
+  };
+  const submitSearch = (offset = 0) => {
+    if (!offset) {
+      navigation.current.past = [
+        ...navigation.current.past,
+        { lens, views },
+      ].slice(-40);
+      navigation.current.future = [];
+    }
+    setSearchTerm(v.search.trim());
+    setSearchOffset(offset);
+    setSearchOpen(true);
+    forceHistory((t) => t + 1);
+  };
+  useEffect(() => {
+    if (!searchOpen || !enabled || lens === "ontology") return;
+    const controller = new AbortController();
+    setSearchBusy(true);
+    setSearchError(null);
+    setSearchResults(null);
+    setSearchReviews(null);
+    const work =
+      lens === "review"
+        ? api
+            .reviewPage(
+              { q: searchTerm, offset: searchOffset, limit: 20 },
+              controller.signal,
+            )
+            .then((page) => {
+              if (!controller.signal.aborted) setSearchReviews(page);
+            })
+        : api
+            .ontologyEntities(
+              { q: searchTerm, offset: searchOffset, limit: 20 },
+              controller.signal,
+            )
+            .then((page) => {
+              if (!controller.signal.aborted) setSearchResults(page);
+            });
+    work
+      .catch((e) => {
+        if (!controller.signal.aborted) setSearchError(e);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSearchBusy(false);
+      });
+    return () => controller.abort();
+  }, [api, enabled, lens, searchOpen, searchTerm, searchOffset]);
+  useEffect(() => {
+    setMembers(null);
+    if (!enabled || node?.layer !== "aggregate") return;
+    const controller = new AbortController();
+    setMemberBusy(true);
+    setMemberError(null);
+    api
+      .ontologyEntities(
+        {
+          type: node.type,
+          q: v.filterQuery,
+          offset: memberPage * 20,
+          limit: 20,
+        },
+        controller.signal,
+      )
+      .then((page) => {
+        if (!controller.signal.aborted) setMembers(page);
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted) setMemberError(e);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setMemberBusy(false);
+      });
+    return () => controller.abort();
+  }, [api, enabled, node?.id, memberPage, v.filterQuery]);
+  const commands = [
+    { label: "适应全部可见节点", run: () => issue("fit") },
+    { label: "适应当前选择", run: () => issue("fit-selection") },
+    { label: "切换目录与筛选", run: () => update({ sidebar: !v.sidebar }) },
+    { label: "切换检查器", run: () => update({ inspector: !v.inspector }) },
+    {
+      label: "切换图 / 列表",
+      run: () =>
+        update({
+          representation: v.representation === "list" ? "graph" : "list",
+        }),
+    },
+    { label: "撤销画布操作", run: () => undoView() },
+    { label: "重做画布操作", run: () => undoView(true) },
+    { label: "固定当前选择", run: () => pin(v.selected) },
+    { label: "隐藏当前选择", run: () => hide(v.selected) },
+    {
+      label: "展开当前对象",
+      run: () => {
+        if (node) void expand(node);
+      },
+    },
+    { label: "打开或保存命名视图", run: () => setSavedOpen(true) },
+    { label: "导出 SVG", run: () => issue("export-svg") },
+    { label: "导出 PNG", run: () => issue("export-png") },
+    { label: "本体视角", run: () => navigate("ontology") },
+    { label: "探索视角", run: () => navigate("explore") },
+    { label: "审阅视角", run: () => navigate("review") },
+  ];
+  useEffect(() => {
+    const keydown = (e: globalThis.KeyboardEvent) => {
+      if (
+        e.defaultPrevented ||
+        document.querySelector('[role="dialog"][aria-modal="true"]')
+      )
+        return;
+      if (interactionLocked) return;
+      const typing = (e.target as HTMLElement)?.closest(
+        "input,textarea,select,[contenteditable='true']",
+      );
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && !typing) {
+        e.preventDefault();
+        setCommandsOpen((open) => !open);
+        return;
+      }
+      if (
+        e.key === "Escape" &&
+        !typing &&
+        !commandsOpen &&
+        !savedOpen &&
+        !compareIds &&
+        !groupOpen
+      ) {
+        if (searchOpen) {
+          setSearchOpen(false);
+          searchInput.current?.focus();
+        } else if (host.current?.contains(e.target as Node)) {
+          if (v.spotlight) update({ spotlight: null });
+          else if (v.path) commit({ path: null });
+          else clear();
+        }
+        return;
+      }
+      if (typing) return;
+      if (e.key === "/") {
+        e.preventDefault();
+        searchInput.current?.focus();
+      }
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key.toLowerCase() === "z" &&
+        stage.current?.contains(e.target as Node)
+      ) {
+        e.preventDefault();
+        undoView(e.shiftKey);
+      }
+    };
+    document.addEventListener("keydown", keydown);
+    return () => document.removeEventListener("keydown", keydown);
+  });
+  useEffect(() => {
+    if (!v.inspector || !matchMedia("(max-width:767px)").matches) return;
+    const element = inspector.current;
+    if (!element) return;
+    const previous = document.activeElement as HTMLElement | null;
+    element.focus({ preventScroll: true });
+    const keydown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        update({ inspector: false });
+      }
+      if (e.key === "Tab") {
+        const controls = Array.from(
+          element.querySelectorAll<HTMLElement>(
+            "button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex='0']",
+          ),
+        ).filter((el) => el.getClientRects().length);
+        const first = controls[0],
+          last = controls[controls.length - 1];
+        if (
+          e.shiftKey &&
+          (document.activeElement === first ||
+            document.activeElement === element)
+        ) {
+          e.preventDefault();
+          last?.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    element.addEventListener("keydown", keydown);
+    return () => {
+      element.removeEventListener("keydown", keydown);
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, [v.inspector, lens]);
+
   return (
-    <div className="graph-workspace">
-      <header className="graph-page-header">
-        <div>
-          <div className="section-eyebrow">KNOWLEDGE WORKSPACE</div>
-          <h1>知识图谱</h1>
-          <p>从结构到记忆，再到审阅，在一张图里理解它们的联系。</p>
-        </div>
-        <button
-          className="button button-secondary"
-          onClick={refresh}
-          disabled={!enabled || loading || schemaLoading}
-        >
-          <RefreshCw size={15} className={loading ? "spin" : ""} />
-          刷新
-        </button>
-      </header>
-      <div className="graph-mode-bar">
-        <div className="graph-segments" role="group" aria-label="工作区视图">
-          {(
-            [
-              ["graph", "节点图", GitBranch],
-              ["list", "节点列表", List],
-              ["library", "语义与停用", Search],
-            ] as const
-          ).map(([value, label, Icon]) => (
+    <div
+      ref={host}
+      className={`graph-workspace-v3${v.sidebar ? " has-directory" : ""}${v.inspector ? " has-inspector" : ""}`}
+      style={{ "--inspector-width": `${v.width}px` } as CSSProperties}
+      onClickCapture={(event) => {
+        if (
+          interactionLocked &&
+          !(event.target as Element).closest('.gw-inspector,[role="dialog"]')
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          setNotice(interactionMessage);
+        }
+      }}
+      onPointerDownCapture={(event) => {
+        if (
+          interactionLocked &&
+          !(event.target as Element).closest('.gw-inspector,[role="dialog"]')
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+    >
+      <header className="gw-topbar" inert={interactionLocked || undefined}>
+        <h1 className="sr-only">知识图谱工作区</h1>
+        <div className="gw-lenses" role="group" aria-label="图谱工作视角">
+          {LENSES.map(({ key: which, label, icon: Icon }) => (
             <button
-              key={value}
-              aria-pressed={mode === value}
-              onClick={() => setMode(value)}
+              key={which}
+              aria-pressed={lens === which}
+              onClick={() => navigate(which)}
             >
               <Icon size={16} />
               {label}
+              {which === "review" && (
+                <span className="gw-count">
+                  {reviewPage?.total_pending ?? "—"}
+                </span>
+              )}
             </button>
           ))}
         </div>
-        <span className="graph-mode-note">
-          {mode === "library"
-            ? "语义找回、停用与恢复"
-            : "规则、事实与待审提议分层展示"}
-        </span>
-      </div>
-      {mode !== "library" && (
-        <section className="graph-tools" aria-label="图谱筛选">
-          <form
-            className="graph-search"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setQuery(input.trim());
-              setSearchKey((k) => k + 1);
-              setReviewPage(0);
-              setFocus(null);
-              setFocusUri(null);
+        <form
+          className="gw-search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitSearch();
+          }}
+        >
+          <Search size={16} />
+          <input
+            ref={searchInput}
+            aria-label={`搜索${LENSES.find((l) => l.key === lens)?.label}`}
+            value={v.search}
+            maxLength={200}
+            placeholder={
+              lens === "ontology"
+                ? "类型、关系、属性或 IRI…"
+                : "搜索并定位知识…"
+            }
+            onChange={(e) => update({ search: e.target.value })}
+            disabled={!enabled}
+          />
+          <button disabled={!enabled} aria-label="提交定位搜索" type="submit">
+            ↵
+          </button>
+          <button
+            type="button"
+            aria-label="打开命令菜单"
+            title="命令菜单 Ctrl / ⌘ K"
+            onClick={() => setCommandsOpen(true)}
+          >
+            <Command size={15} />
+          </button>
+        </form>
+        <div className="gw-top-actions">
+          <button
+            aria-label="切换目录与筛选"
+            aria-expanded={v.sidebar}
+            onClick={() => update({ sidebar: !v.sidebar })}
+          >
+            <Filter size={17} />
+          </button>
+          <select
+            aria-label="图谱布局"
+            value={v.layout}
+            onChange={(e) => commit({ layout: e.target.value as LayoutMode })}
+          >
+            <option value="relation">关系布局</option>
+            <option value="direction">方向布局</option>
+            <option value="type">按类型布局</option>
+            <option value="center">中心布局</option>
+          </select>
+          <button
+            aria-label="全屏工作区"
+            onClick={() => {
+              if (document.fullscreenElement) void document.exitFullscreen();
+              else
+                void host.current
+                  ?.requestFullscreen()
+                  .catch(() =>
+                    setNotice("浏览器未允许全屏，可收起侧栏扩大画布。"),
+                  );
             }}
           >
-            <Search size={17} />
-            <input
-              ref={searchInput}
-              aria-label="搜索图谱节点"
-              value={input}
-              maxLength={200}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="搜索节点名称、描述或标识…"
-              disabled={!enabled}
-            />
-            {input && (
-              <button
-                type="button"
-                aria-label="清除图谱搜索"
-                onClick={() => {
-                  setInput("");
-                  setQuery("");
-                }}
-              >
-                <X size={16} />
-              </button>
-            )}
-            <button
-              className="button button-primary"
-              disabled={!enabled || loading}
-            >
-              搜索
+            <Maximize2 size={17} />
+          </button>
+          <button
+            aria-label="刷新图谱"
+            disabled={!enabled || loading}
+            onClick={refresh}
+          >
+            <RefreshCw size={17} className={loading ? "spin" : ""} />
+          </button>
+          <button
+            aria-label="切换检查器"
+            aria-expanded={v.inspector}
+            onClick={() => update({ inspector: !v.inspector })}
+          >
+            <PanelRightClose size={17} />
+          </button>
+        </div>
+      </header>
+      <div className="gw-scopebar" inert={interactionLocked || undefined}>
+        <nav aria-label="探索路径">
+          <button
+            aria-label="返回上个探索上下文"
+            disabled={!navigation.current.past.length}
+            onClick={() => go("back")}
+          >
+            <ArrowLeft size={15} />
+          </button>
+          <button
+            aria-label="前进到下个探索上下文"
+            disabled={!navigation.current.future.length}
+            onClick={() => go("forward")}
+          >
+            <ArrowRight size={15} />
+          </button>
+          <button
+            onClick={() =>
+              navigate("explore", {
+                ...initialView("explore"),
+                canvases: v.canvases,
+              })
+            }
+          >
+            知识图谱
+          </button>
+          <span>/</span>
+          <strong>
+            {lens === "ontology"
+              ? "本体结构"
+              : lens === "review"
+                ? "候选核对"
+                : v.label}
+          </strong>
+        </nav>
+        <div className="gw-representations" role="group" aria-label="呈现方式">
+          <button
+            aria-pressed={v.representation === "graph"}
+            onClick={() => update({ representation: "graph" })}
+          >
+            <GitBranch size={14} />图
+          </button>
+          <button
+            aria-pressed={v.representation === "list"}
+            onClick={() => update({ representation: "list" })}
+          >
+            <List size={14} />
+            列表
+          </button>
+          <button
+            aria-pressed={v.representation === "library"}
+            onClick={() =>
+              update({ representation: "library", inspector: !!detail })
+            }
+          >
+            <Search size={14} />
+            语义与停用
+          </button>
+        </div>
+      </div>
+      {(v.filterQuery ||
+        v.types.length !== 6 ||
+        v.relations.length > 0 ||
+        v.start ||
+        v.end) && (
+        <div className="gw-chips" aria-label="当前筛选">
+          {v.filterQuery && (
+            <button onClick={() => navigate(lens, { filterQuery: "" })}>
+              包含：{v.filterQuery}
+              <X size={12} />
             </button>
-          </form>
-          <div className="graph-filter-row">
-            <fieldset className="graph-layer-controls">
-              <legend>内容层</legend>
-              {["schema", "saved", "candidate"].map((layer) => (
-                <label key={layer}>
+          )}
+          {v.types.length !== 6 && (
+            <button onClick={() => navigate(lens, { types: [...TYPE_KEYS] })}>
+              类型：{v.types.map(typeTitle).join("、") || "全部隐藏"}
+              <X size={12} />
+            </button>
+          )}
+          {v.relations.map((relation) => (
+            <button
+              key={relation}
+              onClick={() =>
+                navigate(lens, {
+                  relations: v.relations.filter((r) => r !== relation),
+                })
+              }
+            >
+              {relation === "__none__"
+                ? "全部关系隐藏"
+                : relationName({ key: relation, label: relation })}
+              <X size={12} />
+            </button>
+          ))}
+          {(v.start || v.end) && (
+            <button onClick={() => commit({ start: "", end: "" })}>
+              已加载事件：{v.start || "不限"} → {v.end || "不限"}
+              <X size={12} />
+            </button>
+          )}
+        </div>
+      )}
+      <PendingFeedback
+        active={loading || schemaLoading || reviewsLoading || busy}
+        message="正在读取，当前镜头、选择和输入保持不变。"
+      />
+      {!!(schemaError || base?.error || reviewsError || operationError) && (
+        <div className="gw-alert" role="alert">
+          {errorMessage(
+            operationError || base?.error || schemaError || reviewsError,
+          )}
+          <button
+            onClick={() => {
+              setOperationError(null);
+              refresh();
+            }}
+          >
+            重试读取
+          </button>
+        </div>
+      )}
+      {notice && (
+        <div className="gw-notice" role="status">
+          {notice}
+          <button aria-label="关闭提示" onClick={() => setNotice("")}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
+      {interactionLocked && (
+        <div className="gw-notice" role="status">
+          当前编辑或提交进行中，探索上下文已锁定。{interactionMessage}
+        </div>
+      )}
+      <div className="gw-body">
+        {v.sidebar && (
+          <aside
+            className="gw-directory"
+            aria-label="图谱目录与筛选"
+            inert={interactionLocked || undefined}
+          >
+            <div className="gw-panel-heading">
+              <strong>{lens === "review" ? "审阅队列" : "目录与筛选"}</strong>
+              <button
+                aria-label="收起目录"
+                onClick={() => update({ sidebar: false })}
+              >
+                <PanelLeftClose size={16} />
+              </button>
+            </div>
+            {lens === "review" && (
+              <>
+                <p className="gw-muted">
+                  整批核对与处理 · {reviewPage?.total_pending ?? "—"} 批待审
+                </p>
+                {reviewsLoading && !pending.length && (
+                  <p role="status">正在读取批次…</p>
+                )}
+                {pending.map((batch) => (
+                  <button
+                    key={batch.id}
+                    className={`gw-review-item${selectedReviewId === batch.id ? " selected" : ""}`}
+                    onClick={() => {
+                      update({
+                        primary: reviewId(batch.id),
+                        selected: [reviewId(batch.id)],
+                        edge: null,
+                        inspector: true,
+                      });
+                      onSelectReview(batch);
+                    }}
+                  >
+                    <strong>{batch.entities[0]?.name || "关系提案"}</strong>
+                    <small>
+                      {batch.entities.length} 个实体 · {batch.relations.length}{" "}
+                      条关系
+                    </small>
+                    <span>{batch.reason || "查看候选与已有记录差异"}</span>
+                  </button>
+                ))}
+                {!pending.length && !reviewsLoading && (
+                  <p className="gw-empty">当前范围没有待审批次。</p>
+                )}
+                <div className="gw-pagination">
+                  <button
+                    disabled={!v.reviewPage || reviewsLoading}
+                    onClick={() => update({ reviewPage: v.reviewPage - 1 })}
+                  >
+                    上一页
+                  </button>
+                  <span>
+                    {v.reviewPage + 1} /{" "}
+                    {Math.max(1, Math.ceil((reviewPage?.total ?? 0) / 20))}
+                  </span>
+                  <button
+                    disabled={!reviewPage?.has_more || reviewsLoading}
+                    onClick={() => update({ reviewPage: v.reviewPage + 1 })}
+                  >
+                    下一页
+                  </button>
+                </div>
+              </>
+            )}
+            <fieldset>
+              <legend>实体类型</legend>
+              {TYPE_KEYS.map((type) => (
+                <label key={type}>
                   <input
                     type="checkbox"
-                    checked={layers.includes(layer)}
-                    onChange={() => layerSelection(layer)}
+                    checked={v.types.includes(type)}
+                    onChange={() =>
+                      navigate(lens, {
+                        types: v.types.includes(type)
+                          ? v.types.filter((t) => t !== type)
+                          : [...v.types, type],
+                      })
+                    }
                   />
-                  {layerName(layer)}
-                  {layer === "candidate" && (
-                    <span>
-                      {reviewsError || (reviewsLoading && !reviews.length)
-                        ? "—"
-                        : (reviewResult?.total_pending ?? "—")}{" "}
-                      批
-                    </span>
-                  )}
+                  <i style={{ background: GRAPH_TYPE_COLORS[type]?.stroke }} />
+                  {typeName(type)}
+                  <span>
+                    {schema?.entity_types.find((t) => t.key === type)?.count ??
+                      "—"}
+                  </span>
                 </label>
               ))}
             </fieldset>
-            <button className="button button-quiet" onClick={reset}>
-              重置筛选
-            </button>
-          </div>
-          <fieldset className="graph-type-controls">
-            <legend>实体类型</legend>
-            {TYPE_KEYS.map((type) => (
-              <label key={type}>
-                <input
-                  type="checkbox"
-                  checked={types.includes(type)}
-                  onChange={() => {
-                    setFocus(null);
-                    setFocusUri(null);
-                    setTypes((current) =>
-                      current.includes(type)
-                        ? current.filter((t) => t !== type)
-                        : [...current, type],
-                    );
-                  }}
-                />
-                <i
-                  style={{
-                    background: GRAPH_TYPE_COLORS[type]?.stroke ?? "#52616a",
-                  }}
-                />
-                {typeName(type)}
-              </label>
-            ))}
-          </fieldset>
-          <details className="graph-options">
-            <summary>
-              <SlidersHorizontal size={14} />
-              关系与图例
-            </summary>
-            <div>
-              <label>
-                关系显示
-                <select
-                  aria-label="关系显示"
-                  value={edgeKind}
-                  onChange={(e) => setEdgeKind(e.target.value)}
+            <details open={v.relations.length > 0}>
+              <summary>
+                业务关系{v.relations.length ? ` · ${v.relations.length}` : ""}
+              </summary>
+              <p className="gw-muted">只控制关系显示，保留孤立实体。</p>
+              {schema?.relations.map((relation) => (
+                <label key={relation.key}>
+                  <input
+                    type="checkbox"
+                    checked={
+                      !v.relations.length || v.relations.includes(relation.key)
+                    }
+                    onChange={() => {
+                      const selected = v.relations.length
+                        ? v.relations
+                        : schema.relations.map((r) => r.key);
+                      const next = selected.includes(relation.key)
+                        ? selected.filter(
+                            (r) => r !== relation.key && r !== "__none__",
+                          )
+                        : [
+                            ...selected.filter((r) => r !== "__none__"),
+                            relation.key,
+                          ];
+                      navigate(lens, {
+                        relations: next.length ? next : ["__none__"],
+                      });
+                    }}
+                  />
+                  {relationName(relation)}
+                </label>
+              ))}
+              <button onClick={() => navigate(lens, { relations: [] })}>
+                显示全部关系
+              </button>
+            </details>
+            <details>
+              <summary>显示与工具</summary>
+              <button onClick={() => setTimeOpen(!timeOpen)}>
+                已加载事件时间筛选
+              </button>
+              <button
+                onClick={() =>
+                  commit((view) => ({
+                    ...view,
+                    canvases: {
+                      ...view.canvases,
+                      [view.layout]: {
+                        ...view.canvases[view.layout],
+                        hiddenIds: [],
+                      },
+                    },
+                  }))
+                }
+              >
+                显示隐藏对象（{c.hiddenIds.length}）
+              </button>
+              <button onClick={() => setSavedOpen(true)}>
+                打开 / 保存命名视图
+              </button>
+              <button onClick={() => issue("export-svg")}>
+                导出当前图 SVG
+              </button>
+              <button onClick={() => issue("export-png")}>
+                导出当前图 PNG
+              </button>
+            </details>
+            {timeOpen && (
+              <EventTimeline
+                nodes={raw.nodes}
+                start={v.start}
+                end={v.end}
+                includeUnknown={v.includeUnknown}
+                onChange={(patch) => commit(patch)}
+              />
+            )}
+            <div className="gw-legend">
+              <span>▭ 类型定义</span>
+              <span>● 已保存实体</span>
+              <span>◌ 待审候选</span>
+              <span>▣ 实际记录集合</span>
+              <p>位置与线长不表示权重或置信度。规则连线不表示事实。</p>
+            </div>
+          </aside>
+        )}
+        <section
+          ref={stage}
+          className="gw-stage"
+          tabIndex={-1}
+          aria-busy={loading || stale}
+          inert={stale || interactionLocked || undefined}
+          aria-label="知识图谱内容"
+        >
+          {v.representation === "library" ? (
+            library
+          ) : v.representation === "list" ? (
+            <div className="gw-list">
+              <h2>
+                节点与集合 <small>{visible.nodes.length}</small>
+              </h2>
+              {visible.nodes.map((item) => (
+                <div className="gw-list-row" key={item.id}>
+                  <input
+                    type="checkbox"
+                    aria-label={`多选 ${item.label}`}
+                    checked={v.selected.includes(item.id)}
+                    onChange={() =>
+                      update({
+                        selected: v.selected.includes(item.id)
+                          ? v.selected.filter((id) => id !== item.id)
+                          : [...v.selected, item.id],
+                        inspector: true,
+                      })
+                    }
+                  />
+                  <button onClick={() => selectNode(item)}>
+                    <i
+                      style={{
+                        background:
+                          GRAPH_TYPE_COLORS[item.type]?.stroke ?? "#52616a",
+                      }}
+                    />
+                    <strong>{item.label}</strong>
+                    <small>
+                      {typeName(item.type)} · {GRAPH_LAYER_LABELS[item.layer]}
+                    </small>
+                  </button>
+                  <button
+                    onClick={() => explore(item)}
+                    aria-label={`探索 ${item.label}`}
+                  >
+                    <Expand size={15} />
+                  </button>
+                </div>
+              ))}
+              <h2>
+                关系 <small>{visible.edges.length}</small>
+              </h2>
+              {visible.edges.map((item) => (
+                <button
+                  className="gw-list-edge"
+                  key={item.id}
+                  onClick={() => selectEdge(item)}
                 >
-                  <option value="all">全部关系</option>
-                  <option value="saved">已保存的关系</option>
-                  <option value="candidate">待审关系</option>
-                  <option value="definition">类型规则</option>
-                  <option value="review">批次归属</option>
-                </select>
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={membership}
-                  onChange={(e) => setMembership(e.target.checked)}
-                />
-                显示实体到类型的归属线
-              </label>
-              <p>
-                圆角方形：定义　圆形：已保存　虚线圆形：候选　菱形：审阅批次。箭头表示关系方向。定义连线仅说明允许范围。
-              </p>
-              {(schema?.schema_warnings.length ?? 0) > 0 && (
-                <p>
-                  当前定义包含 {schema!.schema_warnings.length}{" "}
-                  项兼容提示；关系详情会同时说明历史声明与实际运行约束，以实际约束为准。
+                  <strong>
+                    {
+                      (
+                        visible.nodes.find((n) => n.id === item.source) ??
+                        raw.nodes.find((n) => n.id === item.source)
+                      )?.label
+                    }{" "}
+                    →{" "}
+                    {
+                      (
+                        visible.nodes.find((n) => n.id === item.target) ??
+                        raw.nodes.find((n) => n.id === item.target)
+                      )?.label
+                    }
+                  </strong>
+                  <span>
+                    {item.label} ·{" "}
+                    {item.kind === "definition"
+                      ? "允许连接规则"
+                      : item.kind === "candidate"
+                        ? "待审提议"
+                        : item.kind === "aggregate"
+                          ? "实际关系聚合"
+                          : "已加载关系"}
+                  </span>
+                </button>
+              ))}
+              {!visible.nodes.length && (
+                <p className="gw-empty">
+                  没有可见对象。检查筛选、隐藏对象或服务连接。
                 </p>
               )}
             </div>
-          </details>
-        </section>
-      )}
-      {mode !== "library" && (
-        <>
-          <div className="graph-read-status" role="status">
-            {!enabled
-              ? "连接服务后查看图谱。"
-              : loading
-                ? "正在读取图谱…"
-                : `${visible.nodes.length} 个可见节点 · ${edges.length} 条可见连线`}
-            {snapshot && !loading && (
-              <span>
-                已加载 {snapshot.nodes.length} / {snapshot.total_nodes}{" "}
-                个匹配实体{loadedAt ? ` · ${loadedAt} 更新` : ""}
-              </span>
-            )}
-          </div>
-          <PendingFeedback
-            active={loading || schemaLoading || reviewsLoading}
-            message="图谱读取需要一些时间。筛选和选择已保留，你可以稍后刷新。"
-          />
-          {(!!graphError || !!schemaError || !!reviewsError) && (
-            <div role="alert" className="graph-warning">
-              {graphError
-                ? `数据读取失败：${errorMessage(graphError)}`
-                : schemaError
-                  ? `类型定义读取失败：${errorMessage(schemaError)}`
-                  : `待审内容读取失败：${errorMessage(reviewsError)}`}
-              <button className="button button-secondary" onClick={refresh}>
-                重试读取
-              </button>
-              {snapshot && <span>当前保留的是上次读取结果。</span>}
-            </div>
-          )}
-          {snapshot?.truncated_nodes && (
-            <div className="graph-warning">
-              当前加载 {snapshot.nodes.length} / {snapshot.total_nodes}{" "}
-              个匹配实体；连线仅包含这些实体之间的关系。请搜索或聚焦以查看其他节点。
-              {limit < 200 && (
-                <button
-                  className="button button-secondary"
-                  onClick={() => setLimit(200)}
-                >
-                  扩展到 200 个实体
-                </button>
-              )}
-            </div>
-          )}
-          {snapshot?.truncated_edges && (
-            <p className="graph-warning">
-              当前实体之间有 {snapshot.total_edges} 条关系，已加载前{" "}
-              {snapshot.edges.length} 条；可聚焦节点缩小范围。
-            </p>
-          )}
-          {graph.omittedCandidates > 0 && (
-            <p className="graph-warning">
-              当前批次的候选较多，图中仅绘制前 60
-              个；选择批次可在详情中查看全部内容。
-            </p>
-          )}
-          {focus && (
-            <div className="graph-focus-banner">
-              <Focus size={16} />
-              <span>
-                聚焦：{focusLabel} · 一跳关联
-                {focusUri ? "（当前空间）" : "（已加载内容）"}
-              </span>
-              <button
-                className="button button-secondary"
-                onClick={() => {
-                  setFocus(null);
-                  setFocusUri(null);
-                  if (beforeFocus.current) {
-                    setTypes(beforeFocus.current.types);
-                    setLayers(beforeFocus.current.layers);
-                    setMembership(beforeFocus.current.membership);
-                    beforeFocus.current = null;
-                  }
-                }}
-              >
-                返回全图
-              </button>
-            </div>
-          )}
-          {focusUri && snapshot?.focus_found === false && (
-            <p className="graph-warning">
-              中心记录已停用或不可见，请返回全图后重新选择。
-            </p>
-          )}
-          {reviewTotal > REVIEW_PAGE_SIZE && layers.includes("candidate") && (
-            <div
-              className="graph-review-paging"
-              role="group"
-              aria-label="待审批次分页"
-            >
-              <span>
-                待审批次 {reviewPage * REVIEW_PAGE_SIZE + 1}–
-                {Math.min((reviewPage + 1) * REVIEW_PAGE_SIZE, reviewTotal)} /{" "}
-                {reviewTotal}
-              </span>
-              <button
-                disabled={reviewPage === 0}
-                onClick={() => setReviewPage((p) => p - 1)}
-              >
-                上一批
-              </button>
-              <button
-                disabled={(reviewPage + 1) * REVIEW_PAGE_SIZE >= reviewTotal}
-                onClick={() => setReviewPage((p) => p + 1)}
-              >
-                下一批
-              </button>
-            </div>
-          )}
-        </>
-      )}
-      <div className="graph-content-grid">
-        <div className="graph-stage" ref={stage} tabIndex={-1}>
-          {mode === "library" ? (
-            library
-          ) : mode === "graph" ? (
+          ) : (
             <GraphCanvas
+              key={`${lens}:${v.layout}:${v.focusUri ?? "overview"}`}
               nodes={visible.nodes}
-              edges={edges}
-              layoutNodes={graph.nodes}
-              selectedId={selectedId ?? undefined}
-              selectedEdgeId={selectedEdge?.id}
-              focusId={focus ?? undefined}
+              edges={visible.edges}
+              layoutNodes={visible.nodes}
+              selectedId={v.primary}
+              selectedEdgeId={v.edge}
+              focusId={v.focusUri ? savedId(v.focusUri) : null}
+              workspaceKey={`${lens}:${v.layout}:${v.focusUri ?? "overview"}`}
+              layoutMode={v.layout}
+              state={c}
+              onStateChange={(next, shouldCommit) => {
+                if (shouldCommit) {
+                  undo.current[lens].past = [
+                    ...undo.current[lens].past,
+                    interaction.current ?? v,
+                  ].slice(-40);
+                  undo.current[lens].future = [];
+                  interaction.current = null;
+                }
+                const all = live.current.views;
+                const changed = {
+                  ...all,
+                  [lens]: {
+                    ...all[lens],
+                    canvases: { ...all[lens].canvases, [v.layout]: next },
+                  },
+                };
+                live.current = { ...live.current, views: changed };
+                setViews(changed);
+              }}
+              onBeginInteraction={() => {
+                interaction.current = live.current.views[live.current.lens];
+              }}
+              selectedIds={v.selected}
+              onSelectionChange={(ids, primary) => {
+                update({
+                  selected: ids,
+                  primary: ids.length === 1 ? ids[0] : v.primary,
+                  edge: null,
+                  inspector: ids.length > 1 || v.inspector,
+                });
+                if (ids.length === 1 && !primary) {
+                  const target = raw.nodes.find((n) => n.id === ids[0]);
+                  if (target) selectNode(target);
+                }
+              }}
               onSelectNode={selectNode}
               onSelectEdge={selectEdge}
-              onFocusNode={focusNode}
+              onFocusNode={(item) => void expand(item)}
+              onClearSelection={clear}
+              onPinNodes={pin}
+              onHideNodes={hide}
+              onGroupNodes={(ids) => {
+                update({ selected: ids });
+                setGroupOpen(true);
+              }}
+              onCompareNodes={(ids) => setCompareIds(ids)}
+              spotlightId={v.spotlight}
+              searchIds={[...searchIds, ...pathIds]}
+              command={command}
+              onUndo={() => undoView()}
+              onRedo={() => undoView(true)}
               emptyMessage={
-                enabled
-                  ? "没有可见节点。调整类型、内容层或搜索条件。"
-                  : "连接服务后开始探索。"
+                !enabled
+                  ? "连接服务后开始探索。"
+                  : loading || schemaLoading
+                    ? "正在读取图谱…"
+                    : !v.types.length
+                      ? "所有实体类型已隐藏，可在目录中恢复。"
+                      : "当前范围没有可见对象。调整筛选或显示隐藏对象。"
               }
             />
-          ) : (
-            <div className="graph-node-list" role="region" aria-label="图谱节点列表">
-              {visible.nodes.length ? (
-                visible.nodes.map((node) => (
+          )}
+          {(loading || schemaLoading || busy) && (
+            <div className="gw-loading" role="status">
+              <RefreshCw size={14} className="spin" />
+              {busy
+                ? "正在查询关系…"
+                : stale
+                  ? "正在切换范围，暂时保留上次画面…"
+                  : "正在更新，保留当前镜头…"}
+            </div>
+          )}
+          {v.selected.length > 1 && v.representation !== "graph" && (
+            <div className="gw-selection-bar">
+              <strong>已选 {v.selected.length} 项</strong>
+              <button onClick={() => setCompareIds(v.selected)}>比较</button>
+              <button onClick={() => pin(v.selected)}>固定</button>
+              <button onClick={() => hide(v.selected)}>隐藏</button>
+              <button onClick={() => setGroupOpen(true)}>分组</button>
+            </div>
+          )}
+        </section>
+        {v.inspector && (
+          <>
+            <div
+              className="gw-resizer"
+              role="separator"
+              aria-label="调整检查器宽度"
+              aria-orientation="vertical"
+              aria-valuemin={300}
+              aria-valuemax={560}
+              aria-valuenow={v.width}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (["ArrowLeft", "ArrowRight"].includes(e.key)) {
+                  e.preventDefault();
+                  update({
+                    width: Math.min(
+                      560,
+                      Math.max(
+                        300,
+                        v.width + (e.key === "ArrowLeft" ? 20 : -20),
+                      ),
+                    ),
+                  });
+                }
+              }}
+              onPointerDown={(e) => {
+                const start = e.clientX,
+                  width = v.width;
+                e.currentTarget.setPointerCapture(e.pointerId);
+                const move = (event: PointerEvent) =>
+                  update({
+                    width: Math.max(
+                      300,
+                      Math.min(560, width + start - event.clientX),
+                    ),
+                  });
+                const end = () => {
+                  window.removeEventListener("pointermove", move);
+                  window.removeEventListener("pointerup", end);
+                  window.removeEventListener("pointercancel", end);
+                };
+                window.addEventListener("pointermove", move);
+                window.addEventListener("pointerup", end, { once: true });
+                window.addEventListener("pointercancel", end, { once: true });
+              }}
+            />
+            <aside
+              ref={inspector}
+              className="gw-inspector"
+              tabIndex={-1}
+              aria-label="所选内容检查器"
+            >
+              <div className="gw-panel-heading">
+                <strong>
+                  {node
+                    ? GRAPH_LAYER_LABELS[node.layer]
+                    : edge
+                      ? "关系详情"
+                      : "检查器"}
+                </strong>
+                <button
+                  aria-label="收起检查器"
+                  disabled={interactionLocked}
+                  onClick={() => {
+                    update({ inspector: false });
+                    stage.current?.focus({ preventScroll: true });
+                  }}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+              {lens === "review" && selectedBatch && (
+                <ReviewImpact
+                  api={api}
+                  review={selectedBatch}
+                  existingUris={context?.nodes.map((item) => item.uri) ?? []}
+                  status={selectedReviewStatus}
+                />
+              )}
+              {showDetail ? (
+                detail
+              ) : definition && schema ? (
+                <OntologyInspector
+                  schema={schema}
+                  definition={definition}
+                  api={api}
+                  writeEnabled={enabled && writeEnabled && !schemaScopeChanged}
+                  editorTransport={{
+                    validate: api.ontologyValidate,
+                    publish: api.ontologyPublish,
+                    read: api.ontologySchema,
+                  }}
+                  onInteractionLockChange={changeOntologyInteractionLock}
+                  onReconnect={onReconnect}
+                  onPublished={(published) => {
+                    schemaReadGeneration.current++;
+                    setSchemaLoading(false);
+                    setSchema((current) =>
+                      current &&
+                      (current.namespace !== published.namespace ||
+                        (current.version ?? 0) > (published.version ?? 0))
+                        ? current
+                        : published,
+                    );
+                    setNotice(
+                      `本体版本 ${published.version ?? "—"} 已发布。画布位置与选择已保留。`,
+                    );
+                  }}
+                  onInstances={(type) =>
+                    navigate("explore", {
+                      types: [type],
+                      filterQuery: "",
+                      focusUri: null,
+                      label: `${typeName(type)}实例`,
+                      expansions: {},
+                      primary: null,
+                      selected: [],
+                      inspector: false,
+                    })
+                  }
+                  onRelationInstances={(relation) =>
+                    navigate("explore", {
+                      relations: [relation],
+                      focusUri: null,
+                      label: relationName({ key: relation, label: relation }),
+                      expansions: {},
+                      primary: null,
+                      selected: [],
+                      inspector: false,
+                    })
+                  }
+                  onSelectInstance={selectUri}
+                  onSelectRelation={(relation) => {
+                    const match = ontology.edges.find((item) =>
+                      item.id.includes(`:${relation}:`),
+                    );
+                    if (match) selectEdge(match);
+                  }}
+                />
+              ) : (
+                <section className="gw-detail">
+                  {node || edge ? (
+                    <>
+                      <span className="gw-eyebrow">
+                        {edge
+                          ? edge.kind === "definition"
+                            ? "允许连接规则"
+                            : "关系"
+                          : typeName(node!.type)}
+                      </span>
+                      <h2>{node?.label ?? edge?.label}</h2>
+                      <p>{node?.description ?? edge?.description}</p>
+                      {node?.layer === "aggregate" && (
+                        <>
+                          <p className="gw-note">
+                            这是 {node.count}{" "}
+                            条实际记录的集合，不是类型定义。选择成员可核对来源和关系。
+                          </p>
+                          <button
+                            className="gw-primary"
+                            onClick={() => explore(node)}
+                          >
+                            进入此集合
+                          </button>
+                          {memberBusy && <p role="status">正在读取成员…</p>}
+                          {!!memberError && (
+                            <p role="alert">{errorMessage(memberError)}</p>
+                          )}
+                          {members?.items.map((item) => (
+                            <div className="gw-member" key={item.uri}>
+                              <button onClick={() => selectUri(item.uri)}>
+                                {item.name || "未命名实体"}
+                              </button>
+                              <button
+                                aria-label={`探索 ${item.name}`}
+                                onClick={() =>
+                                  explore({
+                                    id: savedId(item.uri),
+                                    uri: item.uri,
+                                    type: item.type,
+                                    label: item.name,
+                                    layer: "saved",
+                                  })
+                                }
+                              >
+                                <Expand size={14} />
+                              </button>
+                            </div>
+                          ))}
+                          {members && (
+                            <div className="gw-pagination">
+                              <button
+                                disabled={!memberPage || memberBusy}
+                                onClick={() => setMemberPage((p) => p - 1)}
+                              >
+                                上一页
+                              </button>
+                              <span>
+                                {members.total ? members.offset + 1 : 0}–
+                                {members.offset + members.items.length} /{" "}
+                                {members.total}
+                              </span>
+                              <button
+                                disabled={!members.has_more || memberBusy}
+                                onClick={() => setMemberPage((p) => p + 1)}
+                              >
+                                下一页
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {node?.layer === "group" && (
+                        <>
+                          <p>
+                            当前分组包含 {node.memberIds?.length}{" "}
+                            项，不改变知识。
+                          </p>
+                          <button
+                            onClick={() =>
+                              commit({
+                                groups: v.groups.filter(
+                                  (g) => g.id !== node.id,
+                                ),
+                              })
+                            }
+                          >
+                            解散分组
+                          </button>
+                        </>
+                      )}
+                      {edge && (
+                        <>
+                          <dl>
+                            <div>
+                              <dt>起点</dt>
+                              <dd>
+                                <button
+                                  onClick={() => {
+                                    const item = raw.nodes.find(
+                                      (n) => n.id === edge.source,
+                                    );
+                                    if (item) selectNode(item);
+                                  }}
+                                >
+                                  {raw.nodes.find((n) => n.id === edge.source)
+                                    ?.label ?? "当前范围不可见"}
+                                </button>
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>终点</dt>
+                              <dd>
+                                <button
+                                  onClick={() => {
+                                    const item = raw.nodes.find(
+                                      (n) => n.id === edge.target,
+                                    );
+                                    if (item) selectNode(item);
+                                  }}
+                                >
+                                  {raw.nodes.find((n) => n.id === edge.target)
+                                    ?.label ?? "当前范围不可见"}
+                                </button>
+                              </dd>
+                            </div>
+                          </dl>
+                          {edge.kind === "aggregate" && (
+                            <p className="gw-note">
+                              当前完整统计范围中存在 {edge.count}{" "}
+                              条此类实际关系。
+                            </p>
+                          )}
+                          {savedEdge && (
+                            <>
+                              <h3>属性与来源预览</h3>
+                              <p className="gw-muted">
+                                完整来源可在起点或终点的关联关系中核对。
+                              </p>
+                              <dl>
+                                {Object.entries(savedEdge.properties).map(
+                                  ([prop, value]) => (
+                                    <div key={prop}>
+                                      <dt>{propertyValueTitle(prop)}</dt>
+                                      <dd>{textValue(value)}</dd>
+                                    </div>
+                                  ),
+                                )}
+                              </dl>
+                            </>
+                          )}
+                          {edge.reviewId && (
+                            <button
+                              onClick={() => {
+                                const batch = pending.find(
+                                  (r) => r.id === edge.reviewId,
+                                );
+                                if (batch) {
+                                  update({
+                                    primary: reviewId(batch.id),
+                                    selected: [reviewId(batch.id)],
+                                    edge: null,
+                                  });
+                                  onSelectReview(batch);
+                                }
+                              }}
+                            >
+                              核对所属批次
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <div className="gw-inspector-empty">
+                      <GitBranch size={32} />
+                      <h2>选择一个对象</h2>
+                      <p>
+                        单击核对详情，双击展开。图与列表共享选择，缩放不会改变数据范围。
+                      </p>
+                    </div>
+                  )}
+                </section>
+              )}
+              {node?.layer === "saved" && (
+                <section className="gw-context-actions">
+                  <h3>沿关系探索</h3>
+                  <div className="gw-inline">
+                    <label>
+                      方向
+                      <select
+                        aria-label="展开方向"
+                        value={direction}
+                        onChange={(e) =>
+                          setDirection(e.target.value as typeof direction)
+                        }
+                      >
+                        <option value="both">出入关系</option>
+                        <option value="out">出关系</option>
+                        <option value="in">入关系</option>
+                      </select>
+                    </label>
+                    <label>
+                      关系
+                      <select
+                        aria-label="展开关系类型"
+                        value={expandRelation}
+                        onChange={(e) => setExpandRelation(e.target.value)}
+                      >
+                        <option value="">全部关系</option>
+                        {schema?.relations.map((r) => (
+                          <option key={r.key} value={r.key}>
+                            {relationName(r)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="gw-inline">
+                    <button
+                      disabled={!enabled || busy}
+                      onClick={() => void expand(node)}
+                    >
+                      <Expand size={14} />
+                      展开 30 个邻居
+                    </button>
+                    <button onClick={() => explore(node)}>以此探索</button>
+                    <button
+                      onClick={() =>
+                        update({
+                          spotlight: v.spotlight === node.id ? null : node.id,
+                        })
+                      }
+                    >
+                      <Eye size={14} />
+                      {v.spotlight ? "退出聚光" : "聚光"}
+                    </button>
+                  </div>
+                  {Object.entries(v.expansions)
+                    .filter(([, e]) => e.query.center_uri === node.uri)
+                    .map(([id, e]) => (
+                      <div className="gw-expansion" key={id}>
+                        <p>
+                          {e.snapshot.nodes.length - 1} /{" "}
+                          {e.snapshot.total_neighbors} 个邻居 ·{" "}
+                          {e.query.direction === "both"
+                            ? "出入"
+                            : e.query.direction === "out"
+                              ? "出"
+                              : "入"}
+                          关系
+                        </p>
+                        {e.snapshot.relation_counts.length > 0 && (
+                          <details>
+                            <summary>实际关系分布</summary>
+                            {e.snapshot.relation_counts.map((count, i) => (
+                              <p key={i}>
+                                {count.direction === "out" ? "出" : "入"} ·{" "}
+                                {relationName({
+                                  key: count.relation_type,
+                                  label: count.relation_type,
+                                })}{" "}
+                                · {count.count}
+                              </p>
+                            ))}
+                          </details>
+                        )}
+                        {e.snapshot.has_more && (
+                          <button
+                            disabled={busy || !enabled}
+                            onClick={() => void expand(node, true, e.query)}
+                          >
+                            继续加载
+                          </button>
+                        )}
+                        {e.snapshot.truncated_edges && (
+                          <p>该页关系超过上限，已加载关系不完整。</p>
+                        )}
+                      </div>
+                    ))}
+                  {Object.values(v.expansions).some(
+                    (e) => e.query.center_uri === node.uri,
+                  ) && (
+                    <button onClick={() => collapse(node)}>
+                      收起此节点的展开
+                    </button>
+                  )}
+                </section>
+              )}
+              {selectedSaved.length === 2 && (
+                <section className="gw-context-actions">
+                  <h3>两个实体的连接</h3>
+                  <p>
+                    {selectedSaved[0].label} → {selectedSaved[1].label}
+                  </p>
+                  <div className="gw-inline">
+                    <select
+                      aria-label="连接查询方式"
+                      value={pathMode}
+                      onChange={(e) =>
+                        setPathMode(e.target.value as typeof pathMode)
+                      }
+                    >
+                      <option value="shortest">最短路径</option>
+                      <option value="common_neighbors">共同邻居</option>
+                    </select>
+                    <select
+                      aria-label="路径方向"
+                      value={pathDirection}
+                      onChange={(e) =>
+                        setPathDirection(e.target.value as typeof pathDirection)
+                      }
+                    >
+                      <option value="both">忽略方向查找</option>
+                      <option value="out">沿箭头方向</option>
+                    </select>
+                    <button
+                      disabled={!enabled || busy}
+                      onClick={() => void connect()}
+                    >
+                      查询连接
+                    </button>
+                  </div>
+                  <p className="gw-muted">
+                    当前空间有效事实 · 最多 6 跳 / 5 条 / 5
+                    秒数据库预算。共同出邻居表示双方均指向该邻居。
+                  </p>
+                </section>
+              )}
+              {v.path && (
+                <section className="gw-context-actions">
+                  <h3>连接查询结果</h3>
+                  {v.path.paths.map((path, i) => (
+                    <button
+                      key={i}
+                      aria-pressed={v.pathIndex === i}
+                      onClick={() => update({ pathIndex: i })}
+                    >
+                      路径 {i + 1} · {path.edge_ids.length} 条关系
+                    </button>
+                  ))}
+                  <p>
+                    {v.path.timed_out
+                      ? "预算耗尽，结果可能不完整。"
+                      : v.path.paths.length
+                        ? `${v.path.paths.length} 条返回结果${v.path.truncated ? "（已截断）" : ""}`
+                        : `在查询预算及 ${v.path.max_hops} 跳范围内未找到连接。`}
+                  </p>
+                  <button onClick={() => commit({ path: null })}>
+                    退出路径，恢复探索
+                  </button>
+                </section>
+              )}
+              {completed && (
+                <section className="gw-context-actions">
+                  <p className="gw-note">
+                    此批次已
+                    {selectedReviewStatus === "approved" ? "批准" : "拒绝"}
+                    ，结果仍保留。撤销画布不会撤销处理。
+                  </p>
                   <button
-                    key={node.id}
-                    className={node.id === selectedId ? "selected" : ""}
-                    onClick={() => selectNode(node)}
+                    onClick={() => {
+                      const next = pending.find(
+                        (r) => r.id !== selectedReviewId,
+                      );
+                      if (next) {
+                        update({
+                          primary: reviewId(next.id),
+                          selected: [reviewId(next.id)],
+                          edge: null,
+                        });
+                        onSelectReview(next);
+                      } else
+                        setNotice("当前页没有下一项，可刷新或切换批次页。");
+                    }}
+                  >
+                    下一项
+                  </button>
+                </section>
+              )}
+              {v.primary &&
+                !visible.nodes.some((item) => item.id === v.primary) &&
+                !completed && (
+                  <p className="gw-note">
+                    所选内容不在当前画布，详情保留。可调整筛选、显示隐藏对象或以此探索。
+                  </p>
+                )}
+            </aside>
+          </>
+        )}
+      </div>
+      <footer className="gw-footer" inert={interactionLocked || undefined}>
+        <div role="status">
+          <span className="gw-status-dot" />
+          {!enabled ? "尚未连接" : loading ? "正在更新图谱…" : description}
+          {(visible.omittedNodes > 0 || visible.omittedEdges > 0) && (
+            <span>
+              {" "}
+              · 画布预算省略 {visible.omittedNodes} 节点 /{" "}
+              {visible.omittedEdges} 边
+            </span>
+          )}
+          {raw.omittedCandidates > 0 && (
+            <span> · 候选预览超预算，完整内容见批次详情</span>
+          )}
+          {v.start || v.end ? <span> · 已启用局部事件筛选</span> : null}
+          {!!base?.overview && !base.overview.stats_available && (
+            <span> · 全库统计未知</span>
+          )}
+          {c.hiddenIds.length > 0 && (
+            <span> · {c.hiddenIds.length} 项已隐藏</span>
+          )}
+        </div>
+        <div>
+          <button
+            disabled={!undo.current[lens].past.length}
+            aria-label="撤销画布操作"
+            onClick={() => undoView()}
+          >
+            <RotateCcw size={15} />
+          </button>
+          <button
+            disabled={!undo.current[lens].future.length}
+            aria-label="重做画布操作"
+            onClick={() => undoView(true)}
+          >
+            <RotateCw size={15} />
+          </button>
+          <button
+            aria-label="比较所选对象"
+            disabled={v.selected.length < 2}
+            onClick={() => setCompareIds(v.selected)}
+          >
+            比较 {v.selected.length > 1 ? v.selected.length : ""}
+          </button>
+          <button
+            title="本布局内固定"
+            disabled={!v.selected.length}
+            aria-label="固定所选对象"
+            onClick={() => pin(v.selected)}
+          >
+            <Pin size={14} />
+          </button>
+          <button aria-label="保存命名视图" onClick={() => setSavedOpen(true)}>
+            <Save size={15} />
+          </button>
+          <button aria-label="导出图谱" onClick={() => issue("export-svg")}>
+            <Download size={15} />
+          </button>
+          <button
+            aria-label="图谱显示工具"
+            onClick={() => {
+              update({ sidebar: true });
+              setTimeOpen(true);
+            }}
+          >
+            <SlidersHorizontal size={15} />
+          </button>
+        </div>
+      </footer>
+      {searchOpen && (
+        <div
+          className="gw-search-results"
+          role="region"
+          aria-label="定位搜索结果"
+        >
+          <div className="gw-panel-heading">
+            <strong>定位“{searchTerm || "全部"}”</strong>
+            <button
+              aria-label="关闭搜索结果"
+              onClick={() => setSearchOpen(false)}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <p className="gw-muted">选择只定位与核对；作为筛选才改变画布范围。</p>
+          {searchBusy && <p role="status">正在全范围搜索…</p>}
+          {!!searchError && <p role="alert">{errorMessage(searchError)}</p>}
+          {lens === "ontology"
+            ? searchIds.map((id) => {
+                const item = ontology.nodes.find((n) => n.id === id),
+                  relation = ontology.edges.find((e) => e.id === id);
+                return (
+                  <button
+                    className="gw-search-result"
+                    key={id}
+                    onClick={() => {
+                      if (item) selectNode(item);
+                      else if (relation) selectEdge(relation);
+                      setSearchOpen(false);
+                    }}
+                  >
+                    <BookOpen size={15} />
+                    {item?.label ?? relation?.label ?? id}
+                  </button>
+                );
+              })
+            : lens === "review"
+              ? searchReviews?.items.map((batch) => (
+                  <button
+                    className="gw-search-result"
+                    key={batch.id}
+                    onClick={() => {
+                      batchCache.current.set(batch.id, batch);
+                      navigate("review", {
+                        primary: reviewId(batch.id),
+                        selected: [reviewId(batch.id)],
+                        edge: null,
+                        inspector: true,
+                      });
+                      onSelectReview(batch);
+                      setSearchOpen(false);
+                    }}
+                  >
+                    <Check size={15} />
+                    <span>
+                      <strong>{batch.entities[0]?.name || "关系提案"}</strong>
+                      <small>
+                        {batch.entities.length} 个实体 ·{" "}
+                        {batch.relations.length} 条关系
+                      </small>
+                    </span>
+                  </button>
+                ))
+              : searchResults?.items.map((item) => (
+                  <button
+                    key={item.uri}
+                    className="gw-search-result"
+                    onClick={() => {
+                      selectUri(item.uri);
+                      setSearchOpen(false);
+                    }}
                   >
                     <span
-                      className="graph-list-dot"
+                      className="gw-type-marker"
                       style={{
-                        background:
-                          GRAPH_TYPE_COLORS[node.type]?.stroke ?? "#52616a",
+                        background: GRAPH_TYPE_COLORS[item.type]?.stroke,
                       }}
                     />
                     <span>
-                      <strong>{node.label}</strong>
-                      <small>
-                        {typeName(node.type)} · {layerName(node.layer)}
-                      </small>
-                    </span>
-                    <span aria-hidden="true">→</span>
-                  </button>
-                ))
-              ) : (
-                <p className="graph-empty">没有符合当前条件的节点。</p>
-              )}
-              <details>
-                <summary>关系列表（{edges.length}）</summary>
-                {edges.map((edge) => (
-                  <button key={edge.id} onClick={() => selectEdge(edge)}>
-                    <span>
-                      <strong>
-                        {graph.nodes.find((n) => n.id === edge.source)?.label} →{" "}
-                        {graph.nodes.find((n) => n.id === edge.target)?.label}
-                      </strong>
-                      <small>
-                        {edge.label} ·{" "}
-                        {edge.kind === "saved"
-                          ? "已保存"
-                          : edge.kind === "candidate"
-                            ? "待审"
-                            : edge.kind === "definition"
-                              ? "类型规则"
-                              : "归属"}
-                      </small>
+                      <strong>{item.name}</strong>
+                      <small>{typeName(item.type)}</small>
                     </span>
                   </button>
                 ))}
-              </details>
-            </div>
-          )}
-        </div>
-        <aside
-          className="graph-inspector"
-          ref={inspector}
-          aria-label="所选内容详情"
-          tabIndex={-1}
-        >
-          {(selectedId || selectedEdge) && (
-            <div className="graph-inspector-return">
+          {!searchBusy &&
+            (lens === "ontology"
+              ? !searchIds.length
+              : lens === "review"
+                ? searchReviews?.total === 0
+                : searchResults?.total === 0) && (
+              <p className="gw-empty">当前搜索范围没有命中。</p>
+            )}
+          {lens !== "ontology" && (
+            <div className="gw-pagination">
               <button
-                className="button button-quiet"
-                onClick={() => {
-                  stage.current?.scrollIntoView({ block: "start" });
-                  stage.current?.focus({ preventScroll: true });
-                }}
+                disabled={!searchOffset || searchBusy}
+                onClick={() => submitSearch(searchOffset - 20)}
               >
-                <ArrowLeft size={15} />
-                返回图谱内容
+                上一页
+              </button>
+              <span>
+                {(lens === "review" ? searchReviews : searchResults)?.total ??
+                  "—"}{" "}
+                个匹配{lens === "review" ? "批次" : "实体"}
+              </span>
+              <button
+                disabled={
+                  !(lens === "review" ? searchReviews : searchResults)
+                    ?.has_more || searchBusy
+                }
+                onClick={() => submitSearch(searchOffset + 20)}
+              >
+                下一页
               </button>
             </div>
           )}
-          {detail || (
-            <section className="graph-selection-detail">
-              {selectedNode || selectedEdge ? (
-                <>
-                  <div className="graph-inspector-heading">
-                    <span>
-                      {selectedEdge
-                        ? "关系详情"
-                        : layerName(selectedNode!.layer)}
-                    </span>
-                    <button
-                      className="icon-button"
-                      aria-label="清除所选内容"
-                      onClick={() => {
-                        setLocalSelection(null);
-                        setSelectedEdge(null);
-                        onClearSelection();
-                      }}
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-                  <h2>
-                    {selectedEdge ? selectedEdge.label : selectedNode!.label}
-                  </h2>
-                  <p>
-                    {selectedEdge?.description ||
-                      selectedNode?.description ||
-                      "查看此节点的规则与关联。"}
-                  </p>
-                  {definition && (
-                    <>
-                      {"domain" in definition && (
-                        <dl>
-                          <div>
-                            <dt>允许的起点</dt>
-                            <dd>{describeTypes(definition.domain)}</dd>
-                          </div>
-                          <div>
-                            <dt>允许的终点</dt>
-                            <dd>{describeTypes(definition.range)}</dd>
-                          </div>
-                        </dl>
-                      )}
-                      <p className="graph-definition-note">
-                        类型定义说明可以记录什么；它本身不代表某条事实已经发生。
-                      </p>
-                      {!definition.runtime_supported && (
-                        <p className="graph-warning">
-                          此定义尚未被当前运行服务支持。
-                        </p>
-                      )}
-                      {"declared_domain" in definition &&
-                        (JSON.stringify(definition.domain) !==
-                          JSON.stringify(definition.declared_domain) ||
-                          JSON.stringify(definition.range) !==
-                            JSON.stringify(definition.declared_range)) && (
-                          <p>
-                            图中展示实际运行的端点约束；历史声明可能更宽。原声明：
-                            {describeTypes(definition.declared_domain)} →{" "}
-                            {describeTypes(definition.declared_range)}。
-                          </p>
-                        )}
-                      <h3>属性与约束</h3>
-                      {definition.properties.length === 0 && (
-                        <p>
-                          此定义未单独声明属性；实际记录的属性可在对应记忆或关系详情中查看。
-                        </p>
-                      )}
-                      <dl className="graph-property-list">
-                        {definition.properties.map((property) => (
-                          <div key={property.key}>
-                            <dt>
-                              {ontologyPropertyTitle(property)}
-                              {property.required_for.includes(definition.key)
-                                ? property.required_condition
-                                  ? " · 有条件必填"
-                                  : " · 必填"
-                                : ""}
-                            </dt>
-                            <dd>
-                              {ontologyPropertyDescription(property)}
-                              {property.required_condition
-                                ? ` · ${property.required_condition.includes("time_precision=unknown") ? "已发生但日期未知的事件可不填发生日期；其余事件需提供。" : property.required_condition}`
-                                : ""}
-                              {property.allowed_values?.length
-                                ? ` · 可选：${property.allowed_values.join("、")}`
-                                : ""}
-                              <details>
-                                <summary>值类型与兼容信息</summary>
-                                <p>
-                                  值类型：
-                                  {property.range.join("、") || "未声明"}
-                                  {property.value_shape === "array"
-                                    ? " · 多个值"
-                                    : ""}
-                                  {property.managed ? " · 系统维护" : ""}
-                                  。适用：{describeTypes(property.domain)}。
-                                </p>
-                                {!property.runtime_supported && (
-                                  <p>此属性已声明，当前写入接口尚未支持。</p>
-                                )}
-                                {property.aliases.length > 0 && (
-                                  <p>兼容名称：{property.aliases.join("、")}</p>
-                                )}
-                                <code>{property.iri}</code>
-                                <p>原定义：{property.description}</p>
-                              </details>
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
-                      <details>
-                        <summary>定义标识</summary>
-                        <code>{definition.iri}</code>
-                        <p>原定义说明：{definition.description}</p>
-                        {"aliases" in definition &&
-                          definition.aliases.length > 0 && (
-                            <p>兼容名称：{definition.aliases.join("、")}</p>
-                          )}
-                      </details>
-                    </>
-                  )}
-                  {selectedEdge && (
-                    <>
-                      <p className="graph-definition-note">
-                        {selectedEdge.kind === "saved"
-                          ? "这是一条已保存关系。"
-                          : selectedEdge.kind === "candidate"
-                            ? "这是待审提议，尚未确认生效。"
-                            : selectedEdge.kind === "definition"
-                              ? "这是允许的类型范围，不是实例事实。"
-                              : "这是归属连线。"}
-                      </p>
-                      <div className="graph-endpoints">
-                        {[selectedEdge.source, selectedEdge.target].map(
-                          (id, index) => {
-                            const node = graph.nodes.find((n) => n.id === id);
-                            return node ? (
-                              <button
-                                className="button button-secondary"
-                                key={`${index}:${id}`}
-                                onClick={() => selectNode(node)}
-                              >
-                                {index === 0 ? "起点" : "终点"}：{node.label}
-                              </button>
-                            ) : null;
-                          },
-                        )}
-                      </div>
-                      {selectedEdge.kind === "saved" &&
-                        (() => {
-                          const record = snapshot?.edges.find(
-                            (e) => `saved-edge:${e.id}` === selectedEdge.id,
-                          );
-                          const def = schema?.relations.find(
-                            (r) => r.key === record?.relation_type,
-                          );
-                          return def ? (
-                            <button
-                              className="button button-secondary"
-                              onClick={() =>
-                                selectNode(
-                                  graph.nodes.find(
-                                    (n) =>
-                                      n.id === `schema:relation:${def.key}`,
-                                  )!,
-                                )
-                              }
-                            >
-                              查看“{relationLabel(def)}”的类型定义
-                            </button>
-                          ) : (
-                            <p>此关系未映射到当前类型定义。</p>
-                          );
-                        })()}
-                    </>
-                  )}
-                  {selectedNode && (
-                    <>
-                      <button
-                        className="button button-primary"
-                        onClick={() => focusNode(selectedNode)}
-                      >
-                        <Focus size={15} />
-                        聚焦此节点
-                      </button>
-                      <h3>关联内容</h3>
-                      <div className="graph-neighbor-list">
-                        {graph.edges
-                          .filter(
-                            (e) =>
-                              e.source === selectedNode.id ||
-                              e.target === selectedNode.id,
-                          )
-                          .slice(0, 60)
-                          .map((edge) => (
-                            <button
-                              key={edge.id}
-                              onClick={() => selectEdge(edge)}
-                            >
-                              {edge.label} ·{" "}
-                              {
-                                graph.nodes.find(
-                                  (n) =>
-                                    n.id ===
-                                    (edge.source === selectedNode.id
-                                      ? edge.target
-                                      : edge.source),
-                                )?.label
-                              }
-                            </button>
-                          ))}
-                      </div>
-                    </>
-                  )}
-                </>
-              ) : (
-                <div className="graph-inspector-empty">
-                  <GitBranch size={32} />
-                  <h2>从一个节点开始</h2>
-                  <p>
-                    选择节点查看来源、属性和审阅操作；选择连线查看关系。双击节点或使用“聚焦”探索它的一跳关联。
-                  </p>
-                  <p>
-                    可拖动空白处移动画布，也可使用缩放与适应画布按钮。使用 Tab
-                    进入节点，方向键移动，Enter 选择，F 聚焦。
-                  </p>
-                  {mode !== "graph" && (
-                    <button
-                      className="button button-secondary"
-                      onClick={() => setMode("graph")}
-                    >
-                      <ArrowLeft size={15} />
-                      返回节点图
-                    </button>
-                  )}
-                </div>
-              )}
-            </section>
-          )}
-          {selectedEdge && (
-            <div className="graph-selection-detail">
-              {reviewForEdge && (
+          <button
+            className="gw-primary"
+            onClick={() => {
+              navigate(lens, { filterQuery: searchTerm, reviewPage: 0 });
+              setSearchOpen(false);
+            }}
+          >
+            作为当前范围筛选
+          </button>
+        </div>
+      )}
+      {commandsOpen && (
+        <WorkspaceDialog
+          title="命令菜单"
+          onClose={() => setCommandsOpen(false)}
+        >
+          <input
+            autoFocus
+            aria-label="搜索命令"
+            placeholder="输入操作名称…"
+            value={commandSearch}
+            onChange={(e) => setCommandSearch(e.target.value)}
+          />
+          <div className="gw-command-list">
+            {commands
+              .filter((action) => action.label.includes(commandSearch))
+              .map((action) => (
                 <button
-                  className="button button-primary"
+                  key={action.label}
                   onClick={() => {
-                    setSelectedEdge(null);
-                    setLocalSelection(reviewId(reviewForEdge.id));
-                    onSelectReview(reviewForEdge);
+                    setCommandsOpen(false);
+                    action.run();
                   }}
                 >
-                  审阅所属批次
+                  {action.label}
+                  <ArrowRight size={14} />
                 </button>
-              )}
-              {savedEdge && (
-                <>
-                  <h3>关系属性与来源</h3>
-                  {savedEdge.properties_truncated && (
-                    <p>
-                      这里展示关系来源预览。选择起点或终点，在其“关联关系”中展开可查看完整属性与来源。
-                    </p>
-                  )}
-                  <dl>
-                    {Object.entries(savedEdge.properties).map(
-                      ([key, value]) => (
-                        <div key={key}>
-                          <dt>{propertyValueTitle(key)}</dt>
-                          <dd>{textValue(value)}</dd>
-                        </div>
-                      ),
-                    )}
-                  </dl>
-                </>
-              )}
-            </div>
-          )}
-          {completedReview ? (
-            <p className="graph-warning">
-              此批次已移出待审图层，处理结果仍保留在此处。
-            </p>
-          ) : (
-            ((mode !== "library" && selectionHidden && !loading) ||
-              (selectedEdge &&
-                !edges.some((e) => e.id === selectedEdge.id))) && (
-              <p className="graph-warning">
-                所选内容未出现在当前筛选中，详情仍保留。可重置筛选或在图中聚焦。
-              </p>
+              ))}
+          </div>
+        </WorkspaceDialog>
+      )}
+      {groupOpen && (
+        <WorkspaceDialog
+          title="创建当前视图分组"
+          onClose={() => setGroupOpen(false)}
+        >
+          <p>仅分组当前已加载的 {v.selected.length} 个对象，不改变知识。</p>
+          <label>
+            分组名称
+            <input
+              autoFocus
+              maxLength={60}
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+            />
+          </label>
+          <button
+            className="gw-primary"
+            disabled={v.selected.length < 2}
+            onClick={() => {
+              const id = `group:${crypto.randomUUID()}`;
+              commit((view) => ({
+                ...view,
+                groups: [
+                  ...view.groups,
+                  {
+                    id,
+                    label: groupName.trim() || "分组",
+                    memberIds: [...view.selected],
+                  },
+                ],
+                selected: [id],
+                primary: id,
+              }));
+              onClearSelection();
+              setGroupOpen(false);
+            }}
+          >
+            创建分组
+          </button>
+        </WorkspaceDialog>
+      )}
+      {compareIds && (
+        <CompareDialog
+          api={api}
+          items={compareIds
+            .map(
+              (id) =>
+                visible.nodes.find((item) => item.id === id) ??
+                raw.nodes.find((item) => item.id === id),
             )
-          )}
-          {detail &&
-            !completedReview &&
-            (selectedNode || selectedUri || selectedReviewId) && (
-              <div className="graph-inspector-focus">
-                <button
-                  className="button button-secondary"
-                  onClick={() =>
-                    focusNode(
-                      selectedNode ??
-                        (selectedUri
-                          ? {
-                              id: savedId(selectedUri),
-                              uri: selectedUri,
-                              label: "所选记忆",
-                              type: "unknown",
-                              layer: "saved",
-                            }
-                          : {
-                              id: reviewId(selectedReviewId!),
-                              reviewId: selectedReviewId,
-                              label: "所选批次",
-                              type: "review",
-                              layer: "review",
-                            }),
-                    )
-                  }
-                >
-                  <Focus size={15} />
-                  在图中聚焦
-                </button>
-              </div>
-            )}
-        </aside>
-      </div>
+            .filter((item): item is GraphNode => !!item)}
+          reviews={pending}
+          onClose={() => setCompareIds(null)}
+        />
+      )}
+      {savedOpen && schema && (
+        <SavedViewsDialog
+          namespace={schema.namespace}
+          viewState={cleanView(v)}
+          seeds={Object.values(v.expansions).map((e) => ({
+            ...e.query,
+            cursor: null,
+          }))}
+          lens={lens}
+          onClose={() => setSavedOpen(false)}
+          onLoad={(value, target, queries) => {
+            if (
+              !validView(value) ||
+              !["ontology", "explore", "review"].includes(target)
+            ) {
+              setNotice("保存的视图格式不兼容。");
+              return;
+            }
+            seeds.current[target as GraphLens] = queries as NeighborQuery[];
+            setSeedRevision((t) => t + 1);
+            navigate(target as GraphLens, value);
+            setSavedOpen(false);
+            setNotice("已恢复视图，记录按当前权限重新读取。");
+          }}
+        />
+      )}
     </div>
   );
 }

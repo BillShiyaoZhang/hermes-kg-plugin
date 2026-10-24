@@ -149,6 +149,9 @@ class KGStore:
                 "CREATE CONSTRAINT kg_memory_revision IF NOT EXISTS FOR (r:KGMemoryRevision) REQUIRE r.revision_id IS UNIQUE",
                 "CREATE CONSTRAINT kg_review_batch IF NOT EXISTS FOR (r:KGReviewBatch) REQUIRE r.review_id IS UNIQUE",
                 "CREATE CONSTRAINT kg_workspace_namespace IF NOT EXISTS FOR (w:KGWorkspace) REQUIRE w.namespace IS UNIQUE",
+                "CREATE CONSTRAINT kg_ontology_schema_namespace IF NOT EXISTS FOR (s:KGOntologySchema) REQUIRE s.namespace IS UNIQUE",
+                "CREATE CONSTRAINT kg_ontology_revision IF NOT EXISTS FOR (r:KGOntologyRevision) REQUIRE (r.namespace,r.version) IS UNIQUE",
+                "CREATE CONSTRAINT kg_ontology_receipt IF NOT EXISTS FOR (r:KGOntologyReceipt) REQUIRE (r.namespace,r.operation_id) IS UNIQUE",
             ):
                 session.run(self._query(statement)).consume()
 
@@ -161,10 +164,14 @@ class KGStore:
         with self.driver.session(database=self.config.database, default_access_mode="READ") as session:
             return self._execute(session, "read", lambda tx: [dict(row) for row in tx.run(query, params or {})])
 
+    def ontology_overlay(self):
+        from .ontology_editing import STATE_QUERY, state_from_rows
+        return state_from_rows(self.run_read(STATE_QUERY, {'namespace': self.config.urn_prefix}))
+
     def write_batch(self, entities, relations, source_session=None, checkpoint=None, *,
                     origin=None, evidence=None, expected_versions=None, operation_id=None,
                     review_payload=None, reason="", request_hash=None, review_resolution=None,
-                    include_implicit_relations=True):
+                    include_implicit_relations=True, expected_ontology_version=None):
         if not isinstance(entities, list) or not isinstance(relations, list):
             raise ValueError("entities and relations must be arrays")
         if source_session is not None and (not isinstance(source_session, str) or not source_session.strip()):
@@ -183,14 +190,21 @@ class KGStore:
             validate_version(version)
         if not isinstance(reason, str) or len(reason) > 4000:
             raise ValueError("reason must be text of at most 4000 characters")
+        from .ontology_editing import canonical_input, aliases_for
+        ontology_state = self.ontology_overlay()
+        if expected_ontology_version is not None:
+            validate_version(expected_ontology_version)
+            if expected_ontology_version != ontology_state['version']:
+                raise ValueError('Ontology version conflict; retry against the current schema')
         prepared, extra_relations = [], []
         for entity in entities:
-            item, implicit = prepare_entity(entity, self.config)
+            item, implicit = prepare_entity(canonical_input(entity, ontology_state), self.config)
             prepared.append(item)
             extra_relations.extend(implicit)
         if len({item["uri"] for item in prepared}) != len(prepared):
             raise ValueError("A batch cannot contain the same canonical entity twice")
-        prepared_relations = [prepare_relation(rel, self.config) for rel in relations + (extra_relations if include_implicit_relations else [])]
+        prepared_relations = [prepare_relation(canonical_input(rel, ontology_state, relation=True), self.config)
+                              for rel in relations + (extra_relations if include_implicit_relations else [])]
         # Identical explicit/implicit owner edges collapse; conflicting properties fail.
         unique_relations = {}
         for rel in prepared_relations:
@@ -212,7 +226,10 @@ class KGStore:
                 raise ValueError("review_payload must preserve the exact extraction entities and relations")
             if checkpoint and review_payload.get("snapshot_id") != checkpoint.get("snapshot_id"):
                 raise ValueError("Review payload does not match the snapshot")
-        evidence = evidence if evidence is not None else payload_evidence(review_payload, self.config)
+        evidence_payload = {**review_payload,
+                            'entities': [canonical_input(item, ontology_state) for item in review_payload.get('entities', [])],
+                            'relations': [canonical_input(item, ontology_state, relation=True) for item in review_payload.get('relations', [])]} if review_payload else None
+        evidence = evidence if evidence is not None else payload_evidence(evidence_payload, self.config)
         for item in prepared:
             evidence_for(evidence, item["uri"])
         digest = hashlib.sha256(_json({"entities": prepared, "relations": prepared_relations, "source_session": source_session, "checkpoint": checkpoint}).encode()).hexdigest()
@@ -233,6 +250,8 @@ class KGStore:
             "evidence": evidence, "expected_versions": expected_versions,
             "review_payload": review_payload or {"entities": entities, "relations": relations}, "reason": reason}
         metadata["request_hash"] = request_hash
+        metadata['ontology_version'] = ontology_state['version']
+        metadata['ontology_aliases'] = aliases_for(ontology_state)
         metadata["review_resolution"] = review_resolution
         if review_resolution:
             metadata["operation_hash"] = hashlib.sha256(_json([operation_hash, review_resolution]).encode()).hexdigest()
@@ -249,7 +268,12 @@ class KGStore:
             if resolution["action"] == "reject":
                 receipt.update(entities_written=0, relations_written=0, entity_uris=[], relation_ids=[], disposition="rejected")
                 return self._finish_receipt(tx, metadata, receipt)
+        from .ontology_editing import STATE_QUERY, state_from_rows, validate_batch
+        ontology_state = state_from_rows(tx.run(STATE_QUERY, {'namespace': self.config.urn_prefix}))
+        if metadata.get('ontology_version', ontology_state['version']) != ontology_state['version']:
+            raise ValueError('Ontology version conflict; retry against the current schema')
         existing_by_uri = self._preflight(tx, entities, relations, metadata)
+        validate_batch(self.config, ontology_state, entities, relations, existing_by_uri)
         reasons = []
         if metadata["origin"] == "auto":
             duplicate_uris = self._possible_duplicate_people(tx, entities)
@@ -407,6 +431,7 @@ class KGStore:
                 b.extraction_hash=$extraction_hash, b.payload_hash=$payload_hash,
                 b.source_session=$source_session, b.payload_json=$payload_json,
                 b.evidence_json=$evidence_json, b.base_versions_json=$base_versions_json,
+                b.ontology_aliases_json=$ontology_aliases_json,
                 b.reason_codes=$reason_codes, b.created_at=datetime(),
                 b.possible_duplicate_uris=$possible_duplicate_uris
         """), {**{key: metadata[key] for key in ("snapshot_id", "extraction_hash", "payload_hash", "source_session")},
@@ -414,6 +439,7 @@ class KGStore:
             "origin": metadata["origin"],
             "payload_json": _json(metadata["review_payload"]), "evidence_json": _json(metadata["evidence"]),
             "base_versions_json": _json(base_versions), "reason_codes": sorted(set(reasons)),
+            "ontology_aliases_json": _json(metadata.get('ontology_aliases', {})),
             "possible_duplicate_uris": metadata.get("possible_duplicate_uris", [])}).consume()
         receipt.update(entities_written=0, relations_written=0, entity_uris=[], relation_ids=[],
                        disposition="deferred", review_batch_id=review_id)
@@ -612,6 +638,13 @@ class KGStore:
                 n.hermes_lastOperationId=$operation_id"""), {"uri": uri,
                 "reason": metadata["reason"], "revision": expected_version + 1,
                 "operation_id": metadata["snapshot_id"]}).consume()
+        if action == 'restore':
+            from .ontology_editing import STATE_QUERY, state_from_rows, OntologyEditor
+            state = state_from_rows(tx.run(STATE_QUERY, {'namespace': self.config.urn_prefix}))
+            structural = any(set(fields) & {'domain', 'range', 'required_for'}
+                             for group in state['patch'].values() for fields in group.values())
+            if structural and OntologyEditor(self.config, self)._impact(tx, state, True)['violations']:
+                raise ValueError('Published ontology constraints reject restoration')
         updated = self._locked_entity(tx, uri)
         metadata["evidence"] = {"entities": {uri: json.loads(props.get("hermes_evidenceJson", "[]"))}}
         self._save_revision(tx, uri, updated["labels"], updated["properties"], metadata, action)

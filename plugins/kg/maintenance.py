@@ -14,10 +14,11 @@ from pathlib import Path
 
 from .schema import ENTITY_LABELS
 
-LABELS=set(ENTITY_LABELS.values())|{"KGEntity","KGQuarantined","KGLegacyAlias","KGLegacyUnresolved","KGMemoryRevision","KGReviewBatch","KGSyncReceipt"}
+LABELS=set(ENTITY_LABELS.values())|{"KGEntity","KGQuarantined","KGLegacyAlias","KGLegacyUnresolved","KGMemoryRevision","KGReviewBatch","KGSyncReceipt","KGOntologySchema","KGOntologyRevision","KGOntologyReceipt"}
 SELECT_NODES="""MATCH (n) WHERE
     (n.uri STARTS WITH $prefix AND any(label IN labels(n) WHERE label IN $labels))
     OR ((n:KGMemoryRevision OR n:KGReviewBatch OR n:KGSyncReceipt) AND n.namespace=$prefix)
+    OR ((n:KGOntologySchema OR n:KGOntologyRevision OR n:KGOntologyReceipt) AND n.namespace=$prefix)
     OR (n:KGSyncReceipt AND any(uri IN coalesce(n.entity_uris,[]) WHERE uri STARTS WITH $prefix))
     RETURN elementId(n) AS id,labels(n) AS labels,properties(n) AS props"""
 
@@ -264,7 +265,9 @@ def _validate_graph(store, graph):
     ids = set()
     uris = set()
     prefix = store.config.urn_prefix
-    metadata_labels = {'KGMemoryRevision', 'KGReviewBatch', 'KGSyncReceipt'}
+    ontology_labels = {'KGOntologySchema', 'KGOntologyRevision', 'KGOntologyReceipt'}
+    metadata_labels = {'KGMemoryRevision', 'KGReviewBatch', 'KGSyncReceipt'} | ontology_labels
+    ontology_identities = set()
     for node in graph['nodes']:
         if not isinstance(node, dict) or set(node) != {'id', 'labels', 'props'} or not isinstance(node['id'], str):
             raise ValueError("Malformed backup node")
@@ -288,10 +291,30 @@ def _validate_graph(store, graph):
                     raise ValueError("Backup metadata belongs to another namespace")
             if 'uri' in props:
                 raise ValueError("Backup metadata cannot impersonate an entity URI")
-            identities = {'KGMemoryRevision': 'revision_id', 'KGReviewBatch': 'review_id', 'KGSyncReceipt': 'snapshot_id'}
+            identities = {'KGMemoryRevision': 'revision_id', 'KGReviewBatch': 'review_id', 'KGSyncReceipt': 'snapshot_id',
+                          'KGOntologySchema': 'namespace', 'KGOntologyRevision': 'operation_id', 'KGOntologyReceipt': 'operation_id'}
             for label in labels:
                 if not isinstance(props.get(identities[label]), str) or not props[identities[label]]:
                     raise ValueError("Backup metadata is missing its unique identifier")
+            if labels & ontology_labels:
+                if len(labels) != 1:
+                    raise ValueError('Ontology metadata labels cannot be combined')
+                label = next(iter(labels))
+                identity = (label, props.get('version') if label == 'KGOntologyRevision' else props[identities[label]])
+                if identity in ontology_identities:
+                    raise ValueError('Duplicate ontology metadata identity')
+                ontology_identities.add(identity)
+                if label != 'KGOntologyReceipt':
+                    if isinstance(props.get('version'), bool) or not isinstance(props.get('version'), int) or props['version'] < 0:
+                        raise ValueError('Invalid ontology backup version')
+                    from .ontology_editing import merge_patch
+                    merge_patch(store.config, {'version': 0, 'patch': {}}, json.loads(props.get('patch_json', '{}')))
+                else:
+                    result = json.loads(props.get('result_json', '{}'))
+                    if (result.get('namespace') != prefix or result.get('operation_id') != props['operation_id']
+                            or result.get('schema', {}).get('namespace') != prefix
+                            or result.get('schema', {}).get('version') != result.get('version')):
+                        raise ValueError('Invalid ontology backup receipt')
             if 'KGMemoryRevision' in labels and not (isinstance(props.get('entity_uri'), str) and props['entity_uri'].startswith(prefix)):
                 raise ValueError("Backup revision belongs to another namespace")
             if 'KGSyncReceipt' in labels and any(not isinstance(uri, str) or not uri.startswith(prefix) for uri in props.get('entity_uris', [])):
@@ -439,6 +462,12 @@ def _restore_locked(store, files, graph, backup_hash):
             external_count += 1
         result = {'nodes': len(id_map), 'relations': len(graph['relations']),
             'external_relations_restored': external_count, 'external_relations_unresolved': unresolved}
+        from .ontology_editing import STATE_QUERY, state_from_rows, OntologyEditor
+        ontology_state = state_from_rows(tx.run(STATE_QUERY, {'namespace': store.config.urn_prefix}))
+        structural = any(set(fields) & {'domain', 'range', 'required_for'}
+                         for group in ontology_state['patch'].values() for fields in group.values())
+        if structural and OntologyEditor(store.config, store)._impact(tx, ontology_state, True)['violations']:
+            raise ValueError('Restored data violates the published ontology')
         tx.run("""MATCH (w:KGWorkspace {namespace:$namespace})
             SET w.restore_hash=$backup_hash,w.restore_operation_id=$operation_id,
                 w.restore_pending=true,

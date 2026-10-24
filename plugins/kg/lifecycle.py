@@ -228,6 +228,7 @@ class MemoryService:
             "base_versions": json.loads(value.get("base_versions_json", "{}")),
             "snapshot_id": value.get("snapshot_id"), "source_session": value.get("source_session"),
             "payload": json.loads(value["payload_json"]),
+            "ontology_aliases": json.loads(value.get("ontology_aliases_json", "{}")),
             "evidence": json.loads(value.get("evidence_json", "{}")),
             "payload_hash": value["payload_hash"], "created_at": value.get("created_at"),
             "resolved_at": value.get("resolved_at"), "resolution_reason": value.get("resolution_reason")}
@@ -299,12 +300,18 @@ class MemoryService:
         if current["version"] != expected_version:
             raise VersionConflict("Memory version changed; refresh before correcting it")
         props = {key: value for key, value in current["props"].items() if key not in RESERVED_PROPERTIES}
-        props = corrected_properties(props, changes.get("props", {}), current['type'], self.config)
-        entity = {"type": current["type"], "uri": uri, "name": changes.get("name", current["name"]), "props": props}
+        from .ontology_editing import canonical_input
+        state = self.store.ontology_overlay() if callable(getattr(self.store, 'ontology_overlay', None)) else {'version': 0, 'patch': {}}
+        canonical_changes = canonical_input({'type': current['type'], **changes}, state)
+        updates = canonical_changes.get('props', {})
+        props = corrected_properties(props, updates, current['type'], self.config)
+        name_key = 'foaf_name' if current['type'] == 'person' else 'hermes_name'
+        entity = {"type": current["type"], "uri": uri, "name": changes.get("name", updates.get(name_key, current["name"])), "props": props}
         return self.store.write_batch([entity], [], origin="user_correction", evidence={"entities": {uri: [
             {"kind": "user_edit", "operation_id": operation_id, "changes": changes, "reason": reason}]}},
             expected_versions={uri: expected_version}, operation_id=operation_id,
-            reason=reason, request_hash=request_hash, include_implicit_relations=False)
+            reason=reason, request_hash=request_hash, include_implicit_relations=False,
+            expected_ontology_version=state['version'])
 
     def archive(self, uri, *, expected_version, operation_id, reason=""):
         return self._transition(uri, "archive", expected_version, operation_id, reason)
@@ -350,24 +357,37 @@ class MemoryService:
             return cached
         review = self.review(review_id)
         payload = review["payload"]
+        from .ontology_editing import canonical_input, alias_snapshot_state
+        state = self.store.ontology_overlay() if callable(getattr(self.store, 'ontology_overlay', None)) else {'version': 0, 'patch': {}}
         if action == "approve":
-            self._validate_review(payload, review["origin"])
-        entities = json.loads(dumps(payload["entities"])) if action == "approve" else []
-        relations = payload["relations"] if action == "approve" else []
+            frozen = alias_snapshot_state(review.get('ontology_aliases', {}))
+            canonical_payload = {**payload, 'entities': [canonical_input(item, frozen) for item in payload['entities']],
+                                 'relations': [canonical_input(item, frozen, relation=True) for item in payload['relations']]}
+            # An old batch without a snapshot may contain literal properties
+            # which a newly introduced alias would otherwise reinterpret.
+            if (any(canonical_input(item, state) != item for item in canonical_payload['entities'])
+                    or any(canonical_input(item, state, relation=True) != item for item in canonical_payload['relations'])):
+                raise VersionConflict('Review aliases changed; reject and regenerate this batch before approval')
+            self._validate_review(canonical_payload, review["origin"])
+        entities = json.loads(dumps(canonical_payload["entities"])) if action == "approve" else []
+        relations = canonical_payload["relations"] if action == "approve" else []
         evidence = json.loads(dumps(review["evidence"]))
         if edits:
             from .schema import prepare_entity, normalize_properties
-            by_uri = {prepare_entity(item, self.config)[0]["uri"]: item for item in entities}
+            by_uri = {prepare_entity(canonical_input(item, state), self.config)[0]["uri"]: item for item in entities}
             if not set(edits) <= set(by_uri):
                 raise ValueError("Review edits cannot add or rename entity identifiers")
             for uri, edit in edits.items():
                 if not isinstance(edit, dict) or not set(edit) <= {"name", "props"}:
                     raise ValueError("Review edits accept name and props only")
                 item = by_uri[uri]
-                prepared, _ = prepare_entity(item, self.config)
-                props = corrected_properties(prepared['properties'], edit.get('props', {}), prepared['type'], self.config)
+                prepared, _ = prepare_entity(canonical_input(item, state), self.config)
+                canonical_edit = canonical_input({'type': prepared['type'], **edit}, state)
+                updates = canonical_edit.get('props', {})
+                props = corrected_properties(prepared['properties'], updates, prepared['type'], self.config)
+                name_key = 'foaf_name' if prepared['type'] == 'person' else 'hermes_name'
                 edited = {"type": prepared["type"], "uri": uri,
-                    "name": edit.get("name", item.get("name")), "props": props}
+                    "name": edit.get("name", updates.get(name_key, prepared['properties'][name_key])), "props": props}
                 edited.update({key: item[key] for key in ("owner", "owner_urn", "agent", "agent_urn") if key in item})
                 item.clear()
                 item.update(edited)
@@ -386,5 +406,6 @@ class MemoryService:
             source_session=review.get("source_session"), origin="review_approved" if action == "approve" else "manual",
             evidence=evidence, expected_versions=versions, operation_id=operation_id,
             reason=reason, request_hash=request_hash,
-            review_payload=payload if action == "approve" and not edits else None,
-            review_resolution={"review_id": review_id, "action": action, "payload_hash": review["payload_hash"]})
+            review_payload=canonical_payload if action == "approve" and not edits else None,
+            review_resolution={"review_id": review_id, "action": action, "payload_hash": review["payload_hash"]},
+            expected_ontology_version=state['version'] if action == 'approve' else None)

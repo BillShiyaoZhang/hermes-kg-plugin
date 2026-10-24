@@ -70,6 +70,7 @@ class GraphServiceTests(unittest.TestCase):
     def test_graph_edge_ids_are_stable_parallel_safe_and_unknown_types_remain_honest(self):
         self.store.edges.append({**self.store.edges[0], 'element_id': 'fixture-edge-2'})
         self.store.nodes[0]['properties'].update(hermes_name='x' * 500, hermes_description='d' * 5000,
+                                                hermes_eventTime='t' * 500, hermes_timePrecision='p' * 500,
                                                 hermes_evidenceJson='private-evidence-' * 10000)
         self.store.edges[0]['properties'].update(hermes_sourceSessions=['session-' + str(i) for i in range(30)],
                                                 hermes_evidenceJson='private-relation-evidence-' * 10000)
@@ -82,6 +83,8 @@ class GraphServiceTests(unittest.TestCase):
         self.assertNotIn('fixture-edge-', json.dumps(first))
         self.assertEqual(len(first['nodes'][0]['name']), 240)
         self.assertEqual(len(first['nodes'][0]['description']), 1200)
+        self.assertEqual(len(first['nodes'][0]['properties']['hermes_eventTime']), 240)
+        self.assertEqual(len(first['nodes'][0]['properties']['hermes_timePrecision']), 240)
         self.assertTrue(first['nodes'][0]['content_truncated'])
         self.assertTrue(first['nodes'][0]['preview'])
         self.assertTrue(first['edges'][0]['properties_truncated'])
@@ -118,6 +121,18 @@ class GraphServiceTests(unittest.TestCase):
         self.assertEqual(foreign, absent)
         self.assertFalse(absent['focus_found'])
         self.assertEqual(absent['nodes'], [])
+
+    def test_relation_filter_is_canonical_parameterized_and_defended_in_response(self):
+        self.store.edges[0]['type'] = 'HERMES_KNOWS'
+        result = self.service.graph(relation_types=['KNOWS'])
+        self.assertEqual(result['edges'][0]['relation_type'], 'HERMES_knows')
+        for query, params in self.store.calls:
+            self.assertIn('HERMES_KNOWS', params['relation_aliases'])
+            self.assertNotIn('KNOWS', query)
+        self.assertEqual(self.service.graph(relation_types=['LINKED_TO'])['edges'], [])
+        for values in ('KNOWS', [1], ['INVALID'], ['KNOWS'] * 10):
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                self.service.graph(relation_types=values)
 
 
 try:
@@ -227,7 +242,8 @@ class GraphNeo4jTests(unittest.TestCase):
     def test_search_finds_an_alias_match_outside_initial_sampling(self):
         with self.store.driver.session(database=self.config.database) as session:
             session.run('''MATCH (n {uri:$event}) SET n.hermes_description=$description,n.hermes_evidenceJson=$evidence,
-                n.custom_payload=$evidence WITH n MATCH ()-[r:HERMES_participant]->(n)
+                n.custom_payload=$evidence,n.hermes_eventTime=datetime('2026-10-24T10:30:00+08:00'),
+                n.hermes_timePrecision='datetime' WITH n MATCH ()-[r:HERMES_participant]->(n)
                 SET r.hermes_relLabel=$label,r.hermes_sourceSession=$source,r.hermes_sourceSessions=$sources,
                     r.hermes_origin='auto',r.hermes_evidenceJson=$evidence,r.custom_payload=$evidence''',
                 {'event': self.prefix+'event-late', 'description': 'D' * 5000, 'evidence': 'large-private-evidence-' * 10000,
@@ -240,6 +256,8 @@ class GraphNeo4jTests(unittest.TestCase):
         self.assertEqual(found['nodes'][0]['uri'], self.prefix+'event-late')
         self.assertEqual(len(found['nodes'][0]['description']), 1200)
         self.assertTrue(found['nodes'][0]['content_truncated'])
+        self.assertTrue(found['nodes'][0]['properties']['hermes_eventTime'].startswith('2026-10-24T10:30:00'))
+        self.assertEqual(found['nodes'][0]['properties']['hermes_timePrecision'], 'datetime')
         self.assertNotIn('large-private-evidence', json.dumps(found))
         self.assertEqual(found['edges'], [])
         focused = self.service.graph(focus_uri=self.prefix+'person-anchor', types=['event'])
@@ -278,6 +296,14 @@ class GraphNeo4jTests(unittest.TestCase):
                 self.assertFalse(result['focus_found'])
                 self.assertEqual(result['nodes'], [])
                 self.assertEqual(result['edges'], [])
+
+    def test_relation_filter_applies_to_the_whole_graph_and_focused_neighbors(self):
+        result = self.service.graph(focus_uri=self.prefix+'person-anchor', relation_types=['KNOWS'])
+        self.assertEqual(result['total_nodes'], 2)
+        self.assertEqual(len(result['edges']), 1)
+        self.assertEqual(result['edges'][0]['relation_type'], 'HERMES_knows')
+        complete = self.service.graph(relation_types=['CAUSED_BY'], node_limit=200)
+        self.assertTrue(all(edge['relation_type'] == 'CAUSED_BY' for edge in complete['edges']))
         result = self.service.graph(node_limit=200, edge_limit=500)
         self.assertEqual(len(result['nodes']), 200)
         self.assertLessEqual(len(result['edges']), 500)
