@@ -69,10 +69,38 @@ class RunnerPackagingTests(unittest.TestCase):
                 core = profile / "hermes-agent"
                 (core / "agent").mkdir(parents=True)
                 (core / "agent/memory_provider.py").write_text("")
-                self.assertEqual(runner._bootstrap(profile), profile)
-                self.assertEqual(sys.path[0], str(core))
+                self.assertEqual(runner._bootstrap(profile), profile.resolve())
+                self.assertEqual(sys.path[0], str(core.resolve()))
         finally:
             sys.path[:] = original
+
+    def test_bootstrap_resolves_profile_symlink_and_keeps_its_selected_core(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            profile = base / 'actual-profile'
+            core = profile / 'hermes-agent'
+            unrelated = base / 'unrelated-core'
+            for candidate in (core, unrelated):
+                (candidate / 'agent').mkdir(parents=True)
+                (candidate / 'agent' / 'memory_provider.py').write_text('')
+            alias = base / 'profile-link'
+            expected_profile, expected_core = profile.resolve(), core.resolve()
+            original_resolve = Path.resolve
+
+            def resolve_profile_link(path, *args, **kwargs):
+                # Simulate macOS /var -> /private/var without requiring Windows
+                # symlink privileges. Core discovery still uses the real files.
+                try:
+                    suffix = path.relative_to(alias)
+                except ValueError:
+                    return original_resolve(path, *args, **kwargs)
+                return original_resolve(profile / suffix, *args, **kwargs)
+
+            with patch('kg.config.Path.resolve', new=resolve_profile_link), \
+                 patch.dict(os.environ, {'HERMES_HOME': '', 'HERMES_AGENT_HOME': ''}), \
+                 patch.object(sys, 'path', [str(unrelated)]):
+                self.assertEqual(runner._bootstrap(alias), expected_profile)
+                self.assertEqual(sys.path, [str(expected_core), str(unrelated)])
 
     def test_core_discovery_finds_running_interpreter_install_without_profile_coupling(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -125,7 +153,9 @@ class RunnerPackagingTests(unittest.TestCase):
             calls.append("llm")
             return {"choices": [{"message": {"content": "{}"}}]}
         auxiliary.call_llm = call_llm
-        with patch.dict(sys.modules, {"agent.auxiliary_client": auxiliary}), patch.object(runner, "_bootstrap") as bootstrap, patch("kg.hermes_runtime.prepare_runtime", side_effect=lambda home: calls.append(home)):
+        with patch.dict(sys.modules, {"agent.auxiliary_client": auxiliary}), \
+             patch.dict(os.environ, {'KG_HERMES_PYTHON': '', 'HERMES_PYTHON': ''}), \
+             patch.object(runner, "_bootstrap") as bootstrap, patch("kg.hermes_runtime.prepare_runtime", side_effect=lambda home: calls.append(home)):
             self.assertEqual(runner._extract(snapshot, config), "{}")
         bootstrap.assert_called_once_with(config.home)
         self.assertEqual(calls, [config.home, "llm"])

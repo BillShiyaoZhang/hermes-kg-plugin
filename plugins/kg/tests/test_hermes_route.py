@@ -148,6 +148,12 @@ try:
     with patch('pathlib.Path.home',return_value=isolated_os_home):
         from kg.config import KGConfig
         from kg.query_planner import interpret_query
+        from kg.hermes_runtime import prepare_runtime
+        # Exercise the native host path with this test interpreter even for a
+        # source-only checkout. Bind the synthetic profile before importing the
+        # real client, as the Hermes host does; no core-owned venv is needed.
+        prepare_runtime(selected)
+        from agent import auxiliary_client
         result=interpret_query('When is the synthetic Ada meeting?',KGConfig(home=selected))
         assert result=={'text':'Ada meeting','filters':{'entity_type':'event'}},result
         assert os.environ['HERMES_HOME']==str(selected.resolve())
@@ -210,7 +216,7 @@ try:
         from agent.auxiliary_client import shutdown_cached_clients
         shutdown_cached_clients()
         import openai
-        print(json.dumps({'ok':True,'sdk':openai.__version__,'requests':len(requests),
+        print(json.dumps({'ok':True,'sdk':openai.__version__,'interpreter':sys.executable,'requests':len(requests),
                           'path':request['path'],'home_bound':True,'dotenv_key_used':True,
                           'external_network':'blocked','user_profile_reads':'blocked',
                           'plugin_registration':True,'manager_tool_dispatch':True,'automation_write_blocked':True}))
@@ -247,6 +253,7 @@ class HermesRouteIntegrationTests(unittest.TestCase):
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             report=json.loads(result.stdout.strip().splitlines()[-1])
             self.assertTrue(report['ok'])
+            self.assertEqual(Path(report['interpreter']).resolve(), discover_python(CORE_ROOT))
             self.assertEqual(report['requests'],1)
             self.assertEqual(report['external_network'],'blocked')
             self.assertEqual(report['user_profile_reads'],'blocked')

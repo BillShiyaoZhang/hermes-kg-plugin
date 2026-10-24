@@ -6,7 +6,7 @@ import ast
 import os
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[3]/"plugins"))
-from kg.provenance import COMPACTION_PREFIX,LEGACY_SUMMARY_PREFIX,PRIOR_HEADER,MERGED_DELIMITER,SUMMARY_END,EXACT_NUDGES,SKILL_REVIEW_PREFIX,MEMORY_REVIEW_PREFIX,CURRENT_MEMORY_REVIEW_PREFIX,COMBINED_REVIEW_PREFIX,groundable_user_messages,provenance_summary,user_message_view
+from kg.provenance import COMPACTION_PREFIX,LEGACY_SUMMARY_PREFIX,PRIOR_HEADER,MERGED_DELIMITER,SUMMARY_END,EXACT_NUDGES,SKILL_REVIEW_PREFIX,MEMORY_REVIEW_PREFIX,CURRENT_MEMORY_REVIEW_PREFIX,COMBINED_REVIEW_PREFIX,LEGACY_COMBINED_REVIEW_PREFIX,groundable_user_messages,provenance_summary,user_message_view
 
 
 class ProvenanceTests(unittest.TestCase):
@@ -42,13 +42,15 @@ class ProvenanceTests(unittest.TestCase):
             raise ValueError('Review prompt is no longer a static string')
         for name,prefix in (("_SKILL_REVIEW_PROMPT",SKILL_REVIEW_PREFIX),("_MEMORY_REVIEW_PROMPT",MEMORY_REVIEW_PREFIX),
                             ("_COMBINED_REVIEW_PROMPT",COMBINED_REVIEW_PREFIX)):
-            prefixes=(prefix,CURRENT_MEMORY_REVIEW_PREFIX) if name=='_MEMORY_REVIEW_PROMPT' else (prefix,)
+            prefixes=((prefix,CURRENT_MEMORY_REVIEW_PREFIX) if name=='_MEMORY_REVIEW_PROMPT' else
+                      (prefix,LEGACY_COMBINED_REVIEW_PREFIX) if name=='_COMBINED_REVIEW_PROMPT' else (prefix,))
             self.assertTrue(string_value(assignments[name]).startswith(prefixes),name)
 
     def test_review_prompts_are_excluded_from_both_input_and_evidence(self):
         from kg.grounding import _evidence
         for prefix,reason in ((SKILL_REVIEW_PREFIX,"background_skill_review_prompt"),(MEMORY_REVIEW_PREFIX,"background_memory_review_prompt"),
-                              (CURRENT_MEMORY_REVIEW_PREFIX,"background_memory_review_prompt"),(COMBINED_REVIEW_PREFIX,"background_combined_review_prompt")):
+                              (CURRENT_MEMORY_REVIEW_PREFIX,"background_memory_review_prompt"),(COMBINED_REVIEW_PREFIX,"background_combined_review_prompt"),
+                              (LEGACY_COMBINED_REVIEW_PREFIX,"background_combined_review_prompt")):
             with self.subTest(reason=reason):
                 row=self.row(prefix+"\n\nFurther automatic instructions.")
                 original=dict(row)
@@ -63,7 +65,9 @@ class ProvenanceTests(unittest.TestCase):
                "Review the conversation above and update the skill library.",
                "Review the conversation above and consider saving to memory if appropriate.",
                "Review the conversation above and update two things:",
+               "Review the conversation above and update two things:\n\n**Memory**: list the facts I just supplied.",
                "Explain this automatic prompt: "+SKILL_REVIEW_PREFIX,
+               "Explain this automatic prompt: "+LEGACY_COMBINED_REVIEW_PREFIX,
                "The memory review prompt says: "+MEMORY_REVIEW_PREFIX]
         for text in texts:
             with self.subTest(text=text[:60]):

@@ -26,7 +26,9 @@ class FakeStore:
 
 class ProviderBehaviorTests(unittest.TestCase):
     def make_provider(self, **kwargs):
-        provider = KGMemoryProvider(KGConfig(query_cadence=1), store_factory=FakeStore)
+        home = tempfile.TemporaryDirectory(prefix='kg-provider-fixture-')
+        self.addCleanup(home.cleanup)
+        provider = KGMemoryProvider(KGConfig(home=Path(home.name), query_cadence=1), store_factory=FakeStore)
         provider.initialize('primary-session', **kwargs)
         self.addCleanup(provider.shutdown)
         return provider
@@ -34,7 +36,8 @@ class ProviderBehaviorTests(unittest.TestCase):
     def test_recall_is_bound_to_current_query_session_and_turn(self):
         provider = self.make_provider()
         replies = [{'kg_results':[{'name':'first'}]}, {'kg_results':[{'name':'updated'}]}]
-        with patch('kg.queries.query_natural', side_effect=replies) as search:
+        with patch('kg.queries.query_natural', side_effect=replies) as search, \
+             patch('urllib.request.urlopen', side_effect=OSError('Synthetic console unavailable')):
             original = provider.system_prompt_block()
             provider.on_turn_start(1, 'remember project')
             self.assertIn('first', provider.prefetch('remember project'))

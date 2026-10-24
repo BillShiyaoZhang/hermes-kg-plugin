@@ -9,6 +9,9 @@ still match the core's prompt templates, and two test files import
 A core checkout must be available. This script finds one via HERMES_AGENT_HOME,
 an existing ./hermes-agent, a sibling install, or the standard install location.
 It passes that path to the suite without creating a symlink or changing files.
+Host/SDK integration tests explicitly use this suite's interpreter by default,
+with dependencies from requirements-console.lock. KG_HERMES_PYTHON or
+HERMES_PYTHON can select another installed host interpreter.
 
     python scripts/run_tests.py
     python scripts/run_tests.py -v
@@ -78,6 +81,10 @@ def main() -> int:
         command.extend(["-k", args.pattern])
     print(f"tests: {TESTS}")
     env=dict(os.environ,HERMES_AGENT_HOME=str(core))
+    # CI checks out core sources without installing a core-owned virtualenv.
+    # The suite's interpreter already has the locked console/SDK dependencies;
+    # explicitly select it for host integration tests, preserving opt-in hosts.
+    env['KG_HERMES_PYTHON']=env.get('KG_HERMES_PYTHON') or env.get('HERMES_PYTHON') or sys.executable
     env['PYTHONPATH']=os.pathsep.join([str(core),str(REPO_ROOT/'plugins'),env.get('PYTHONPATH','')])
     result = subprocess.run(command, cwd=str(REPO_ROOT),env=env)
     return result.returncode

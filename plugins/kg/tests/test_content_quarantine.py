@@ -2,7 +2,9 @@
 import copy
 import json
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -20,8 +22,11 @@ from validate import validate_graph
 
 class ContentQuarantineTests(unittest.TestCase):
     def setUp(self):
+        home = tempfile.TemporaryDirectory(prefix='kg-quarantine-fixture-')
+        self.addCleanup(home.cleanup)
+        self.config = KGConfig(home=Path(home.name))
         self.driver = FakeDriver()
-        self.store = KGStore(KGConfig(), self.driver)
+        self.store = KGStore(self.config, self.driver)
         self.person = 'urn:hermes:kg:person-fixture'
         self.event = 'urn:hermes:kg:event-fixture'
         self.driver.state['nodes'] = {
@@ -96,16 +101,17 @@ class ContentQuarantineTests(unittest.TestCase):
     def test_provider_search_and_prefetch_use_filtered_queries(self):
         capture = CaptureStore()
         capture.close = lambda: None
-        provider = KGMemoryProvider(KGConfig(), store_factory=lambda config: capture)
+        provider = KGMemoryProvider(self.config, store_factory=lambda config: capture)
         provider.initialize('fixture-session')
         self.addCleanup(provider.shutdown)
-        self.assertTrue(json.loads(provider.handle_tool_call('kg_search', {'question': self.person}))['ok'])
-        self.assert_excluded(capture.calls[-1][0], 'n', 'p')
-        provider.prefetch('remember me', session_id='fixture-session')
-        self.assert_excluded(capture.calls[-1][0], 'n', 'owner', 'p')
+        with patch('urllib.request.urlopen', side_effect=OSError('Synthetic console unavailable')):
+            self.assertTrue(json.loads(provider.handle_tool_call('kg_search', {'question': self.person}))['ok'])
+            self.assert_excluded(capture.calls[-1][0], 'n', 'p')
+            provider.prefetch('remember me', session_id='fixture-session')
+            self.assert_excluded(capture.calls[-1][0], 'n', 'owner', 'p')
 
     def test_status_separates_content_quarantine_and_legacy_exclusions(self):
-        capture = ReadOnlyStore(KGConfig())
+        capture = ReadOnlyStore(self.config)
         capture.counts.update(namespace_nodes=7, quarantined_nodes=5, content_quarantined_nodes=3)
         result = check_health(capture.config, capture)
         self.assertEqual(result['searchable_entities'], 2)
