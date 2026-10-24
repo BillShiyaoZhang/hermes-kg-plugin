@@ -30,7 +30,9 @@ GRAPH_EDGE_PREVIEW_KEYS = ('hermes_relLabel', 'hermes_origin', 'hermes_createdAt
 
 def _resource_text():
     """Wheels carry skills as resources; copied plugins/repo trees keep siblings."""
-    packaged = resources.files('kg').joinpath('resources', 'skills', 'kg-memory', 'ontology', 'core.ttl')
+    # Hermes loads user plugins under an isolated package name. Resolve from
+    # this package rather than relying on a second top-level ``kg`` import.
+    packaged = resources.files(__package__).joinpath('resources', 'skills', 'kg-memory', 'ontology', 'core.ttl')
     if packaged.is_file():
         return packaged.read_text(encoding='utf-8')
     sibling = Path(__file__).resolve().parents[2] / 'skills' / 'kg-memory' / 'ontology' / 'core.ttl'

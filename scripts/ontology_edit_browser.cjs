@@ -302,7 +302,7 @@ function applyPatch(schema, patch) {
     results.compatibility_preview_blocks_publish = true;
     results.managed_property_readonly = true;
     await page.screenshot({ path: path.join(output, "constraint-blocked.png"), fullPage: true });
-    await page.addScriptTag({ path: require.resolve("axe-core/axe.min.js", { paths: [path.resolve("console")] }) });
+    await page.evaluate(fs.readFileSync(require.resolve("axe-core/axe.min.js", { paths: [path.resolve("console")] }), "utf8"));
     results.axe_desktop = await page.evaluate(async () => {
       const report = await axe.run(".graph-workspace-v3", { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] } });
       return report.violations.map((violation) => ({ id: violation.id, impact: violation.impact, targets: violation.nodes.map((node) => node.target) }));

@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "plugins"))
 sys.path.insert(0, str(ROOT / "scripts"))
 from kg.config import KGConfig
+from kg.ontology_editing import effective_schema
 import kg_sync_runner as runner
 
 
@@ -244,7 +245,7 @@ class GroundingReplayTests(unittest.TestCase):
                     for index in range(1, 7)
                 ])
                 connection.commit()
-            state = SyncState(home)
+            state = SyncState(home, ontology_reader=lambda: effective_schema(config, {'version': 0, 'patch': {}}))
             snapshot = state.discover()[0]
             legacy_payload = {"session_id": snapshot["session_id"], "snapshot_id": snapshot["snapshot_id"],
                               "entities": [{"type": "Person", "urn": "urn:hermes:kg:person-ada", "name": "Ada", "props": {}}], "relations": []}
@@ -280,7 +281,7 @@ class GroundingReplayTests(unittest.TestCase):
                     for index in range(1, 7)
                 ])
                 connection.commit()
-            state = SyncState(home)
+            state = SyncState(home, ontology_reader=lambda: effective_schema(config, {'version': 0, 'patch': {}}))
             snapshot = state.discover()[0]
             staged = {"session_id": snapshot["session_id"], "snapshot_id": snapshot["snapshot_id"],
                       "entities": [{"type": "Event", "urn": "urn:hermes:kg:event-precision-fixture", "name": "Meeting Ada",
@@ -439,6 +440,8 @@ class ExtractionCorrectionTests(unittest.TestCase):
         snapshot = copy.deepcopy(self.snapshot)
         test_case = self
         class NoStageState:
+            def ontology_schema(self):
+                return effective_schema(test_case.config, {'version': 0, 'patch': {}})
             def discover(self, **kwargs):
                 return [snapshot]
             def stage_extraction(self, *args, **kwargs):

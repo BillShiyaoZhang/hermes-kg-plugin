@@ -110,7 +110,34 @@ kg-sync/               →  $HERMES_HOME/kg-sync/
 
 ---
 
-## Install
+## Deploy or upgrade with one command
+
+With Hermes already configured, a reachable Neo4j instance, Python 3.11+, Node.js
+and `uv` available, run the same command for a fresh KG installation or an upgrade:
+
+```powershell
+python scripts/deploy.py --home "$env:LOCALAPPDATA\hermes"
+```
+
+On macOS/Linux, pass your Hermes profile path (usually `~/.hermes`). Run from this
+checkout. A fresh installation asks for database settings and masks the password;
+an upgrade preserves the existing connection, namespace, identity, token and sync
+state. The command builds the UI, prepares an independent locked Python 3.11
+runtime, stages the complete plugin and skills, activates the provider, starts
+the local console, restarts the target Hermes gateway and verifies the actual
+installed provider and authenticated service. Semantic model preparation is
+included. Code changes need this deployment; Web data changes take effect through
+current database reads, synchronous index refresh and Agent cache invalidation.
+
+See the [deployment and daily-use guide](docs/deployment.md) for prerequisites,
+authentication, upgrades, startup behavior, recovery and the Agent integration
+diagram. `--dry-run` makes no changes. The explicit `--skip-*` options are partial
+development deployments and do not claim complete readiness.
+
+## Low-level plugin-only install
+
+The older installer below copies the provider and helpers only. It does not
+replace the complete deployment command above.
 
 Requirements: Hermes Agent (core), a reachable Neo4j instance, and Python 3.11+.
 

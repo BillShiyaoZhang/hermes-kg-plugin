@@ -8,7 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from kg.config import KGConfig
-from kg.embedding import TextChunk
+from kg.embedding import TextChunk, LocalEmbedder
+from kg.lifecycle import MemoryService
 from kg.search import HybridSearch
 from kg.store import KGStore
 
@@ -50,7 +51,7 @@ class Neo4jHybridContractTests(unittest.TestCase):
 
     def tearDown(self):
         with self.store.driver.session(database=self.config.database) as session:
-            session.run("MATCH (n) WHERE n.uri STARTS WITH $prefix DETACH DELETE n", {"prefix": self.prefix}).consume()
+            session.run("MATCH (n) WHERE n.uri STARTS WITH $prefix OR n.namespace=$prefix DETACH DELETE n", {"prefix": self.prefix}).consume()
             session.run("MATCH (c:KGSearchChunk {namespace:$prefix}) DELETE c", {"prefix": self.prefix}).consume()
         self.store.close()
 
@@ -132,6 +133,90 @@ class Neo4jHybridContractTests(unittest.TestCase):
         self.assertGreater(self.search.status()["pending_count"], 0)
         self.search.index_pending()
         self.assertEqual(self.search.status()["pending_count"], 0)
+
+    def test_unindexed_correction_and_approved_new_fact_survive_nonempty_fulltext(self):
+        marker = 'orbitalhandoffmarker'
+        self.store.write_batch([{'id':'control', 'type':'Concept', 'name':'Indexed control',
+                                 'props':{'description':marker}}], [])
+        self.search.index_uris([self.prefix+'concept-control'])
+        memory = MemoryService(self.config, self.store)
+        uri = self.prefix+'person-alice'
+        memory.correct(uri, {'props':{'description':marker+' corrected astronaut'}},
+                       expected_version=1, operation_id=uuid.uuid4().hex)
+        # The control still hits fulltext, while Alice has no current chunk.
+        cold = HybridSearch(self.store)
+        result = cold.search(marker, filters={'namespace':self.prefix})
+        by_uri = {row['uri']:row for row in result['kg_results']}
+        self.assertIn(uri, by_uri)
+        self.assertIn(self.prefix+'concept-control', by_uri)
+        self.assertEqual(by_uri[uri]['version'], 2)
+        self.assertIn('corrected astronaut', by_uri[uri]['description'])
+        candidate = [{'id':'alice', 'type':'Person', 'name':'Automatic conflict',
+                      'props':{'description':marker}},
+                     {'id':'approved', 'type':'Concept', 'name':'New approved fact',
+                      'props':{'description':marker+' approved addition'}}]
+        pending = self.store.write_batch(candidate, [], origin='auto',
+                                         review_payload={'entities':candidate,'relations':[]})
+        self.assertEqual(pending['disposition'], 'deferred')
+        # This database/search fixture has no Hermes transcript; source proof
+        # is independently covered by the extraction grounding integration.
+        memory.review_validator = lambda payload: None
+        approved = memory.resolve_review(pending['review_batch_id'], 'approve',
+                                        operation_id=uuid.uuid4().hex)
+        self.assertEqual(approved['disposition'], 'applied')
+        result = cold.search(marker, filters={'namespace':self.prefix})
+        self.assertIn(self.prefix+'concept-approved', [row['uri'] for row in result['kg_results']])
+        self.assertEqual(result['freshness']['semantic'], 'degraded')
+
+    def test_targeted_refresh_replaces_current_vectors_and_removes_archive_chunks(self):
+        memory = MemoryService(self.config, self.store)
+        uri = self.prefix+'person-alice'
+        memory.correct(uri, {'props':{'description':'Revised current profession'}},
+                       expected_version=1, operation_id=uuid.uuid4().hex)
+        report = self.search.index_uris([uri])
+        self.assertEqual(report['semantic'], 'current')
+        with self.store.driver.session(database=self.config.database) as session:
+            rows = session.run('MATCH (c:KGSearchChunk {namespace:$prefix,source_uri:$uri}) '
+                               'RETURN c.source_revision AS revision,c.text AS text,c.embedding_state AS state',
+                               {'prefix':self.prefix,'uri':uri}).data()
+        self.assertTrue(rows)
+        self.assertTrue(all(row['revision'] == 2 and row['state'] == 'ready'
+                            and 'Revised current profession' in row['text'] for row in rows))
+        memory.archive(uri, expected_version=2, operation_id=uuid.uuid4().hex)
+        self.search.index_uris([uri])
+        with self.store.driver.session(database=self.config.database) as session:
+            count = session.run('MATCH (c:KGSearchChunk {namespace:$prefix,source_uri:$uri}) RETURN count(c) AS total',
+                                {'prefix':self.prefix,'uri':uri}).single()['total']
+        self.assertEqual(count, 0)
+        self.assertNotIn(uri, [row['uri'] for row in self.search.search('Revised current profession')['kg_results']])
+
+    @unittest.skipUnless(os.environ.get('KG_SEARCH_MODEL_CACHE'), 'Set KG_SEARCH_MODEL_CACHE for real E5 + database freshness')
+    def test_ready_real_e5_refresh_recalls_paraphrase_at_next_search(self):
+        model = LocalEmbedder(os.environ['KG_SEARCH_MODEL_CACHE'])
+        model.prepare(allow_download=False)
+        actual = HybridSearch(self.store, model)
+        self.store.write_batch([
+            # Preference preparation links the configured owner implicitly;
+            # this isolated namespace must supply that real endpoint too.
+            {'id':self.config.user_person_urn,'type':'Person','name':'Synthetic preference owner'},
+            {'id':'ritual','type':'Preference','name':'Morning ritual',
+             'props':{'preference_key':'coffee','preference_value':'Black espresso'}},
+            {'id':'control','type':'Concept','name':'Breakfast beverage note',
+             'props':{'description':'A dictionary entry for breakfast beverage vocabulary'}}], [])
+        uri = self.prefix+'preference-ritual'
+        actual.index_uris([uri, self.prefix+'concept-control'])
+        memory = MemoryService(self.config, self.store)
+        memory.correct(uri, {'props':{'preference_value':'Oat milk cappuccino, no dairy'}},
+                       expected_version=1, operation_id=uuid.uuid4().hex)
+        report = actual.index_uris([uri])
+        self.assertEqual(report['semantic'], 'current')
+        # No manual/background reindex between this completed write hook and
+        # the next paraphrased search; an independent fulltext hit also exists.
+        result = actual.search('What is my preferred breakfast beverage?', filters={'namespace':self.prefix})
+        target = next((row for row in result['kg_results'] if row['uri'] == uri), None)
+        self.assertIsNotNone(target)
+        self.assertEqual(target['preference_value'], 'Oat milk cappuccino, no dairy')
+        self.assertIn('vector', target['channels'])
 
     def test_maintenance_removes_orphaned_chunks(self):
         uri = self.prefix + "event-meeting"

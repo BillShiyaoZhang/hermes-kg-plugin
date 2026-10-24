@@ -335,19 +335,21 @@ class MemoryService:
         return self.store.transition_memory(uri, action, expected_version=expected_version,
             operation_id=operation_id, reason=reason, request_hash=request_hash)
 
-    def _validate_review(self, payload, origin="auto"):
+    def _validate_review(self, payload, origin="auto", *, enforce_ontology_constraints=True):
         if self.review_validator:
             self.review_validator(payload)
         elif payload.get("snapshot_id"):
             from .sync_state import SyncState
             from .extraction import validate_extraction
+            from .schema import schema_for_store
             state = SyncState(self.config.home)
             snapshot = state.get_snapshot(snapshot_id=payload["snapshot_id"])
             if snapshot.get("source") == "legacy-jsonl":
                 state._legacy_reader(snapshot).validate_snapshot(snapshot)
             else:
                 state.source.validate_snapshot(snapshot)
-            checked = validate_extraction(dumps(payload), snapshot, self.config)
+            checked = validate_extraction(dumps(payload), snapshot, self.config, schema_for_store(self.store),
+                                          enforce_ontology_constraints=enforce_ontology_constraints)
             if checked != payload:
                 raise ValueError("Review payload requires an explicit schema migration")
         elif origin == "auto":
@@ -368,6 +370,9 @@ class MemoryService:
         from .ontology_editing import canonical_input, alias_snapshot_state
         state = self.store.ontology_overlay() if callable(getattr(self.store, 'ontology_overlay', None)) else {'version': 0, 'patch': {}}
         if action == "approve":
+            from .grounding import reject_automatic_markers
+            for entity in payload['entities']:
+                reject_automatic_markers(entity)
             frozen = alias_snapshot_state(review.get('ontology_aliases', {}))
             canonical_payload = {**payload, 'entities': [canonical_input(item, frozen) for item in payload['entities']],
                                  'relations': [canonical_input(item, frozen, relation=True) for item in payload['relations']]}
@@ -376,7 +381,7 @@ class MemoryService:
             if (any(canonical_input(item, state) != item for item in canonical_payload['entities'])
                     or any(canonical_input(item, state, relation=True) != item for item in canonical_payload['relations'])):
                 raise VersionConflict('Review aliases changed; reject and regenerate this batch before approval')
-            self._validate_review(canonical_payload, review["origin"])
+            self._validate_review(canonical_payload, review["origin"], enforce_ontology_constraints=not bool(edits))
         entities = json.loads(dumps(canonical_payload["entities"])) if action == "approve" else []
         relations = canonical_payload["relations"] if action == "approve" else []
         evidence = json.loads(dumps(review["evidence"]))

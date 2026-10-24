@@ -4,6 +4,9 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -97,6 +100,37 @@ class OntologyDefinitionTests(unittest.TestCase):
             sibling.write_text(text, encoding='utf-8')
             with patch('kg.ontology.resources.files', return_value=root/'empty'), patch('kg.ontology.__file__', str(root/'profile/plugins/kg/ontology.py')):
                 self.assertEqual(_resource_text(), text)
+
+    def test_isolated_plugin_package_reads_its_own_resource_without_top_level_kg(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / 'isolated_plugin'
+            package.mkdir()
+            source = Path(__file__).resolve().parents[1]
+            for filename in ('__init__.py', 'ontology.py', 'schema.py'):
+                shutil.copy2(source / filename, package / filename)
+            resource = package / 'resources/skills/kg-memory/ontology/core.ttl'
+            resource.parent.mkdir(parents=True)
+            resource.write_text(_resource_text(), encoding='utf-8')
+            program = '''
+import importlib.abc, importlib.util, sys
+from pathlib import Path
+class BlockTopLevelKG(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'kg' or fullname.startswith('kg.'):
+            raise ModuleNotFoundError('No top-level kg in isolated host', name='kg')
+sys.meta_path.insert(0, BlockTopLevelKG())
+spec = importlib.util.spec_from_file_location('_hermes_isolated_kg', Path(sys.argv[1]) / '__init__.py')
+package = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = package
+spec.loader.exec_module(package)
+from _hermes_isolated_kg.ontology import _resource_text, parse_ontology
+assert len(parse_ontology(_resource_text())['entity_types']) == 6
+assert 'kg' not in sys.modules
+'''
+            done = subprocess.run([sys.executable, '-I', '-B', '-c', program, str(package)],
+                                  capture_output=True, text=True, timeout=30)
+            self.assertEqual(done.returncode, 0, done.stderr)
 
 
 class OntologyServiceTests(unittest.TestCase):

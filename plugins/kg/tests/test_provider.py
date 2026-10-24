@@ -2,6 +2,7 @@
 import json
 import io
 import os
+from dataclasses import replace
 import sys
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT/'plugins'), str(ROOT/'hermes-agent')]
 from kg.config import KGConfig
 from kg.provider import KGMemoryProvider
+from kg.freshness import bump_recall_generation
 
 
 class FakeStore:
@@ -25,6 +27,63 @@ class FakeStore:
 
 
 class ProviderBehaviorTests(unittest.TestCase):
+    def test_external_web_commit_invalidates_same_query_cache_and_bypasses_cadence_once(self):
+        provider = self.make_provider()
+        provider._config = replace(provider._config, query_cadence=5)
+        with patch.object(provider, '_search', side_effect=[{'kg_results':[{'name':'before'}]},
+                                                           {'kg_results':[{'name':'after'}]}]) as search:
+            self.assertIn('before', provider.prefetch('project status'))
+            self.assertIn('before', provider.prefetch('project status'))
+            self.assertEqual(search.call_count, 1)
+            provider.on_turn_start(2, 'project status')
+            self.assertEqual(provider.prefetch('project status'), '')
+            bump_recall_generation(provider._config.home)
+            self.assertIn('after', provider.prefetch('project status'))
+            self.assertEqual(search.call_count, 2)
+            provider.on_turn_start(3, 'project status')
+            self.assertEqual(provider.prefetch('project status'), '')
+            self.assertEqual(search.call_count, 2)
+
+    def test_commit_during_recall_is_not_swallowed_by_cache_or_cadence(self):
+        provider = self.make_provider()
+        provider._config = replace(provider._config, query_cadence=5)
+        def concurrent_write(*_):
+            bump_recall_generation(provider._config.home)
+            return {'kg_results':[{'name':'before concurrent commit'}]}
+        calls = []
+        def changed_during_search(*args):
+            calls.append(args)
+            return concurrent_write() if len(calls) == 1 else {'kg_results':[{'name':'current'}]}
+        with patch.object(provider, '_search', side_effect=changed_during_search) as search:
+            self.assertIn('current', provider.prefetch('project status'))
+            self.assertEqual(search.call_count, 2)
+            provider.on_turn_start(2, 'project status')
+            self.assertEqual(provider.prefetch('project status'), '')
+            self.assertEqual(search.call_count, 2)
+
+    def test_continuously_racing_commits_never_inject_known_stale_evidence(self):
+        provider = self.make_provider()
+        def write_during_every_search(*_):
+            bump_recall_generation(provider._config.home)
+            return {'kg_results':[{'name':'known stale'}]}
+        with patch.object(provider, '_search', side_effect=write_during_every_search) as search:
+            self.assertEqual(provider.prefetch('project status'), '')
+            self.assertEqual(search.call_count, 2)
+            self.assertTrue(provider._refresh_pending)
+            self.assertEqual(provider._cache, {})
+
+    def test_generation_does_not_bypass_session_or_automation_guards(self):
+        provider = self.make_provider(platform='cron')
+        bump_recall_generation(provider._config.home)
+        with patch.object(provider, '_search') as search:
+            self.assertEqual(provider.prefetch('remember project'), '')
+            search.assert_not_called()
+        primary = self.make_provider()
+        bump_recall_generation(primary._config.home)
+        with patch.object(primary, '_search') as search:
+            self.assertEqual(primary.prefetch('remember project', session_id='other'), '')
+            search.assert_not_called()
+
     def make_provider(self, **kwargs):
         home = tempfile.TemporaryDirectory(prefix='kg-provider-fixture-')
         self.addCleanup(home.cleanup)

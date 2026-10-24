@@ -10,6 +10,7 @@ from agent.memory_provider import MemoryProvider, RecallStatus, is_trivial_promp
 from .config import env_value, load_config
 from .tool_schemas import SEARCH_SCHEMA, WRITE_SCHEMA
 from .health import STATUS_SCHEMA, check_health
+from .freshness import read_recall_generation, bump_recall_generation
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,8 @@ class KGMemoryProvider(MemoryProvider):
         self._closed = False
         self._last_recall = None
         self._cache = {}
+        self._generation = ""
+        self._refresh_pending = False
         self._lock = RLock()
 
     @property
@@ -63,6 +66,8 @@ class KGMemoryProvider(MemoryProvider):
             self._closed = False
             self._cache.clear()
             self._last_recall = None
+            self._generation = read_recall_generation(self._config.home)
+            self._refresh_pending = False
 
     def system_prompt_block(self):
         return (
@@ -79,8 +84,19 @@ class KGMemoryProvider(MemoryProvider):
         return [SEARCH_SCHEMA, WRITE_SCHEMA, STATUS_SCHEMA]
 
     def on_turn_start(self, turn_number, message, **kwargs):
-        self._turn_number = turn_number
-        self._last_recall = None
+        with self._lock:
+            self._turn_number = turn_number
+            self._last_recall = None
+            if self._config is not None:
+                self._observe_generation()
+
+    def _observe_generation(self):
+        generation = read_recall_generation(self._config.home)
+        if generation != self._generation:
+            self._cache.clear()
+            self._generation = generation
+            self._refresh_pending = True
+        return generation
 
     def _search(self, question, limit):
         from .queries import query_natural
@@ -118,15 +134,26 @@ class KGMemoryProvider(MemoryProvider):
         if sid != self._session_id:
             return ""
         explicit = any(word in query.lower() for word in ("记得", "记忆", "偏好", "决定", "memory", "remember", "preference"))
-        if not explicit and (self._turn_number - 1) % self._config.query_cadence:
-            return ""
-        key = (sid, self._turn_number, query)
         try:
             with self._lock:
+                generation = self._observe_generation()
+                if not explicit and not self._refresh_pending and (self._turn_number - 1) % self._config.query_cadence:
+                    return ""
+                key = (sid, self._turn_number, query, generation)
                 result = self._cache.get(key)
                 if result is None:
                     result = self._search(query, self._config.query_limit)
+                    # Do not inject a result known to predate a Web commit.
+                    # Retry once, then withhold evidence if writes keep racing.
+                    latest = self._observe_generation()
+                    if latest != generation:
+                        generation = latest
+                        key = (sid, self._turn_number, query, generation)
+                        result = self._search(query, self._config.query_limit)
+                        if self._observe_generation() != generation:
+                            return ""
                     self._cache = {key: result}
+                    self._refresh_pending = False
             records = result.get("kg_results", result.get("results", [])) if isinstance(result, dict) else result
             if not records:
                 return ""
@@ -182,6 +209,12 @@ class KGMemoryProvider(MemoryProvider):
                 result['saved']=result.get('disposition','applied')=='applied'
                 result['requires_review']=result.get('disposition')=='deferred'
                 self._cache.clear()
+                if result['saved']:
+                    self._refresh_pending = True
+                    try:
+                        bump_recall_generation(self._config.home)
+                    except OSError:
+                        logger.warning("KG recall notification failed; committed receipt retained")
                 return json.dumps(result, ensure_ascii=False, default=str)
             raise ValueError("Unknown KG tool")
         except ValueError as exc:

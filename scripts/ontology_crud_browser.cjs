@@ -259,7 +259,7 @@ function mutate(schema, operations = []) {
     failStatistics = true; const writes = requests.filter((item) => item.path.endsWith("/publish")).length;
     await preview(); await mutation().getByRole("alert").waitFor(); assert.equal(await submit().isDisabled(), true);
     assert.equal(requests.filter((item) => item.path.endsWith("/publish")).length, writes); results.statistics_failure_blocks_mutation = true;
-    await preview(); await page.addScriptTag({ path: require.resolve("axe-core/axe.min.js", { paths: [path.resolve("console")] }) });
+    await preview(); await page.evaluate(fs.readFileSync(require.resolve("axe-core/axe.min.js", { paths: [path.resolve("console")] }), "utf8"));
     const axeRun = () => page.evaluate(async () => (await axe.run(".graph-workspace-v3", { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] } })).violations.map((item) => ({ id: item.id, impact: item.impact, targets: item.nodes.map((node) => node.target) })));
     results.axe_desktop = await axeRun(); assert.deepEqual(results.axe_desktop, []);
     await page.setViewportSize({ width: 390, height: 844 }); await mutation().getByRole("heading", { level: 2 }).scrollIntoViewIfNeeded();

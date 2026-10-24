@@ -381,11 +381,35 @@ def create_app(config=None, *, token=None, memory=None, search=None, background=
     def ontology_schema():
         return invoke(ontology.describe)
 
+    def refresh_recall(result, uris=None):
+        # Facts are already committed. A derived-index or notification failure
+        # must report degradation without disguising the successful receipt.
+        report = None
+        if uris is not None:
+            try:
+                refresh = getattr(search, 'index_uris', None)
+                report = refresh(list(dict.fromkeys(uris))) if callable(refresh) else {
+                    'state': 'degraded', 'lexical': 'degraded', 'semantic': 'degraded',
+                    'errors': ['index_refresh_unavailable']}
+            except Exception:
+                report = {'state': 'degraded', 'lexical': 'degraded', 'semantic': 'degraded',
+                          'errors': ['index_refresh_failed']}
+        try:
+            from .freshness import bump_recall_generation
+            bump_recall_generation(config.home)
+        except Exception:
+            report = {**(report or {}), 'state': 'degraded',
+                      'errors': [*(report or {}).get('errors', []), 'recall_notification_failed']}
+        return {**result, **({'search_freshness': report} if report is not None else {})}
+
     def ontology_edit(action, body):
         from .ontology_editing import OntologyEditor, OntologyEditError
         from fastapi.responses import JSONResponse
         try:
-            return _json(getattr(OntologyEditor(config,memory.store),action)(**body.model_dump(exclude_unset=True)))
+            result = getattr(OntologyEditor(config,memory.store),action)(**body.model_dump(exclude_unset=True))
+            if action == 'publish' and result.get('ok') is True:
+                result = refresh_recall(result)
+            return _json(result)
         except OntologyEditError as exc:
             return JSONResponse(exc.response(),status_code=exc.status)
 
@@ -538,7 +562,10 @@ def create_app(config=None, *, token=None, memory=None, search=None, background=
 
     def mutate(action,body):
         args=(body.uri,body.changes) if action=="correct" else (body.uri,)
-        return invoke(getattr(memory,action),*args,expected_version=body.expected_version,operation_id=body.operation_id,reason=body.reason)
+        result = invoke(getattr(memory,action),*args,expected_version=body.expected_version,operation_id=body.operation_id,reason=body.reason)
+        if isinstance(result, dict) and result.get('ok') is True and result.get('disposition', 'applied') == 'applied':
+            result = refresh_recall(result, [body.uri])
+        return result
 
     @app.post("/api/v1/memories/correct")
     def correct(body:MutationBody): return mutate("correct",body)
@@ -551,11 +578,15 @@ def create_app(config=None, *, token=None, memory=None, search=None, background=
 
     def normalized_reviews(rows):
         from .schema import prepare_entity
+        from .schema import schema_for_store
+        from .ontology_editing import alias_snapshot_state, canonical_input
+        ontology = schema_for_store(memory.store)
         items=[]
         for row in rows:
             entities=[]
+            frozen = alias_snapshot_state(row.get('ontology_aliases', {}))
             for entity in row.get('payload',{}).get('entities',[]):
-                prepared,_=prepare_entity(entity,config)
+                prepared,_=prepare_entity(canonical_input(entity, frozen),config,ontology)
                 uri=prepared['uri']
                 evidence=row.get('evidence',{}).get('entities',{}).get(uri,[])
                 entities.append({'uri':uri,'type':prepared['type'],'name':entity.get('name',''),
@@ -578,7 +609,15 @@ def create_app(config=None, *, token=None, memory=None, search=None, background=
     def review(review_id:str,action:str,body:ReviewBody):
         if action not in {"approve","reject"}:
             raise HTTPException(404,"未知的审核操作")
-        return invoke(memory.resolve_review,review_id,action,operation_id=body.operation_id,expected_versions=body.expected_versions,reason=body.reason,changes=body.changes)
+        result = invoke(memory.resolve_review,review_id,action,operation_id=body.operation_id,expected_versions=body.expected_versions,reason=body.reason,changes=body.changes)
+        if action == 'approve' and isinstance(result, dict) and result.get('ok') is True and result.get('disposition', 'applied') == 'applied':
+            uris = list(result.get('entity_uris', []))
+            for relation in result.get('relation_ids', []):
+                parts = relation.split('|')
+                if len(parts) == 3:
+                    uris.extend((parts[0], parts[2]))
+            result = refresh_recall(result, uris)
+        return result
 
     @app.post("/api/v1/sync/run",status_code=202)
     def sync_run():

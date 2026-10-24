@@ -84,7 +84,7 @@ function schema(data){return {namespace,scope,read_only:true,stats_available:tru
     await p.waitForTimeout(900);
     assert.equal(await p.locator('.graph-node').count(),12);
     results.small_complete=true;
-    await p.addScriptTag({path:require.resolve('axe-core/axe.min.js',{paths:[path.resolve('console')]})});
+    await p.evaluate(fs.readFileSync(require.resolve('axe-core/axe.min.js',{paths:[path.resolve('console')]}),'utf8'));
     results.axe_desktop=await p.evaluate(async()=>{const r=await axe.run('.graph-workspace-v3',{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}});return r.violations.map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.map(n=>n.target)}));});
     const readCount=requests.filter(r=>r.path.includes('/graph/')).length;
     const surface=p.locator('.graph-canvas-surface'),box=await surface.boundingBox();
@@ -236,7 +236,7 @@ function schema(data){return {namespace,scope,read_only:true,stats_available:tru
     assert.equal(await q.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);results.mobile_no_overflow=true;
     await q.setViewportSize({width:320,height:900});await q.evaluate(()=>document.documentElement.style.fontSize='200%');await q.screenshot({path:path.join(output,'text-200.png'),fullPage:true});
     results.text_200_no_overflow=await q.evaluate(()=>document.documentElement.scrollWidth<=innerWidth);assert.equal(results.text_200_no_overflow,true);
-    await q.addScriptTag({path:require.resolve('axe-core/axe.min.js',{paths:[path.resolve('console')]})});
+    await q.evaluate(fs.readFileSync(require.resolve('axe-core/axe.min.js',{paths:[path.resolve('console')]}),'utf8'));
     results.axe_narrow=await q.evaluate(async()=>{const r=await axe.run('.graph-workspace-v3',{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}});return r.violations.map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.map(n=>n.target)}));});
     await q.emulateMedia({reducedMotion:'reduce'});results.reduced_motion=true;
     await big.close();

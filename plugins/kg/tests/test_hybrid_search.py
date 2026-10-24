@@ -31,7 +31,7 @@ class SearchHarness(HybridSearch):
     def __init__(self, nodes, *, embedder=None):
         super().__init__(SimpleNamespace(config=KGConfig()), embedder)
         self.nodes = {n["properties"]["uri"]: n for n in nodes}
-        self.channels = {"exact": [], "keyword": [], "vector": [], "graph": []}
+        self.channels = {"exact": [], "keyword": [], "vector": [], "graph": [], "fresh": []}
         self.calls = []
         self.index_online = True
         self.before_hydrate = None
@@ -52,7 +52,8 @@ class SearchHarness(HybridSearch):
         if "RETURN count(n) AS total" in query:
             return [{"pending": 0, "total": len(self.nodes)}]
         if "collect(DISTINCT {fingerprint" in query:
-            return [{**n, "indexed": []} for n in self.nodes.values()]
+            return [{**n, "indexed": []} for n in self.nodes.values()
+                    if 'uris' not in params or n['properties']['uri'] in params['uris']]
         if "MERGE (c:KGSearchChunk" in query:
             self.indexed.extend(params["chunks"])
             return [{"written": len(params["chunks"])}]
@@ -65,7 +66,9 @@ class SearchHarness(HybridSearch):
             return self.channels["graph"]
         if "CALL db.index.vector" in query:
             return self.channels["vector"]
-        if "CALL db.index.fulltext" in query or "any(term IN $terms" in query:
+        if "any(term IN $terms" in query:
+            return self.channels['fresh'] if params.get('fresh_only') else self.channels['keyword']
+        if "CALL db.index.fulltext" in query:
             return self.channels["keyword"]
         if "n.uri=$question" in query:
             return self.channels["exact"]
@@ -144,6 +147,64 @@ class EmbeddingTests(unittest.TestCase):
 
 
 class HybridSearchTests(unittest.TestCase):
+    def test_unindexed_current_fact_is_recalled_even_with_an_existing_fulltext_hit(self):
+        old, fresh = node('already-indexed'), node('new-revision', hermes_revision=2)
+        harness = SearchHarness([old, fresh])
+        harness.candidates('keyword', old)
+        harness.candidates('fresh', fresh)
+        result = harness.search('new evidence', limit=1)
+        self.assertEqual(result['kg_results'][0]['uri'], fresh['properties']['uri'])
+        fallback = next((q, p) for q, p, _ in harness.calls if 'any(term IN $terms' in q)
+        self.assertTrue(fallback[1]['fresh_only'])
+        self.assertIn('NOT EXISTS { MATCH (c:KGSearchChunk', fallback[0])
+        self.assertIn('c.source_revision=coalesce(n.hermes_revision,0)', fallback[0])
+        self.assertIn("key STARTS WITH 'x_'", fallback[0])
+        self.assertEqual(result['freshness']['semantic'], 'degraded')
+        self.assertFalse(any(write for _, _, write in harness.calls))
+
+    def test_fresh_fallback_remains_subject_to_revision_and_visibility_hydration(self):
+        current, old, archived, foreign = (node('current'), node('stale'), node('archived'), node('foreign'))
+        archived['labels'].append('KGQuarantined')
+        foreign['properties']['uri'] = 'urn:elsewhere:kg:concept-foreign'
+        harness = SearchHarness([current, old, archived, foreign])
+        harness.candidates('keyword', current)
+        harness.candidates('fresh', old, archived, foreign)
+        harness.before_hydrate = lambda: old['properties'].update(hermes_revision=2)
+        self.assertEqual([r['uri'] for r in harness.search('evidence')['kg_results']], [current['properties']['uri']])
+
+    def test_targeted_refresh_is_bounded_scoped_and_current_revision_guarded(self):
+        first, second = node('first', hermes_revision=9), node('second')
+        model = FakeEmbedder()
+        harness = SearchHarness([first, second], embedder=model)
+        report = harness.index_uris([first['properties']['uri'], first['properties']['uri'],
+                                     'urn:other:kg:person-secret', second['properties']['uri']], limit=1)
+        self.assertEqual((report['requested'], report['omitted'], report['vector_indexed']), (2, 1, 1))
+        self.assertEqual(report['state'], 'degraded')
+        self.assertIn('targeted_index_limit', report['errors'])
+        self.assertEqual([c['source_uri'] for c in harness.indexed], [first['properties']['uri']])
+        write = next(q for q, _, _ in harness.calls if 'MERGE (c:KGSearchChunk' in q)
+        self.assertIn('coalesce(n.hermes_revision,0)=$revision', write)
+        self.assertIn("coalesce(toString(n.hermes_updatedAt),'')=$updated", write)
+        cleanup = next((q, p) for q, p, _ in harness.calls if 'DELETE c' in q and 'MERGE' not in q)
+        self.assertEqual(cleanup[1]['cleanup_uris'], [first['properties']['uri']])
+        self.assertIn('NOT ((n.uri STARTS WITH $prefix', cleanup[0])
+
+    def test_targeted_refresh_ready_model_is_current_but_cold_never_loads(self):
+        item = node('committed')
+        ready = SearchHarness([item], embedder=FakeEmbedder())
+        self.assertEqual(ready.index_uris([item['properties']['uri']])['semantic'], 'current')
+        cold = FakeEmbedder()
+        cold.status = Mock(return_value={'ready': False, 'cached': True})
+        cold.chunk = Mock(side_effect=AssertionError('Must not enter cold embedding runtime'))
+        cold.embed_passages = Mock(side_effect=AssertionError('Must not load from a write'))
+        offline = SearchHarness([item], embedder=cold)
+        report = offline.index_uris([item['properties']['uri']])
+        self.assertEqual((report['lexical'], report['semantic']), ('current', 'degraded'))
+        self.assertEqual(report['pending'], 1)
+        self.assertNotIn('embedding', offline.indexed[0])
+        cold.chunk.assert_not_called()
+        cold.embed_passages.assert_not_called()
+
     def test_authored_fixture_has_50_valid_questions_and_expected_entities(self):
         data = json.loads((Path(__file__).parent / "fixtures" / "search_50.json").read_text(encoding="utf-8"))
         self.assertEqual(len(data["queries"]), 50)

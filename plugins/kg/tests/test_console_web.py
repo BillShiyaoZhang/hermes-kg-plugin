@@ -104,6 +104,64 @@ class ConsoleWebTests(unittest.TestCase):
         self.assertEqual(result.status_code,200,result.text)
         self.assertTrue(result.json()['ok'])
 
+    def test_successful_mutation_refreshes_exact_source_and_notifies_existing_agent(self):
+        uri = 'urn:hermes:kg:concept-example'
+        report = {'state': 'current', 'lexical': 'current', 'semantic': 'current', 'errors': []}
+        with patch.object(self.app.state.search, 'index_uris', return_value=report, create=True) as refresh, \
+             patch('kg.freshness.bump_recall_generation') as notify:
+            response = self.client.post('/api/v1/memories/correct', headers=self.auth, json={
+                'uri': uri, 'changes': {'name': '最新内容'}, 'expected_version': 2, 'operation_id': 'refresh-exact-source'})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['search_freshness'], report)
+        refresh.assert_called_once_with([uri])
+        notify.assert_called_once_with(Path(self.tmp.name))
+
+    def test_derived_refresh_failures_never_hide_an_already_committed_receipt(self):
+        with patch.object(self.app.state.search, 'index_uris', side_effect=RuntimeError('synthetic index unavailable'), create=True), \
+             patch('kg.freshness.bump_recall_generation', side_effect=OSError('synthetic notification unavailable')):
+            response = self.client.post('/api/v1/memories/correct', headers=self.auth, json={
+                'uri': 'urn:hermes:kg:concept-example', 'changes': {'name': '已提交'},
+                'expected_version': 2, 'operation_id': 'committed-refresh-failed'})
+        self.assertEqual(response.status_code, 200, response.text)
+        result = response.json()
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['receipt_id'], 'committed-refresh-failed')
+        self.assertEqual(result['search_freshness']['state'], 'degraded')
+        self.assertEqual(result['search_freshness']['errors'], ['index_refresh_failed', 'recall_notification_failed'])
+
+    def test_review_approval_refreshes_fact_and_relationship_endpoints_but_rejection_does_not(self):
+        person, project = 'urn:hermes:kg:person-owner', 'urn:hermes:kg:concept-project'
+        receipt = {'ok': True, 'disposition': 'applied', 'entity_uris': [project],
+                   'relation_ids': [person + '|RELATED_TO|' + project]}
+        with patch.object(self.app.state.memory, 'resolve_review', return_value=receipt, create=True), \
+             patch.object(self.app.state.search, 'index_uris', return_value={'state': 'current'}, create=True) as refresh, \
+             patch('kg.freshness.bump_recall_generation') as notify:
+            response = self.client.post('/api/v1/reviews/synthetic-review/approve', headers=self.auth,
+                                        json={'operation_id': 'review-refresh-approved', 'expected_versions': {}})
+        self.assertEqual(response.status_code, 200, response.text)
+        refresh.assert_called_once_with([project, person])
+        notify.assert_called_once()
+        with patch.object(self.app.state.memory, 'resolve_review', return_value={'ok': True, 'disposition': 'rejected'}, create=True), \
+             patch('kg.freshness.bump_recall_generation') as notify:
+            self.assertEqual(self.client.post('/api/v1/reviews/synthetic-review/reject', headers=self.auth,
+                                              json={'operation_id': 'review-refresh-rejected'}).status_code, 200)
+        notify.assert_not_called()
+
+    def test_published_schema_notifies_recall_but_failed_mutation_does_not(self):
+        with patch('kg.ontology_editing.OntologyEditor.publish', return_value={'ok': True, 'version': 2}), \
+             patch('kg.freshness.bump_recall_generation') as notify:
+            response = self.client.post('/api/v1/ontology/publish', headers=self.auth, json={
+                'expected_namespace': 'urn:hermes:kg:', 'expected_version': 1, 'patch': {},
+                'operation_id': 'published-schema-notify'})
+        self.assertEqual(response.status_code, 200, response.text)
+        notify.assert_called_once_with(Path(self.tmp.name))
+        with patch('kg.freshness.bump_recall_generation') as notify:
+            response = self.client.post('/api/v1/memories/correct', headers=self.auth, json={
+                'uri': 'urn:hermes:kg:concept-example', 'changes': {'name': '不提交'},
+                'expected_version': 1, 'operation_id': 'failed-version-no-notify'})
+        self.assertEqual(response.status_code, 409)
+        notify.assert_not_called()
+
     def test_pause_persists_without_hiding_existing_memories(self):
         self.assertTrue(self.client.post('/api/v1/sync/pause',headers=self.auth).json()['paused'])
         self.assertEqual(self.client.get('/api/v1/memories',headers=self.auth).json()['total'],1)

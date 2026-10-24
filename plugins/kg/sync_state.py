@@ -24,10 +24,20 @@ class SyncBusyError(RuntimeError):
 
 
 class SyncState:
-    def __init__(self, home=None):
+    def __init__(self, home=None, *, ontology_reader=None):
         self.home = resolve_home(home)
         self.path = self.home / "kg-sync" / "sync-state-v2.db"
         self.source = SessionSource(self.home)
+        self._ontology_reader = ontology_reader
+
+    def ontology_schema(self):
+        from .config import load_config
+        from .extraction import read_current_ontology
+        config = load_config(home=self.home)
+        schema = self._ontology_reader() if self._ontology_reader is not None else read_current_ontology(config)
+        if not isinstance(schema, dict) or schema.get('namespace') != config.urn_prefix:
+            raise ValueError('Current extraction ontology is unavailable or belongs to another namespace')
+        return schema
 
     @contextmanager
     def transaction(self, readonly=False):
@@ -249,12 +259,13 @@ class SyncState:
         from .schema import prepare_entity, prepare_relation
         config=load_config(home=self.home)
         from .extraction import validate_extraction
-        payload = validate_extraction(_json(payload), snapshot, config)
-        prepared=[prepare_entity(entity,config) for entity in payload["entities"]]
+        ontology = self.ontology_schema()
+        payload = validate_extraction(_json(payload), snapshot, config, ontology)
+        prepared=[prepare_entity(entity,config,ontology) for entity in payload["entities"]]
         if len({entity[0]["uri"] for entity in prepared})!=len(prepared):
             raise ValueError("Extraction repeats a canonical entity URI")
         for relation in payload["relations"] + [rel for _,relations in prepared for rel in relations]:
-            prepare_relation(relation,config)
+            prepare_relation(relation,config,ontology)
         encoded=_json(payload)
         digest=hashlib.sha256(encoded.encode("utf-8")).hexdigest()
         with self.transaction() as conn:
@@ -293,7 +304,7 @@ class SyncState:
             from .extraction import validate_extraction
             from .config import load_config
             config = load_config(home=self.home)
-            checked = validate_extraction(_json(payload), frozen, config)
+            checked = validate_extraction(_json(payload), frozen, config, self.ontology_schema())
             if checked != payload:
                 raise ValueError("Staged extraction requires an explicit migration before replay")
             if writer is None:

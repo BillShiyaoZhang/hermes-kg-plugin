@@ -103,11 +103,19 @@ def _event_grounding(value, source, quote, config, supporting=()):
     return ('datetime' if times else 'day'), all(matching)
 
 
-def validate_entity_evidence(entity, snapshot, config):
-    prepared, _ = prepare_entity(entity, config)
-    for key in ('fictional','hypothetical','is_fictional','is_hypothetical'):
-        if prepared['properties'].get(key) is True or str(prepared['properties'].get(key,'')).casefold()=='true':
-            raise ValueError('Fictional or hypothetical material cannot become automatic memory')
+def reject_automatic_markers(entity):
+    for props in (entity.get('props', {}), entity.get('properties', {})):
+        if not isinstance(props, dict):
+            continue
+        for key in ('fictional', 'hypothetical', 'is_fictional', 'is_hypothetical'):
+            if props.get(key) is True or str(props.get(key, '')).casefold() == 'true':
+                raise ValueError('Fictional or hypothetical material cannot become automatic memory')
+
+
+def validate_entity_evidence(entity, snapshot, config, ontology=None):
+    reject_automatic_markers(entity)
+    prepared, _ = prepare_entity(entity, config, ontology)
+    reject_automatic_markers({'props': prepared['properties']})
     source, quote = _evidence(entity, snapshot)
     supporting = _supporting_evidence(entity, snapshot)
     if prepared['uri'] == config.user_person_urn:

@@ -29,6 +29,10 @@ def load_cli(name,filename):
 
 class SyncBehaviorTests(unittest.TestCase):
     def setUp(self):
+        from kg.ontology_editing import effective_schema
+        ontology = patch('kg.extraction.read_current_ontology', side_effect=lambda config: effective_schema(config, {'version': 0, 'patch': {}}))
+        ontology.start()
+        self.addCleanup(ontology.stop)
         self.tmp=tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.home=Path(self.tmp.name)

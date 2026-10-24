@@ -216,10 +216,57 @@ class HybridSearch:
         """
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 10000:
             raise ValueError("Index limit must be from 1 to 10000")
+        return self._index_sources(self._sources(), limit=limit, force=force)
+
+    def index_uris(self, uris, *, limit=100):
+        """Refresh committed owned facts before acknowledging a Web mutation.
+
+        The initialized model may encode immediately; a cold model is never
+        loaded or downloaded here. Oversized sets are reported as degraded,
+        rather than silently claiming every changed entity was refreshed.
+        """
+        if not isinstance(uris, (list, tuple)) or any(not isinstance(uri, str) for uri in uris):
+            raise ValueError("Index URIs must be a list of strings")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ValueError("Targeted index limit must be from 1 to 1000")
+        owned = list(dict.fromkeys(uri for uri in uris if uri.startswith(self.config.urn_prefix)))
+        selected = owned[:limit]
+        sources = self._run(f"""UNWIND $uris AS source_uri
+            {_lookup_uri('source_uri', 'source_uri')}
+            WITH n WHERE {_visible()} AND n.uri STARTS WITH $prefix
+            OPTIONAL MATCH (c:KGSearchChunk {{source_uri:n.uri,namespace:$prefix}})
+            WHERE {_current_chunk()}
+            RETURN properties(n) AS properties,labels(n) AS labels,
+                coalesce(toString(n.hermes_updatedAt),'') AS updated,
+                collect(DISTINCT {{fingerprint:c.source_fingerprint,state:c.embedding_state}}) AS indexed
+            ORDER BY properties.uri""", {"uris": selected}) if selected else []
+        report = self._index_sources(sources, limit=limit, force=False, ready_only=True,
+                                     cleanup_uris=selected)
+        omitted = len(owned) - len(selected)
+        if omitted:
+            report['errors'].append('targeted_index_limit')
+        report.update({'requested': len(owned), 'omitted': omitted,
+                       'state': 'degraded' if report['errors'] or report['pending'] or report['stale_skipped'] else 'current',
+                       'lexical': 'current' if not omitted and not report['stale_skipped'] else 'degraded'})
+        # Absence of embeddings is a semantic limitation even when no active
+        # source remains (e.g. an archive), while visibility remains immediate.
+        ready = self.embedder is not None and self.embedder.status().get('ready')
+        report['semantic'] = 'current' if ready and report['state'] == 'current' else 'degraded'
+        if report['semantic'] != 'current':
+            report['state'] = 'degraded'
+            if not ready and 'embedding_unavailable' not in report['errors']:
+                report['errors'].append('vector_pending')
+        return report
+
+    def _index_sources(self, sources, *, limit, force=False, ready_only=False, cleanup_uris=None):
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 10000:
+            raise ValueError("Index limit must be from 1 to 10000")
         report = {"indexed": 0, "vector_indexed": 0, "pending": 0, "stale_skipped": 0, "errors": []}
         model_status = self.embedder.status() if self.embedder is not None else {}
         can_vectorize = self.embedder is not None and model_status.get("cached") is not False and not model_status.get("error")
-        for source in self._sources():
+        if ready_only:
+            can_vectorize = bool(self.embedder is not None and model_status.get('ready'))
+        for source in sources:
             props = source["properties"]
             fingerprint = entity_fingerprint(props)
             indexed = source.get("indexed", [])
@@ -233,7 +280,7 @@ class HybridSearch:
                 break
             text = entity_document(props) or props["uri"]
             vectors, chunks, embedding_state = [], [(text, None, 0)], "pending"
-            if self.embedder is not None:
+            if self.embedder is not None and (not ready_only or can_vectorize):
                 try:
                     token_chunks = self.embedder.chunk(text)
                     chunks = [(c.text, c.token_count, c.index) for c in token_chunks]
@@ -280,9 +327,10 @@ class HybridSearch:
                 report["stale_skipped"] += 1
         # Remove derived content for deleted/archived sources without touching facts.
         self._run(f"""MATCH (c:KGSearchChunk) WHERE c.namespace=$prefix
+            AND ($cleanup_uris IS NULL OR c.source_uri IN $cleanup_uris)
             {_lookup_uri('c.source_uri', 'c', allow_missing=True)}
             WITH c,n WHERE n IS NULL OR NOT {_visible()}
-            DELETE c""", write=True)
+            DELETE c""", {'cleanup_uris': cleanup_uris}, write=True)
         return report
 
     def reindex(self, limit=10000):
@@ -438,15 +486,24 @@ class HybridSearch:
                         {**scope, "index": FULLTEXT_INDEX, "query": lucene, "limit": candidate_limit})
                 except Exception:
                     warnings.append("fulltext_unavailable")
-        if not lexical:
-            lexical = self._run(f"""MATCH (n) WHERE {_visible()} AND {_requested_scope()}
+        # Current authoritative text remains searchable while its new revision
+        # awaits projection, even if some OTHER indexed fact already matched.
+        fresh = self._run(f"""MATCH (n) WHERE {_visible()} AND {_requested_scope()}
+                AND (NOT $fresh_only OR NOT EXISTS {{ MATCH (c:KGSearchChunk {{source_uri:n.uri}})
+                    WHERE {_current_chunk()} }})
                 AND any(term IN $terms WHERE term<>'' AND any(value IN
                     [n.uri,n.foaf_name,n.hermes_name,n.hermes_description,n.hermes_note,
                      n.hermes_preferenceKey,n.hermes_preferenceValue,n.hermes_decisionText,n.hermes_decisionContext]
-                     + coalesce(n.hermes_aliasNames,[]) WHERE toLower(toString(value)) CONTAINS term))
+                     + coalesce(n.hermes_aliasNames,[])
+                     + [key IN keys(n) WHERE key STARTS WITH 'x_' | n[key]]
+                     WHERE toLower(CASE WHEN valueType(value) STARTS WITH 'LIST'
+                         THEN reduce(text='',part IN value | text+' '+coalesce(toStringOrNull(part),''))
+                         ELSE toStringOrNull(value) END) CONTAINS term))
                 RETURN n.uri AS uri,coalesce(n.hermes_revision,0) AS revision,
-                    coalesce(toString(n.hermes_updatedAt),'') AS updated ORDER BY uri LIMIT $limit""",
-                {**scope, "terms": _terms(question), "limit": candidate_limit})
+                    coalesce(toString(n.hermes_updatedAt),'') AS updated ORDER BY updated DESC,uri LIMIT $limit""",
+                {**scope, "terms": _terms(question), "limit": candidate_limit, "fresh_only": bool(lexical)})
+        fresh_uris = {row['uri'] for row in fresh}
+        lexical = fresh + [row for row in lexical if row['uri'] not in fresh_uris]
         rankings["keyword"] = lexical
         # The worker may be downloading/loading under the embedder's lock.
         # Readiness is a nonblocking snapshot; a search must never enter model
@@ -515,5 +572,11 @@ class HybridSearch:
             results = [self._result(by_uri[c["uri"]]) for c in fused if c["uri"] in by_uri][:limit]
         else:
             results = []
+        semantic_current = index.get('pending_count') == 0 and 'vector' in rankings
+        if not semantic_current:
+            warnings.append('semantic_index_pending')
         return {"kg_results": results, "mode": "hybrid" if "vector" in rankings else "keyword",
-                "index": index, "warnings": list(dict.fromkeys(warnings))}
+                "index": index, "warnings": list(dict.fromkeys(warnings)),
+                "freshness": {'state': 'current' if semantic_current else 'degraded',
+                              'lexical': 'current', 'semantic': 'current' if semantic_current else 'degraded',
+                              'pending_count': index.get('pending_count')}}
