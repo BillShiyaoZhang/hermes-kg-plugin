@@ -26,16 +26,23 @@ export const isOntologyRelation = (
   definition: OntologyDefinition,
 ): definition is OntologyRelationDefinition => "domain" in definition;
 
-export function ontologyTypeLabel(type: string): string {
+export function ontologyTypeLabel(
+  type: string,
+  schema?: Pick<OntologySchema, "entity_types">,
+): string {
   if (type === "any") return "任意业务类型";
   if (type === "undeclared") return "未声明类型范围";
-  return typeLabels[type as keyof typeof typeLabels] || type;
+  const definition = schema?.entity_types.find((item) => item.key === type);
+  return definition
+    ? ontologyDefinitionLabel(definition)
+    : typeLabels[type] || type;
 }
 
 export function ontologyDefinitionLabel(
   definition: OntologyDefinition,
 ): string {
-  if (definition.customized_fields?.includes("label")) return definition.label;
+  if (definition.custom || definition.customized_fields?.includes("label"))
+    return definition.label;
   return isOntologyRelation(definition)
     ? relationLabel(definition)
     : typeLabels[definition.key as keyof typeof typeLabels] ||
@@ -62,6 +69,8 @@ export function ontologyGraph(schema: OntologySchema): {
       type: definition.key,
       layer: "schema",
       description: ontologyDefinitionDescription(definition),
+      disabled: definition.active === false,
+      custom: definition.custom,
     });
     definitions.set(id, definition);
   }
@@ -71,7 +80,7 @@ export function ontologyGraph(schema: OntologySchema): {
       nodeIds.add(id);
       nodes.push({
         id,
-        label: ontologyTypeLabel(type),
+        label: ontologyTypeLabel(type, schema),
         type,
         layer: "schema",
         description:
@@ -103,7 +112,9 @@ export function ontologyGraph(schema: OntologySchema): {
           label: relationLabel(definition),
           kind: "definition",
           relationType: definition.key,
-          description: `${ontologyTypeLabel(source)} → ${ontologyTypeLabel(target)} · 允许的类型规则，不代表已保存事实。${ontologyDefinitionDescription(definition)}`,
+          disabled: definition.active === false,
+          custom: definition.custom,
+          description: `${ontologyTypeLabel(source, schema)} → ${ontologyTypeLabel(target, schema)} · ${definition.active === false ? "已停用的类型规则，保留用于核对历史记录。" : "允许的类型规则，不代表已保存事实。"}${ontologyDefinitionDescription(definition)}`,
         });
         definitions.set(id, definition);
       }

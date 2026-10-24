@@ -1,0 +1,353 @@
+.oc-manager {
+  padding: 20px;
+  min-width: 0;
+  color: #2b3e31;
+  font-size: 0.8125rem;
+}
+.oc-manager h2 {
+  margin: 7px 0 9px;
+  font-size: 1.125rem;
+}
+.oc-manager header p {
+  color: #576b5b;
+  margin: 0 0 20px;
+}
+.oc-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  min-height: 40px;
+  margin-bottom: 9px;
+  border: 0;
+  background: transparent;
+  color: #4c6653;
+  font: inherit;
+  cursor: pointer;
+}
+.oc-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: #f1f5ef;
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+.oc-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  flex: 1;
+  padding: 7px;
+  background: transparent;
+  color: #536959;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+.oc-tabs button[aria-pressed="true"] {
+  background: #fff;
+  color: #2d5037;
+  box-shadow: 0 1px 4px #29412e14;
+}
+.oc-tabs span {
+  font-size: 0.6875rem;
+  color: #5b6e60;
+}
+.oc-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.oc-search {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  padding: 0 9px;
+  border: 1px solid #cbd8c7;
+  border-radius: 6px;
+}
+.oc-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  min-height: 42px;
+  color: #263e2d;
+  outline-offset: 2px;
+}
+.oc-manager select,
+.oe-field select {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid #b9cbb5;
+  border-radius: 6px;
+  padding: 9px 7px;
+  background: #fff;
+  color: #324f39;
+  font: inherit;
+  min-height: 44px;
+}
+.oc-list-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 15px 0;
+}
+.oc-list-heading > span {
+  color: #526957;
+}
+.oc-new {
+  min-height: 40px;
+  font-size: 0.75rem;
+}
+.oc-definitions {
+  display: grid;
+  gap: 12px;
+}
+.oc-definition {
+  padding: 14px;
+  border: 1px solid #dbe5d7;
+  border-radius: 8px;
+  background: #fff;
+}
+.oc-definition.is-inactive {
+  border-style: dashed;
+  background: #f7f8f5;
+}
+.oc-definition-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.oc-definition-title h3 {
+  font-size: 0.875rem;
+  margin: 0 auto 0 0;
+  overflow-wrap: anywhere;
+}
+.oc-status {
+  font-size: 0.625rem;
+  padding: 3px 6px;
+  color: #365e3e;
+  background: #edf4e8;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.oc-status.is-inactive {
+  color: #695e46;
+  background: #f0ecdf;
+}
+.oc-definition-title small,
+.oc-protected {
+  font-size: 0.6875rem;
+  color: #58685b;
+}
+.oc-definition > p {
+  color: #586c5d;
+  line-height: 1.65;
+  margin: 10px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.oc-definition summary {
+  color: #49664f;
+  min-height: 36px;
+  align-content: center;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+.oc-definition dl {
+  margin: 0;
+  font-size: 0.6875rem;
+}
+.oc-definition dl div {
+  padding: 7px 0;
+  border-top: 1px solid #e8ede4;
+}
+.oc-definition dt {
+  color: #647367;
+  margin-bottom: 3px;
+}
+.oc-definition dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.oc-definition-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 9px;
+}
+.oc-definition-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 40px;
+  padding: 7px 9px;
+  border: 1px solid #cedbc9;
+  background: #fbfcf9;
+  color: #3f6247;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+}
+.oc-definition-actions .oc-delete {
+  color: #984f3c;
+  border-color: #e1c8bd;
+}
+.oc-manager button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.oc-protected {
+  display: block;
+  margin-top: 10px;
+}
+.oc-receipt {
+  display: flex;
+  gap: 7px;
+  align-items: start;
+  padding: 12px;
+  background: #edf5e8;
+  color: #365d3d;
+  border: 1px solid #bfd2b6;
+  border-radius: 7px;
+  margin-bottom: 14px;
+}
+.oc-receipt svg {
+  flex-shrink: 0;
+}
+.oc-risk {
+  overflow-wrap: anywhere;
+  margin: 14px 0;
+  padding: 13px;
+  border: 1px solid #cadac4;
+  background: #f4f8f1;
+  border-radius: 8px;
+}
+.oc-mutation .oe-header h2,
+.oc-mutation .oe-summary {
+  overflow-wrap: anywhere;
+}
+.oc-risk.is-medium {
+  border-color: #dcccab;
+  background: #fcf8ed;
+}
+.oc-risk.is-high {
+  border-color: #dcbbac;
+  background: #fff5ef;
+  color: #73432e;
+}
+.oe-editor .oc-risk h3 {
+  display: flex;
+  align-items: center;
+  justify-content: start;
+  gap: 7px;
+  margin: 0 0 8px;
+  font-size: 0.8125rem;
+}
+.oc-risk ul {
+  margin: 0 0 10px;
+  padding-left: 17px;
+  line-height: 1.7;
+  font-size: 0.75rem;
+}
+.oc-followup {
+  font-size: 0.75rem;
+  line-height: 1.65;
+}
+.oc-definition-id {
+  display: block;
+  margin: 7px 0;
+  font-size: 0.6875rem;
+  overflow-wrap: anywhere;
+}
+.oc-definition-id code {
+  font: inherit;
+}
+.oc-references {
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid #d8d8c6;
+}
+.oc-references > strong {
+  font-size: 0.75rem;
+}
+.oc-references dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin: 10px 0 0;
+  font-size: 0.6875rem;
+}
+.oc-references dl div {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 7px;
+}
+.oc-references dt {
+  color: #5d6251;
+}
+.oc-references dd {
+  font-weight: 600;
+  margin: 0;
+}
+.oc-confirmation {
+  margin: 15px 0 0;
+}
+.oc-confirmation > input {
+  background: #fff;
+  border-color: #c5a99a;
+}
+.oc-destructive-summary {
+  background: #fff6f1;
+  border-color: #e5c9bc;
+}
+.oc-verdict {
+  padding: 12px;
+  border-radius: 7px;
+  background: #edf5e7;
+  border: 1px solid #bdcfb4;
+  color: #385b3f;
+  font-size: 0.75rem;
+}
+.oc-verdict > svg {
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.oc-verdict.is-blocked {
+  background: #fff3e4;
+  border-color: #dfc9a4;
+  color: #7a542b;
+}
+.oc-verdict ul {
+  padding-left: 16px;
+  margin-bottom: 0;
+}
+.oc-manager :is(input, select, button, summary):focus-visible,
+.oc-mutation:focus-visible {
+  outline: 3px solid #597b5d;
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .oc-manager {
+    padding: 16px;
+  }
+  .oc-filters {
+    flex-wrap: wrap;
+  }
+  .oc-search {
+    flex-basis: 100%;
+  }
+}

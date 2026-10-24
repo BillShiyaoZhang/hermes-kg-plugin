@@ -164,7 +164,7 @@ export function normalizeMemory(input: unknown): Memory {
       "preference",
       "location",
       "concept",
-    ].includes(rawType)
+    ].includes(rawType) || /^x_[a-z][a-z0-9_]{0,47}$/.test(rawType)
       ? rawType
       : "unknown"
   ) as EntityType;

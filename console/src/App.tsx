@@ -1322,10 +1322,10 @@ function MemoryLibrary({
                     </div>
                     <p>
                       {memory.description ||
-                        `${typeLabels[memory.type]}记忆 · 打开查看内容与来源`}
+                        `${typeLabels[memory.type] || memory.type}记忆 · 打开查看内容与来源`}
                     </p>
                     <div className="memory-row-meta">
-                      <span>{typeLabels[memory.type]}</span>
+                      <span>{typeLabels[memory.type] || memory.type}</span>
                       {memory.eventTime && (
                         <>
                           <i />
@@ -2255,7 +2255,7 @@ function MemoryDrawer({
         <div className="drawer-top">
           <span>
             <TypeIcon type={memory.type} size={15} />
-            {typeLabels[memory.type]}记忆
+            {typeLabels[memory.type] || memory.type}记忆
           </span>
           <div>
             {memory.readOnly && <Badge>共享 · 仅查看</Badge>}
@@ -3479,7 +3479,7 @@ function ReviewDrawer({
               <div className="review-entity-heading">
                 <TypeIcon type={memory.type} size={16} />
                 <div>
-                  <Badge>{typeLabels[memory.type]}</Badge>
+                  <Badge>{typeLabels[memory.type] || memory.type}</Badge>
                   <h3>{drafts[memory.uri]?.name ?? memory.name}</h3>
                 </div>
                 {isPending && memory.uri && !memory.readOnly && (

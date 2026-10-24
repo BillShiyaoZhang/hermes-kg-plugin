@@ -41,12 +41,12 @@ def _required_property_description():
 
 # Keep one plain entity object. Type-dependent required fields are disclosed here
 # and enforced by prepare_entity, using the same shared contract constants.
-ENTITY_SCHEMA={"type":"object","description":"Required fields by type: "+_required_property_description()+". Event exception: explicit time_precision=unknown with event_status=occurred requires no event_time/end_time. Preference/Decision automatically link to the configured existing user Person; do not repeat that ownership relation.","properties":{
+ENTITY_SCHEMA={"type":"object","description":"Required fields by type: "+_required_property_description()+". Event exception: explicit time_precision=unknown with event_status=occurred requires no event_time/end_time. Preference/Decision auto-link the existing user Person; omit duplicate ownership.","properties":{
     "id":{"type":"string","minLength":1,"description":"Stable ASCII slug or canonical URN; reuse existing IDs."},
-    "type":{"type":"string","enum":list(ENTITY_LABELS)},
+    "type":{"type":"string","anyOf":[{"enum":list(ENTITY_LABELS)},{"pattern":"^x_[a-z][a-z0-9_]{0,47}$"}],"description":"Published active namespace x_ type only."},
     "name":{"type":"string","minLength":1,"description":"Actual display name; do not infer a person's name from a URI."},
     "props":{"type":"object","properties":PROPERTY_SCHEMAS,"additionalProperties":True,
-             "description":"Extra scalar/homogeneous-array domain fields allowed; managed URI/timestamps/provenance cannot be overridden."}},
+             "description":"Extra scalar/homogeneous-array fields allowed; managed metadata stays protected."}},
     "required":["id","type","name"],"additionalProperties":False}
 
 
@@ -62,14 +62,14 @@ def _relationship_directions():
 RELATION_SCHEMA={"type":"object","description":"Both typed endpoints must exist or be created in this transaction; missing/wrong types fail the whole write. Directions: "+_relationship_directions(),"properties":{
     "from_urn":{"type":"string","description":"Canonical source URI in this profile's namespace."},
     "to_urn":{"type":"string","description":"Canonical target URI; external targets must be shared and visible."},
-    "relation_type":{"type":"string","enum":sorted(set(RELATION_ALIASES.values())),"description":"Canonical relation type; obey its direction."},
+    "relation_type":{"type":"string","anyOf":[{"enum":sorted(set(RELATION_ALIASES.values()))},{"pattern":"^X_[A-Z][A-Z0-9_]{0,47}$"}],"description":"Built-in or active namespace X_ relation; obey direction."},
     "props":{"type":"object","properties":{"label":{"type":"string"}},"additionalProperties":True}},
     "required":["from_urn","to_urn","relation_type"],"additionalProperties":False}
 
 
 WRITE_SCHEMA={
     "name":"kg_write",
-    "description":"Save supported durable facts atomically. disposition=applied means saved; deferred means awaiting human review, NOT saved. NEVER create test/connectivity_probe events; use kg_status. Failed commands, tool instructions and assistant suggestions are not user preferences/decisions. Obey required properties and relationship directions.",
+    "description":"Save durable facts atomically. applied=saved; deferred=awaiting human review. NEVER create test/connectivity_probe events; use kg_status. Commands, tool instructions and assistant suggestions are not user preferences/decisions. Follow required fields and relation directions.",
     "parameters":{"type":"object","properties":{
         "entities":{"type":"array","items":ENTITY_SCHEMA,"maxItems":50},
         "relations":{"type":"array","items":RELATION_SCHEMA,"maxItems":100}},

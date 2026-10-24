@@ -8,7 +8,9 @@ import uuid
 from datetime import datetime, timezone
 
 from .config import KGConfig, load_config
-from .schema import ENTITY_LABELS, RELATION_ENDPOINTS, canonical_urn, normalize_rel, prepare_entity, prepare_relation, validate_event_timing
+from .schema import (ENTITY_LABELS, RELATION_ENDPOINTS, canonical_urn, normalize_rel,
+                     prepare_entity, prepare_relation, validate_event_timing,
+                     runtime_entity_labels, runtime_kind, schema_for_store)
 from .lifecycle import (ORIGINS, REVIEWED_ORIGINS, MemoryNotFound, VersionConflict,
                         evidence_for, payload_evidence, revision_id, validate_operation_id,
                         validate_version, normalized_person_name)
@@ -168,6 +170,9 @@ class KGStore:
         from .ontology_editing import STATE_QUERY, state_from_rows
         return state_from_rows(self.run_read(STATE_QUERY, {'namespace': self.config.urn_prefix}))
 
+    def ontology_schema(self):
+        return schema_for_store(self)
+
     def write_batch(self, entities, relations, source_session=None, checkpoint=None, *,
                     origin=None, evidence=None, expected_versions=None, operation_id=None,
                     review_payload=None, reason="", request_hash=None, review_resolution=None,
@@ -185,25 +190,26 @@ class KGStore:
         if operation_id is not None:
             validate_operation_id(operation_id)
         expected_versions = dict(expected_versions or {})
-        for uri, version in expected_versions.items():
-            canonical_urn(uri, prefix=self.config.urn_prefix)
-            validate_version(version)
         if not isinstance(reason, str) or len(reason) > 4000:
             raise ValueError("reason must be text of at most 4000 characters")
-        from .ontology_editing import canonical_input, aliases_for
+        from .ontology_editing import canonical_input, aliases_for, effective_schema
         ontology_state = self.ontology_overlay()
+        ontology = effective_schema(self.config, ontology_state)
+        for uri, version in expected_versions.items():
+            canonical_urn(uri, prefix=self.config.urn_prefix, ontology=ontology)
+            validate_version(version)
         if expected_ontology_version is not None:
             validate_version(expected_ontology_version)
             if expected_ontology_version != ontology_state['version']:
                 raise ValueError('Ontology version conflict; retry against the current schema')
         prepared, extra_relations = [], []
         for entity in entities:
-            item, implicit = prepare_entity(canonical_input(entity, ontology_state), self.config)
+            item, implicit = prepare_entity(canonical_input(entity, ontology_state), self.config, ontology)
             prepared.append(item)
             extra_relations.extend(implicit)
         if len({item["uri"] for item in prepared}) != len(prepared):
             raise ValueError("A batch cannot contain the same canonical entity twice")
-        prepared_relations = [prepare_relation(canonical_input(rel, ontology_state, relation=True), self.config)
+        prepared_relations = [prepare_relation(canonical_input(rel, ontology_state, relation=True), self.config, ontology)
                               for rel in relations + (extra_relations if include_implicit_relations else [])]
         # Identical explicit/implicit owner edges collapse; conflicting properties fail.
         unique_relations = {}
@@ -229,7 +235,7 @@ class KGStore:
         evidence_payload = {**review_payload,
                             'entities': [canonical_input(item, ontology_state) for item in review_payload.get('entities', [])],
                             'relations': [canonical_input(item, ontology_state, relation=True) for item in review_payload.get('relations', [])]} if review_payload else None
-        evidence = evidence if evidence is not None else payload_evidence(evidence_payload, self.config)
+        evidence = evidence if evidence is not None else payload_evidence(evidence_payload, self.config, ontology)
         for item in prepared:
             evidence_for(evidence, item["uri"])
         digest = hashlib.sha256(_json({"entities": prepared, "relations": prepared_relations, "source_session": source_session, "checkpoint": checkpoint}).encode()).hexdigest()
@@ -252,6 +258,7 @@ class KGStore:
         metadata["request_hash"] = request_hash
         metadata['ontology_version'] = ontology_state['version']
         metadata['ontology_aliases'] = aliases_for(ontology_state)
+        metadata['entity_labels'] = list(runtime_entity_labels(ontology).values())
         metadata["review_resolution"] = review_resolution
         if review_resolution:
             metadata["operation_hash"] = hashlib.sha256(_json([operation_hash, review_resolution]).encode()).hexdigest()
@@ -357,6 +364,7 @@ class KGStore:
         return dict(rows[0]) if rows else None
 
     def _preflight(self, tx, entities, relations, metadata):
+        entity_labels = set(metadata.get('entity_labels', ENTITY_LABELS.values()))
         incoming = {item["uri"]: item for item in entities}
         identifiers = set(incoming) | {rel[key] for rel in relations for key in ("from", "to")}
         current = {uri: self._locked_entity(tx, uri) for uri in sorted(identifiers)}
@@ -383,22 +391,29 @@ class KGStore:
                     raise ValueError("A content-quarantined entity requires explicit review and restoration before updating")
                 raise ValueError("Relationship endpoints must not be quarantined or legacy-excluded")
             if uri in incoming:
-                known = set(labels) & set(ENTITY_LABELS.values())
+                known = set(labels) & entity_labels
                 if known and known != {incoming[uri]["label"]}:
                     raise ValueError("Existing entity label disagrees with incoming type")
             if not uri.startswith(self.config.urn_prefix) and props.get("shared") is not True:
                 raise ValueError("Relationship endpoints must be visible")
         for rel in relations:
+            rel['_existing_properties'] = []
             labels = []
             for uri in (rel["from"], rel["to"]):
                 node = current[uri]
-                known = {incoming[uri]["label"]} if uri in incoming else set((node or {}).get("labels", [])) & set(ENTITY_LABELS.values())
+                known = {incoming[uri]["label"]} if uri in incoming else set((node or {}).get("labels", [])) & entity_labels
                 if not known or (node and "KGLegacyUnresolved" in node["labels"] and uri not in incoming):
                     raise ValueError("Relationship endpoints must be typed entities")
                 labels.append(known)
             expected = RELATION_ENDPOINTS.get(rel["type"])
             if expected and (not labels[0] & expected[0] or not labels[1] & expected[1]):
                 raise ValueError("Relationship endpoint types violate the graph schema")
+            if rel['properties']:
+                # Keep every matching historical edge: MERGE may match several,
+                # and a legacy field must be unchanged on each of those facts.
+                rel['_existing_properties'] = [dict(row['properties']) for row in tx.run(self._query(f'''
+                    MATCH (a {{uri:$from}})-[r:{rel['type']}]->(b {{uri:$to}})
+                    RETURN properties(r) AS properties'''), {'from': rel['from'], 'to': rel['to']})]
         return current
 
     def _save_revision(self, tx, uri, labels, properties, metadata, action="write"):
@@ -446,6 +461,7 @@ class KGStore:
         return self._finish_receipt(tx, metadata, receipt)
 
     def _apply_batch(self, tx, entities, relations, metadata, receipt, existing_by_uri):
+        entity_labels = set(metadata.get('entity_labels', ENTITY_LABELS.values()))
         provenance = {"source_session": metadata["source_session"], "extraction_id": metadata["snapshot_id"]}
         for entity in entities:
             # Match uri globally so a pre-migration node is upgraded instead of duplicated.
@@ -459,7 +475,7 @@ class KGStore:
                     raise ValueError("A content-quarantined entity requires explicit review and restoration before updating")
                 if "KGLegacyAlias" in existing[0]["labels"]:
                     raise ValueError("A legacy alias must be resolved before updating its entity")
-                known = set(existing[0]["labels"]) & set(ENTITY_LABELS.values())
+                known = set(existing[0]["labels"]) & entity_labels
                 if known and known != {entity["label"]}:
                     raise ValueError("Existing entity label disagrees with incoming type")
             if entity["label"] == "Event":
@@ -523,7 +539,7 @@ class KGStore:
             target_labels = {label.split(":")[-1] for label in endpoints[0]["target_labels"]}
             if (source_labels | target_labels).intersection({"KGQuarantined", "KGLegacyAlias", "KGLegacyUnresolved"}):
                 raise ValueError("Relationship endpoints must not be quarantined or legacy-excluded")
-            if not source_labels.intersection(ENTITY_LABELS.values()) or not target_labels.intersection(ENTITY_LABELS.values()):
+            if not source_labels.intersection(entity_labels) or not target_labels.intersection(entity_labels):
                 raise ValueError("Relationship endpoints must be typed entities")
             expected = RELATION_ENDPOINTS.get(rel["type"])
             if expected and (not source_labels.intersection(expected[0]) or not target_labels.intersection(expected[1])):
@@ -598,7 +614,7 @@ class KGStore:
 
     def transition_memory(self, uri, action, *, expected_version, operation_id, reason="", request_hash=None):
         """Archive/restore without losing content, with one graph transaction and receipt."""
-        uri = canonical_urn(uri, prefix=self.config.urn_prefix)
+        uri = canonical_urn(uri, prefix=self.config.urn_prefix, ontology=self.ontology_schema())
         if not uri.startswith(self.config.urn_prefix) or action not in {"archive", "restore"}:
             raise ValueError("Invalid memory transition")
         validate_version(expected_version)
@@ -623,7 +639,7 @@ class KGStore:
         props, labels = current["properties"], current["labels"]
         if props.get("hermes_revision", 0) != expected_version:
             raise VersionConflict("Memory version changed; refresh before changing it")
-        if not set(labels) & set(ENTITY_LABELS.values()) or set(labels) & {"KGLegacyAlias", "KGLegacyUnresolved"} or props.get("hermes_aliasConfirmed") is True:
+        if not runtime_kind(labels) or set(labels) & {"KGLegacyAlias", "KGLegacyUnresolved"} or props.get("hermes_aliasConfirmed") is True:
             raise ValueError("Legacy aliases and unresolved records require explicit maintenance")
         if action == "restore" and ("KGQuarantined" not in labels or props.get("hermes_archivedByWorkbench") is not True):
             raise ValueError("Only memories archived by the workbench can be restored")
@@ -656,14 +672,14 @@ class KGStore:
         return {"ok": True, "receipt_id": receipt["snapshot_id"], "extraction_hash": receipt["extraction_hash"], "source_session": receipt.get("source_session"), "checkpoint": json.loads(receipt.get("checkpoint_json", "{}")), "idempotent": idempotent, "entities_written": receipt.get("entities_written", 0), "relations_written": receipt.get("relations_written", 0), "entity_uris": receipt.get("entity_uris", []), "relation_ids": receipt.get("relation_ids", []), "disposition": receipt.get("disposition", "applied"), "review_batch_id": receipt.get("review_batch_id")}
 
     def delete_entity(self, uri, type_=None):
-        uri = canonical_urn(uri, type_, prefix=self.config.urn_prefix)
+        uri = canonical_urn(uri, type_, prefix=self.config.urn_prefix, ontology=self.ontology_schema())
         if not uri.startswith(self.config.urn_prefix):
             raise ValueError("Cannot delete another namespace's entity")
         with self.driver.session(database=self.config.database) as session:
             return self._execute(session, "write", lambda tx: tx.run(self._query("MATCH (n {uri:$uri}) WITH collect(n) AS nodes FOREACH (n IN nodes | DETACH DELETE n) RETURN size(nodes) AS deleted"), {"uri": uri}).single()["deleted"])
 
     def delete_relation(self, source, target, rel_type):
-        rel = prepare_relation({"from": source, "to": target, "type": rel_type}, self.config)
+        rel = prepare_relation({"from": source, "to": target, "type": rel_type}, self.config, self.ontology_schema())
         with self.driver.session(database=self.config.database) as session:
             query = f"MATCH (a {{uri:$from}})-[r:{rel['type']}]->(b {{uri:$to}}) WITH collect(r) AS edges FOREACH (r IN edges | DELETE r) RETURN size(edges) AS deleted"
             return self._execute(session, "write", lambda tx: tx.run(self._query(query), {"from": rel["from"], "to": rel["to"]}).single()["deleted"])

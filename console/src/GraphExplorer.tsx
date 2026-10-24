@@ -60,6 +60,7 @@ import {
   searchOntology,
 } from "./ontologyV3";
 import OntologyInspector from "./OntologyInspector";
+import OntologyManager from "./OntologyManager";
 import EventTimeline from "./EventTimeline";
 import ReviewImpact from "./ReviewImpact";
 import {
@@ -164,7 +165,9 @@ function validView(value: unknown): value is ViewState {
   const v = value as ViewState;
   return (
     Array.isArray(v.types) &&
-    v.types.every((t) => TYPE_KEYS.includes(t)) &&
+    v.types.every(
+      (t) => typeof t === "string" && t.length > 0 && t.length <= 64,
+    ) &&
     Array.isArray(v.relations) &&
     v.relations.every((t) => typeof t === "string") &&
     typeof v.filterQuery === "string" &&
@@ -194,6 +197,29 @@ function validView(value: unknown): value is ViewState {
     Array.isArray(v.groups) &&
     typeof v.width === "number"
   );
+}
+
+function currentDefinitionView(
+  view: ViewState,
+  schema: OntologySchema | null,
+): ViewState {
+  if (!schema) return view;
+  const types = view.types.filter((key) =>
+    schema.entity_types.some(
+      (item) => item.key === key && item.runtime_supported,
+    ),
+  );
+  const relations = view.relations.filter(
+    (key) =>
+      key === "__none__" ||
+      schema.relations.some(
+        (item) => item.key === key && item.runtime_supported,
+      ),
+  );
+  return types.length === view.types.length &&
+    relations.length === view.relations.length
+    ? view
+    : { ...view, types, relations };
 }
 
 export default function GraphExplorer({
@@ -234,6 +260,7 @@ export default function GraphExplorer({
   onReconnect?: () => void;
 }) {
   const [ontologyEditing, setOntologyEditing] = useState(false);
+  const [ontologyManagerOpen, setOntologyManagerOpen] = useState(false);
   const ontologyEditLock = useRef(false);
   const interactionLocked = externalInteractionLocked || ontologyEditing;
   const changeOntologyInteractionLock = useCallback(
@@ -263,6 +290,81 @@ export default function GraphExplorer({
   const schemaContext = useRef(schema);
   schemaContext.current = schema;
   const schemaReadGeneration = useRef(0);
+  const typeKeys = useMemo(
+    () =>
+      schema?.entity_types
+        .filter((item) => item.runtime_supported)
+        .map((item) => item.key) ?? [...TYPE_KEYS],
+    [schema],
+  );
+  const previousTypeKeys = useRef<string[]>([...TYPE_KEYS]);
+  const allTypesVisible =
+    typeKeys.length === v.types.length &&
+    typeKeys.every((type) => v.types.includes(type));
+  useEffect(() => {
+    if (!schema) return;
+    const definitions = ontologyGraph(schema);
+    const nodeIds = new Set(definitions.nodes.map((item) => item.id));
+    const edgeIds = new Set(definitions.edges.map((item) => item.id));
+    const before = previousTypeKeys.current;
+    previousTypeKeys.current = typeKeys;
+    setViews((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const key of ["ontology", "explore", "review"] as const) {
+        const selected = current[key].types;
+        const all =
+          selected.length === before.length &&
+          before.every((type) => selected.includes(type));
+        const types = all
+          ? [...typeKeys]
+          : selected.filter((type) => typeKeys.includes(type));
+        if (types.join("\u0000") !== selected.join("\u0000")) {
+          next[key] = { ...current[key], types };
+          changed = true;
+        }
+      }
+      const ontologyView = next.ontology;
+      const selected = ontologyView.selected.filter((id) => nodeIds.has(id));
+      const primary =
+        ontologyView.primary && nodeIds.has(ontologyView.primary)
+          ? ontologyView.primary
+          : null;
+      const edge =
+        ontologyView.edge && edgeIds.has(ontologyView.edge)
+          ? ontologyView.edge
+          : ontologyView.edge?.startsWith("schema-relation:")
+            ? (definitions.edges.find(
+                (item) =>
+                  item.relationType === ontologyView.edge!.split(":")[1],
+              )?.id ?? null)
+            : null;
+      if (
+        selected.length !== ontologyView.selected.length ||
+        primary !== ontologyView.primary ||
+        edge !== ontologyView.edge
+      ) {
+        next.ontology = { ...ontologyView, selected, primary, edge };
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [schema, typeKeys]);
+  useEffect(() => {
+    if (lens !== "ontology") setOntologyManagerOpen(false);
+  }, [lens]);
+  const applyPublishedOntology = (published: OntologySchema) => {
+    schemaReadGeneration.current++;
+    setSchemaLoading(false);
+    setSchema((current) =>
+      current &&
+      (current.namespace !== published.namespace ||
+        (current.version ?? 0) > (published.version ?? 0))
+        ? current
+        : published,
+    );
+    setNotice(`本体版本 ${published.version ?? "—"} 已发布。画布位置已保留。`);
+  };
   const typeName = (key: string) => {
     const definition = schema?.entity_types.find((item) => item.key === key);
     return definition ? ontologyDefinitionLabel(definition) : typeTitle(key);
@@ -284,9 +386,10 @@ export default function GraphExplorer({
     [operationError, setOperationError] = useState<unknown>(null),
     [notice, setNotice] = useState("");
   useEffect(() => {
+    if (ontologyEditing) setNotice("");
     if (!interactionLocked)
       setNotice((current) => (current === interactionMessage ? "" : current));
-  }, [interactionLocked, interactionMessage]);
+  }, [interactionLocked, interactionMessage, ontologyEditing]);
   const [searchOpen, setSearchOpen] = useState(false),
     [searchTerm, setSearchTerm] = useState(""),
     [searchOffset, setSearchOffset] = useState(0),
@@ -344,13 +447,13 @@ export default function GraphExplorer({
   const query = useMemo(
     () => ({
       q: v.filterQuery,
-      types: v.types,
+      types: allTypesVisible ? [] : v.types,
       relation_types: v.relations.filter((r) => r !== "__none__"),
       focus_uri: v.focusUri,
       node_limit: 200,
       edge_limit: 500,
     }),
-    [v.filterQuery, v.types, v.relations, v.focusUri],
+    [v.filterQuery, v.types, v.relations, v.focusUri, allTypesVisible],
   );
   const key = JSON.stringify([schema?.namespace ?? "", query]);
   const previousEntries = useRef<Partial<Record<GraphLens, Entry>>>({});
@@ -445,7 +548,12 @@ export default function GraphExplorer({
     setBusy(false);
     setSearchOpen(false);
     setOperationError(null);
-    const next = { ...now.views[target], ...patch };
+    const proposed = { ...now.views[target], ...patch };
+    const next = currentDefinitionView(proposed, schema);
+    if (next !== proposed)
+      setNotice(
+        "本体定义已经变化，已移除失效筛选；未恢复已删除定义或业务数据。",
+      );
     setLens(target);
     setViews({ ...now.views, [target]: next });
     restoreSelection(next);
@@ -465,9 +573,21 @@ export default function GraphExplorer({
     operation.current?.abort();
     generation.current++;
     setBusy(false);
+    const restored = Object.fromEntries(
+      Object.entries(next.views).map(([key, view]) => [
+        key,
+        currentDefinitionView(view, schema),
+      ]),
+    ) as Views;
     setLens(next.lens);
-    setViews(next.views);
-    restoreSelection(next.views[next.lens]);
+    setViews(restored);
+    restoreSelection(restored[next.lens]);
+    if (
+      Object.keys(restored).some(
+        (key) => restored[key as GraphLens] !== next.views[key as GraphLens],
+      )
+    )
+      setNotice("本体定义已经变化，已移除失效筛选；返回只恢复浏览状态。");
     setSearchOpen(false);
     forceHistory((t) => t + 1);
   };
@@ -482,8 +602,9 @@ export default function GraphExplorer({
     if (!next) return;
     if (redo) h.past.push(now.views[now.lens]);
     else h.future.unshift(now.views[now.lens]);
-    update(next);
-    restoreSelection(next);
+    const restored = currentDefinitionView(next, schema);
+    update(restored);
+    restoreSelection(restored);
     forceHistory((t) => t + 1);
   };
   const clear = () => {
@@ -746,7 +867,14 @@ export default function GraphExplorer({
         Object.values(saved.views).every(validView)
       ) {
         setLens(saved.lens);
-        setViews(saved.views);
+        setViews(
+          Object.fromEntries(
+            Object.entries(saved.views as Views).map(([key, view]) => [
+              key,
+              currentDefinitionView(view, schema),
+            ]),
+          ) as Views,
+        );
         seeds.current = saved.seeds ?? {};
         setSeedRevision((t) => t + 1);
         restoreSelection(saved.views[saved.lens]);
@@ -882,7 +1010,7 @@ export default function GraphExplorer({
         ...ontology,
         nodes: ontology.nodes.filter(
           (n) =>
-            (!TYPE_KEYS.includes(n.type) || v.types.includes(n.type)) &&
+            (!typeKeys.includes(n.type) || v.types.includes(n.type)) &&
             (!matches || matches.has(n.id) || matchingEdgeIds.has(n.id)),
         ),
         edges: ontology.edges.filter(
@@ -1166,7 +1294,7 @@ export default function GraphExplorer({
       return;
     }
     if (item.layer === "schema") {
-      if (TYPE_KEYS.includes(item.type))
+      if (typeKeys.includes(item.type))
         navigate("explore", {
           types: [item.type],
           label: `${typeName(item.type)}实例`,
@@ -1516,6 +1644,7 @@ export default function GraphExplorer({
     element.focus({ preventScroll: true });
     const keydown = (e: globalThis.KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (ontologyEditLock.current) return;
         e.preventDefault();
         e.stopPropagation();
         update({ inspector: false });
@@ -1709,6 +1838,19 @@ export default function GraphExplorer({
           </strong>
         </nav>
         <div className="gw-representations" role="group" aria-label="呈现方式">
+          {lens === "ontology" && schema && (
+            <button
+              aria-label="管理本体"
+              aria-pressed={ontologyManagerOpen}
+              onClick={() => {
+                setOntologyManagerOpen(true);
+                update({ inspector: true });
+              }}
+            >
+              <SlidersHorizontal size={14} />
+              管理本体
+            </button>
+          )}
           <button
             aria-pressed={v.representation === "graph"}
             onClick={() => update({ representation: "graph" })}
@@ -1734,7 +1876,7 @@ export default function GraphExplorer({
         </div>
       </div>
       {(v.filterQuery ||
-        v.types.length !== 6 ||
+        !allTypesVisible ||
         v.relations.length > 0 ||
         v.start ||
         v.end) && (
@@ -1745,9 +1887,9 @@ export default function GraphExplorer({
               <X size={12} />
             </button>
           )}
-          {v.types.length !== 6 && (
-            <button onClick={() => navigate(lens, { types: [...TYPE_KEYS] })}>
-              类型：{v.types.map(typeTitle).join("、") || "全部隐藏"}
+          {!allTypesVisible && (
+            <button onClick={() => navigate(lens, { types: [...typeKeys] })}>
+              类型：{v.types.map(typeName).join("、") || "全部隐藏"}
               <X size={12} />
             </button>
           )}
@@ -1877,7 +2019,7 @@ export default function GraphExplorer({
             )}
             <fieldset>
               <legend>实体类型</legend>
-              {TYPE_KEYS.map((type) => (
+              {typeKeys.map((type) => (
                 <label key={type}>
                   <input
                     type="checkbox"
@@ -2250,7 +2392,24 @@ export default function GraphExplorer({
                   status={selectedReviewStatus}
                 />
               )}
-              {showDetail ? (
+              {lens === "ontology" && ontologyManagerOpen && schema ? (
+                <OntologyManager
+                  schema={schema}
+                  transport={{
+                    validate: api.ontologyValidate,
+                    publish: api.ontologyPublish,
+                    read: api.ontologySchema,
+                  }}
+                  writeEnabled={enabled && writeEnabled && !schemaScopeChanged}
+                  onPublished={applyPublishedOntology}
+                  onInteractionLockChange={changeOntologyInteractionLock}
+                  onReconnect={onReconnect}
+                  onClose={() => {
+                    setOntologyManagerOpen(false);
+                    stage.current?.focus({ preventScroll: true });
+                  }}
+                />
+              ) : showDetail ? (
                 detail
               ) : definition && schema ? (
                 <OntologyInspector
@@ -2265,20 +2424,7 @@ export default function GraphExplorer({
                   }}
                   onInteractionLockChange={changeOntologyInteractionLock}
                   onReconnect={onReconnect}
-                  onPublished={(published) => {
-                    schemaReadGeneration.current++;
-                    setSchemaLoading(false);
-                    setSchema((current) =>
-                      current &&
-                      (current.namespace !== published.namespace ||
-                        (current.version ?? 0) > (published.version ?? 0))
-                        ? current
-                        : published,
-                    );
-                    setNotice(
-                      `本体版本 ${published.version ?? "—"} 已发布。画布位置与选择已保留。`,
-                    );
-                  }}
+                  onPublished={applyPublishedOntology}
                   onInstances={(type) =>
                     navigate("explore", {
                       types: [type],
@@ -3004,9 +3150,14 @@ export default function GraphExplorer({
             }
             seeds.current[target as GraphLens] = queries as NeighborQuery[];
             setSeedRevision((t) => t + 1);
-            navigate(target as GraphLens, value);
+            const restored = currentDefinitionView(value, schema);
+            navigate(target as GraphLens, restored);
             setSavedOpen(false);
-            setNotice("已恢复视图，记录按当前权限重新读取。");
+            setNotice(
+              restored !== value
+                ? "已恢复视图；本体定义已变化，已移除失效筛选。永久删除的定义不会被视图恢复。"
+                : "已恢复视图，记录按当前权限重新读取。",
+            );
           }}
         />
       )}

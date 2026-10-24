@@ -1,7 +1,7 @@
 """Read-only KG diagnostics: connectivity, stored data and past commit evidence."""
 from __future__ import annotations
 
-from .schema import ENTITY_LABELS
+from .schema import runtime_entity_labels, schema_for_store
 
 STATUS_SCHEMA = {
     "name": "kg_status",
@@ -36,7 +36,7 @@ def check_health(config, store):
             sum(CASE WHEN n.uri=$user AND n:Person
                 AND NOT n:KGLegacyAlias AND NOT n:KGLegacyUnresolved AND NOT n:KGQuarantined THEN 1 ELSE 0 END) AS configured_user_matches
     """, {"prefix": config.urn_prefix, "user": config.user_person_urn,
-          "entity_labels": list(ENTITY_LABELS.values())})[0]
+          "entity_labels": list(runtime_entity_labels(schema_for_store(store)).values())})[0]
     # Empty batches have no namespace-bearing entity URIs. Do not guess their
     # ownership or include other profiles' receipts in the health summary.
     receipts = store.run_read("""

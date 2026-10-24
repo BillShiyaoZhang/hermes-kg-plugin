@@ -13,6 +13,7 @@ from rdflib.namespace import OWL, RDF, RDFS, XSD
 from .schema import (ENTITY_LABELS, ENTITY_REQUIRED_PROPERTIES, EVENT_TYPES, PROPERTY_ALIASES,
                      RELATION_ALIASES, RELATION_ENDPOINTS, RESERVED_PROPERTIES,
                      TEXT_PROPERTIES, entity_type, normalize_rel)
+from .schema import runtime_entity_labels, runtime_kind, runtime_relations, schema_for_store
 
 SCOPE = 'current_namespace_active'
 HERMES = Namespace('urn:hermes:ontology:')
@@ -167,32 +168,34 @@ def _active(alias):
 def _safe_node(row, prefix):
     props, labels = row['properties'], set(row['labels'])
     return (isinstance(props.get('uri'), str) and props['uri'].startswith(prefix)
-            and bool(labels & set(ENTITY_LABELS.values()))
+            and runtime_kind(labels) is not None
             and not labels & {'KGQuarantined', 'KGLegacyAlias', 'KGLegacyUnresolved'}
             and (props.get('hermes_aliasConfirmed') is None or props.get('hermes_aliasConfirmed') is False)
             and (props.get('hermes_enabled') is None or props.get('hermes_enabled') is True)
             and props.get('hermes_status') != 'disabled')
 
 
-def _stored_relation(value):
+def _stored_relation(value, ontology=None):
     # API inputs may start with ':', but literal stored identifiers must match
     # the same case-insensitive alias set used by the parameterized query.
-    return RELATION_ALIASES.get(value.upper(), value)
+    return runtime_relations(ontology).get(value.upper(), value)
 
 
-def _graph_relation_aliases(relation_types):
+def _graph_relation_aliases(relation_types, ontology=None):
     if relation_types is None:
         relation_types = []
-    if (not isinstance(relation_types, list) or len(relation_types) > 9
+    if (not isinstance(relation_types, list) or len(relation_types) > 128
             or any(not isinstance(value, str) for value in relation_types)):
-        raise ValueError('relation_types must be a list of at most nine supported relationships')
-    canonical = {normalize_rel(value) for value in relation_types}
-    return sorted(alias for alias, target in RELATION_ALIASES.items() if target in canonical)
+        raise ValueError('relation_types must be a list of at most 128 supported relationships')
+    canonical = {normalize_rel(value, ontology) for value in relation_types}
+    return sorted(alias for alias, target in runtime_relations(ontology).items() if target in canonical)
 
 
 def _node(row):
     props = dict(row['properties'])
-    kind = next(key for key, label in ENTITY_LABELS.items() if label in row['labels'])
+    kind = runtime_kind(row['labels'])
+    if kind is None:
+        raise ValueError('Unknown graph entity type')
     return {'uri': props['uri'], 'type': kind,
             'name': props.get('foaf_name', props.get('foaf:name')) if kind == 'person' else props.get('hermes_name'),
             'description': props.get('hermes_description', ''), 'version': props.get('hermes_revision', 0),
@@ -265,8 +268,8 @@ class OntologyService:
     def __init__(self, config, store):
         self.config, self.store = config, store
 
-    def _params(self):
-        return {'prefix': self.config.urn_prefix, 'entity_labels': list(ENTITY_LABELS.values())}
+    def _params(self, schema=None):
+        return {'prefix': self.config.urn_prefix, 'entity_labels': list(runtime_entity_labels(schema if schema is not None else schema_for_store(self.store)).values())}
 
     def describe(self):
         result = deepcopy(_schema())
@@ -286,17 +289,18 @@ class OntologyService:
         for item in result['entity_types'] + result['relations']:
             item['count'] = None
         try:
-            entities = self.store.run_read(f'MATCH (n) WHERE {_active("n")} RETURN labels(n) AS labels,count(n) AS count', self._params())
-            relations = self.store.run_read(f'MATCH (a)-[r]->(b) WHERE {_active("a")} AND {_active("b")} RETURN type(r) AS type,count(r) AS count', self._params())
-            counts = {key: 0 for key in ENTITY_LABELS}
-            relation_counts = {key: 0 for key in set(RELATION_ALIASES.values())}
+            entities = self.store.run_read(f'MATCH (n) WHERE {_active("n")} RETURN labels(n) AS labels,count(n) AS count', self._params(result))
+            relations = self.store.run_read(f'MATCH (a)-[r]->(b) WHERE {_active("a")} AND {_active("b")} RETURN type(r) AS type,count(r) AS count', self._params(result))
+            registry = runtime_entity_labels(result)
+            counts = {key: 0 for key in registry}
+            relation_counts = {item['key']: 0 for item in result['relations']}
             unmapped = 0
             for row in entities:
-                for key, label in ENTITY_LABELS.items():
+                for key, label in registry.items():
                     if label in row['labels']:
                         counts[key] += row['count']
             for row in relations:
-                canonical = _stored_relation(row['type'])
+                canonical = _stored_relation(row['type'], result)
                 if canonical in relation_counts:
                     relation_counts[canonical] += row['count']
                 else:
@@ -325,12 +329,15 @@ class OntologyService:
                 'total': total, 'offset': offset, 'limit': limit, 'has_more': offset + limit < total}
 
     def entities(self, *, type=None, q='', offset=0, limit=20):
+        schema = schema_for_store(self.store)
+        registry = runtime_entity_labels(schema)
         params = self._page(q, offset, limit)
-        params['selected_labels'] = [ENTITY_LABELS[entity_type(type)]] if type else list(ENTITY_LABELS.values())
+        params['selected_labels'] = [registry[entity_type(type, schema)]] if type else list(registry.values())
         match = f"""MATCH (n) WHERE {_active('n')}
             AND any(label IN labels(n) WHERE label IN $selected_labels)
             AND ($query='' OR any(value IN [n.uri,n.foaf_name,n.hermes_name,n.hermes_description]
-                + coalesce(n.hermes_aliasNames,[]) WHERE toLower(toString(value)) CONTAINS $query))"""
+                + coalesce(n.hermes_aliasNames,[]) + [key IN keys(n) WHERE key STARTS WITH 'x_' | n[key]]
+                WHERE toLower(toString(value)) CONTAINS $query))"""
         total = self.store.run_read(match + ' RETURN count(n) AS total', params)[0]['total']
         rows = self.store.run_read(match + ''' RETURN labels(n) AS labels,properties(n) AS properties
             ORDER BY n.uri,elementId(n) SKIP $offset LIMIT $limit''', params)
@@ -338,9 +345,10 @@ class OntologyService:
         return self._result(items, total, offset, limit)
 
     def relations(self, *, relation=None, q='', offset=0, limit=20):
+        schema = schema_for_store(self.store)
         params = self._page(q, offset, limit)
-        canonical = normalize_rel(relation) if relation else None
-        params['relation_aliases'] = sorted(alias for alias, target in RELATION_ALIASES.items() if target == canonical) if canonical else []
+        canonical = normalize_rel(relation, schema) if relation else None
+        params['relation_aliases'] = sorted(alias for alias, target in runtime_relations(schema).items() if target == canonical) if canonical else []
         match = f"""MATCH (a)-[r]->(b) WHERE {_active('a')} AND {_active('b')}
             AND (size($relation_aliases)=0 OR toUpper(type(r)) IN $relation_aliases)
             AND ($query='' OR any(value IN [a.uri,b.uri,a.foaf_name,a.hermes_name,b.foaf_name,b.hermes_name,r.hermes_relLabel]
@@ -355,7 +363,7 @@ class OntologyService:
             target = {'labels': row['target_labels'], 'properties': row['target_properties']}
             if not _safe_node(source, self.config.urn_prefix) or not _safe_node(target, self.config.urn_prefix):
                 continue
-            kind = _stored_relation(row['type'])
+            kind = _stored_relation(row['type'], schema)
             items.append({'relation_type': kind, 'stored_type': row['type'],
                           'source': {key: value for key, value in _node(source).items() if key in {'uri', 'name', 'type'}},
                           'target': {key: value for key, value in _node(target).items() if key in {'uri', 'name', 'type'}},
@@ -370,14 +378,16 @@ class OntologyService:
         to its one-hop neighbours. Relationship totals concern returned nodes,
         rather than claiming relationships to omitted nodes are displayed.
         """
+        schema = schema_for_store(self.store)
+        registry = runtime_entity_labels(schema)
         if not isinstance(q, str) or len(q) > 200:
             raise ValueError('q must be text of at most 200 characters')
         if types is None:
             types = []
-        if not isinstance(types, list) or len(types) > len(ENTITY_LABELS) or any(not isinstance(kind, str) for kind in types):
+        if not isinstance(types, list) or len(types) > 128 or any(not isinstance(kind, str) for kind in types):
             raise ValueError('types must be a list of at most six supported entity types')
-        selected_labels = sorted({ENTITY_LABELS[entity_type(kind)] for kind in types}) or list(ENTITY_LABELS.values())
-        relation_aliases = _graph_relation_aliases(relation_types)
+        selected_labels = sorted({registry[entity_type(kind, schema)] for kind in types}) or list(registry.values())
+        relation_aliases = _graph_relation_aliases(relation_types, schema)
         for name, value, maximum in (('node_limit', node_limit, 200), ('edge_limit', edge_limit, 500)):
             if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= maximum:
                 raise ValueError(f'{name} must be an integer from 1 to {maximum}')
@@ -405,7 +415,8 @@ class OntologyService:
             result['focus_found'] = True
         selection = """any(label IN labels(n) WHERE label IN $selected_labels)
             AND ($query='' OR any(value IN [n.uri,n.foaf_name,n.hermes_name,n.hermes_description]
-                + coalesce(n.hermes_aliasNames,[]) WHERE toLower(toString(value)) CONTAINS $query))"""
+                + coalesce(n.hermes_aliasNames,[]) + [key IN keys(n) WHERE key STARTS WITH 'x_' | n[key]]
+                WHERE toLower(toString(value)) CONTAINS $query))"""
         match = f'''MATCH (n) WHERE {_active('n')}
             AND (($focus_uri IS NOT NULL AND n.uri=$focus_uri) OR ({selection}))
             AND ($focus_uri IS NULL OR n.uri=$focus_uri OR EXISTS {{
@@ -444,7 +455,7 @@ class OntologyService:
             # Opaque, stable within the stored graph, and distinct for parallel
             # relationships. The database's internal identifier is not exposed.
             edge_id = hashlib.sha256(str(row['element_id']).encode('utf-8')).hexdigest()
-            edges.append({'id': 'edge-' + edge_id, 'relation_type': _stored_relation(row['type']),
+            edges.append({'id': 'edge-' + edge_id, 'relation_type': _stored_relation(row['type'], schema),
                           'stored_type': row['type'],
                           'source': {key: value for key, value in _graph_node(source).items() if key in {'uri', 'name', 'type'}},
                           'target': {key: value for key, value in _graph_node(target).items() if key in {'uri', 'name', 'type'}},

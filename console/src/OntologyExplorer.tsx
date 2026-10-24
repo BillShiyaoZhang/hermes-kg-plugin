@@ -65,7 +65,7 @@ type DataState = {
   error: unknown;
 };
 const PAGE_SIZE = 20;
-const TYPE_ICONS = {
+const TYPE_ICONS: Record<string, typeof BookOpen> = {
   person: UserRound,
   event: CalendarDays,
   preference: Sparkles,
@@ -587,7 +587,7 @@ function EntityRows({
               <td>
                 <span className="ontology-type-tag">
                   <Icon size={16} aria-hidden="true" />
-                  {typeLabels[item.type]}
+                  {typeLabels[item.type] || item.type}
                 </span>
               </td>
               <td>
@@ -1076,7 +1076,7 @@ export default function OntologyExplorer({
                     <div className="ontology-type-cards">
                       {entities.map((definition) => {
                         const Icon = isRuntimeType(definition.key)
-                          ? TYPE_ICONS[definition.key]
+                          ? TYPE_ICONS[definition.key] || Layers3
                           : Layers3;
                         return (
                           <button

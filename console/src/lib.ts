@@ -1,6 +1,5 @@
-import type { EntityType } from "./types";
-
-export const typeLabels: Record<EntityType, string> = {
+/** Builtin display fallbacks; custom labels come from the effective ontology. */
+export const typeLabels: Record<string, string> = {
   person: "人物",
   event: "事件",
   decision: "决策",

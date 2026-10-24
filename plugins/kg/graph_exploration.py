@@ -15,7 +15,8 @@ from .ontology import (SCOPE, GRAPH_NAME_LIMIT, GRAPH_DESCRIPTION_LIMIT, GRAPH_P
                        _active, _safe_node, _graph_node, _graph_node_properties,
                        _graph_edge_properties, _graph_edge_preview, _stored_relation,
                        _graph_relation_aliases)
-from .schema import ENTITY_LABELS, entity_type
+from .schema import (ENTITY_LABELS, entity_type, runtime_entity_labels,
+                     runtime_kind, schema_for_store)
 
 PATH_SECONDS = 5.0
 PATH_EDGE_BUDGET = 5000
@@ -26,7 +27,9 @@ EDGE_LIMIT = 500
 def _selection(alias):
     return f'''any(label IN labels({alias}) WHERE label IN $selected_labels)
         AND ($query='' OR any(value IN [{alias}.uri,{alias}.foaf_name,{alias}.hermes_name,{alias}.hermes_description]
-            + coalesce({alias}.hermes_aliasNames,[]) WHERE toLower(toString(value)) CONTAINS $query))'''
+            + coalesce({alias}.hermes_aliasNames,[])
+            + [key IN keys({alias}) WHERE key STARTS WITH 'x_' | {alias}[key]]
+            WHERE toLower(toString(value)) CONTAINS $query))'''
 
 
 def _node_return(alias='n'):
@@ -48,7 +51,7 @@ def _edge_return():
 
 
 def _kind(labels):
-    return next((key for key, label in ENTITY_LABELS.items() if label in labels), None)
+    return runtime_kind(labels)
 
 
 def _integer(name, value, maximum):
@@ -65,12 +68,16 @@ def _uri(value):
 class GraphExploration:
     def __init__(self, config, store):
         self.config, self.store = config, store
+        self._ontology = None
+        self._labels = dict(ENTITY_LABELS)
 
     def _params(self, relation_types=None):
-        return {'prefix': self.config.urn_prefix, 'entity_labels': list(ENTITY_LABELS.values()),
+        self._ontology = schema_for_store(self.store)
+        self._labels = runtime_entity_labels(self._ontology)
+        return {'prefix': self.config.urn_prefix, 'entity_labels': list(self._labels.values()),
                 'name_limit': GRAPH_NAME_LIMIT, 'description_limit': GRAPH_DESCRIPTION_LIMIT,
                 'provenance_items': GRAPH_PROVENANCE_ITEMS,
-                'relation_aliases': _graph_relation_aliases(relation_types)}
+                'relation_aliases': _graph_relation_aliases(relation_types, self._ontology)}
 
     def _snapshot(self):
         return {'namespace': self.config.urn_prefix, 'scope': SCOPE, 'edge_scope': 'returned_nodes',
@@ -80,7 +87,7 @@ class GraphExploration:
     def _nodes(self, rows):
         result = {}
         for row in rows:
-            if _safe_node(row, self.config.urn_prefix):
+            if _safe_node(row, self.config.urn_prefix) and set(row['labels']) & set(self._labels.values()):
                 node = _graph_node(row)
                 result[node['uri']] = node
         return result
@@ -94,6 +101,8 @@ class GraphExploration:
         source = {'labels': row['source_labels'], 'properties': row['source_properties']}
         target = {'labels': row['target_labels'], 'properties': row['target_properties']}
         if (not _safe_node(source, self.config.urn_prefix) or not _safe_node(target, self.config.urn_prefix)
+                or not set(source['labels']) & set(self._labels.values())
+                or not set(target['labels']) & set(self._labels.values())
                 or (params['relation_aliases'] and row['type'].upper() not in params['relation_aliases'])):
             return None
         return {'id': 'edge-' + hashlib.sha256(str(row['element_id']).encode('utf-8')).hexdigest(),
@@ -106,10 +115,11 @@ class GraphExploration:
         if not isinstance(q, str) or len(q) > 200:
             raise ValueError('q must be text of at most 200 characters')
         types = [] if types is None else types
-        if not isinstance(types, list) or len(types) > 6 or any(not isinstance(value, str) for value in types):
-            raise ValueError('types must contain at most six supported entity types')
-        selected = sorted({ENTITY_LABELS[entity_type(value)] for value in types}) or list(ENTITY_LABELS.values())
-        params = {**self._params(relation_types), 'query': q.strip().lower(), 'selected_labels': selected}
+        params = self._params(relation_types)
+        if not isinstance(types, list) or len(types) > len(self._labels) or any(not isinstance(value, str) for value in types):
+            raise ValueError('types must contain supported entity types')
+        selected = sorted({self._labels[entity_type(value, self._ontology)] for value in types}) or list(self._labels.values())
+        params.update(query=q.strip().lower(), selected_labels=selected)
         result = {'namespace': self.config.urn_prefix, 'scope': SCOPE, 'stats_available': False,
                   'stats_error': None, 'total_nodes': None, 'total_edges': None, 'groups': [], 'relations': []}
         try:
@@ -119,7 +129,7 @@ class GraphExploration:
                 WHERE {_active('a')} AND {_active('b')} AND {_selection('a')} AND {_selection('b')}
                 AND (size($relation_aliases)=0 OR toUpper(type(r)) IN $relation_aliases)
                 RETURN labels(a) AS source_labels,labels(b) AS target_labels,type(r) AS type,count(r) AS count''', params)
-            groups = {key: 0 for key, label in ENTITY_LABELS.items() if label in selected}
+            groups = {key: 0 for key, label in self._labels.items() if label in selected}
             relations = {}
             for row in nodes:
                 kind = _kind(row['labels'])

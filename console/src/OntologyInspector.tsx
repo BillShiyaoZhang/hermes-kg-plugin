@@ -255,9 +255,22 @@ export default function OntologyInspector({
           {canEditDefinition ? "可编辑" : "只读"}
         </span>
         <h2>{title}</h2>
+        {(definition.custom || definition.active === false) && (
+          <div className="ov3-definition-state">
+            {definition.custom && <span>自定义定义</span>}
+            {definition.active === false && (
+              <span className="is-disabled">已停用</span>
+            )}
+          </div>
+        )}
         <p>
           {ontologyDefinitionDescription(definition) || "此定义没有补充说明。"}
         </p>
+        {definition.active === false && (
+          <p className="ov3-lifecycle-note">
+            此定义已停用，既有记录和规则仍保留供核对；新增使用受服务规则限制。
+          </p>
+        )}
         {canEditDefinition && (
           <button
             className="ov3-edit-entry"
@@ -332,12 +345,12 @@ export default function OntologyInspector({
               <div className="ov3-endpoint-flow">
                 <span>
                   <small>允许的起点</small>
-                  {describeTypes(definition.domain)}
+                  {describeTypes(definition.domain, schema)}
                 </span>
                 <ArrowRight size={18} aria-hidden="true" />
                 <span>
                   <small>允许的终点</small>
-                  {describeTypes(definition.range)}
+                  {describeTypes(definition.range, schema)}
                 </span>
               </div>
             )}
@@ -386,15 +399,15 @@ export default function OntologyInspector({
                     <div>
                       <dt>原始声明</dt>
                       <dd>
-                        {describeTypes(definition.declared_domain)} →{" "}
-                        {describeTypes(definition.declared_range)}
+                        {describeTypes(definition.declared_domain, schema)} →{" "}
+                        {describeTypes(definition.declared_range, schema)}
                       </dd>
                     </div>
                     <div>
                       <dt>实际生效</dt>
                       <dd>
-                        {describeTypes(definition.domain)} →{" "}
-                        {describeTypes(definition.range)}
+                        {describeTypes(definition.domain, schema)} →{" "}
+                        {describeTypes(definition.range, schema)}
                       </dd>
                     </div>
                   </>
@@ -508,6 +521,9 @@ export default function OntologyInspector({
                         </span>
                       )}
                       {property.managed && <span>系统维护</span>}
+                      {property.active === false && (
+                        <span className="is-disabled">已停用</span>
+                      )}
                       {!property.runtime_supported && <span>未接入</span>}
                     </div>
                   </div>
@@ -562,7 +578,7 @@ export default function OntologyInspector({
                       </div>
                       <div>
                         <dt>适用类型</dt>
-                        <dd>{describeTypes(property.domain)}</dd>
+                        <dd>{describeTypes(property.domain, schema)}</dd>
                       </div>
                       <div>
                         <dt>兼容名称</dt>
@@ -586,18 +602,19 @@ export default function OntologyInspector({
             {relation ? (
               <>
                 <p className="ov3-rule-note">
-                  {title}：{describeTypes(definition.domain)} →{" "}
-                  {describeTypes(definition.range)}。箭头表示允许的方向。
+                  {title}：{describeTypes(definition.domain, schema)} →{" "}
+                  {describeTypes(definition.range, schema)}
+                  。箭头表示允许的方向。
                 </p>
                 <h3>当前运行约束</h3>
                 <dl className="ov3-details">
                   <div>
                     <dt>起点类型</dt>
-                    <dd>{describeTypes(definition.domain)}</dd>
+                    <dd>{describeTypes(definition.domain, schema)}</dd>
                   </div>
                   <div>
                     <dt>终点类型</dt>
-                    <dd>{describeTypes(definition.range)}</dd>
+                    <dd>{describeTypes(definition.range, schema)}</dd>
                   </div>
                 </dl>
                 {(definition.domain.includes("any") ||
@@ -609,8 +626,8 @@ export default function OntologyInspector({
                 <details className="ov3-technical">
                   <summary>对照原始声明</summary>
                   <p>
-                    {describeTypes(definition.declared_domain)} →{" "}
-                    {describeTypes(definition.declared_range)}
+                    {describeTypes(definition.declared_domain, schema)} →{" "}
+                    {describeTypes(definition.declared_range, schema)}
                   </p>
                   <p>声明与运行范围不同时，当前支持能力采用上方运行约束。</p>
                 </details>
@@ -660,9 +677,14 @@ export default function OntologyInspector({
                             <strong>{relationLabel(item)}</strong>
                           )}
                           <p>
-                            {describeTypes(item.domain)} →{" "}
-                            {describeTypes(item.range)}
+                            {describeTypes(item.domain, schema)} →{" "}
+                            {describeTypes(item.range, schema)}
                           </p>
+                          {item.active === false && (
+                            <span className="ov3-inactive-label">
+                              已停用 · 历史关系保留
+                            </span>
+                          )}
                           <small>
                             {displayCount(item.count)}{" "}
                             {knownCount(item.count)
@@ -779,7 +801,10 @@ export default function OntologyInspector({
                                     <div>
                                       <small>
                                         起点 ·{" "}
-                                        {ontologyTypeLabel(item.source.type)}
+                                        {ontologyTypeLabel(
+                                          item.source.type,
+                                          schema,
+                                        )}
                                       </small>
                                       {endpoint(
                                         item.source.uri,
@@ -790,7 +815,10 @@ export default function OntologyInspector({
                                     <div>
                                       <small>
                                         终点 ·{" "}
-                                        {ontologyTypeLabel(item.target.type)}
+                                        {ontologyTypeLabel(
+                                          item.target.type,
+                                          schema,
+                                        )}
                                       </small>
                                       {endpoint(
                                         item.target.uri,

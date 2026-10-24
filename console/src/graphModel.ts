@@ -21,6 +21,8 @@ export interface GraphNode {
   memberIds?: string[];
   eventTime?: string;
   updatedAt?: string;
+  disabled?: boolean;
+  custom?: boolean;
 }
 
 export interface GraphEdge {
@@ -34,6 +36,8 @@ export interface GraphEdge {
   count?: number;
   relationType?: string;
   memberIds?: string[];
+  disabled?: boolean;
+  custom?: boolean;
 }
 
 export interface PositionedGraphNode extends GraphNode {

@@ -32,7 +32,7 @@ class OntologyPatchTests(unittest.TestCase):
         self.assertEqual(concept['label'], '自定义概念')
         self.assertEqual(concept['customized_fields'], ['label'])
         self.assertNotEqual(next(item for item in _schema()['entity_types'] if item['key'] == 'concept')['label'], '自定义概念')
-        self.assertFalse(result['editing']['can_add_types'])
+        self.assertTrue(result['editing']['can_add_types'])
         self.assertEqual(result['editing']['structural_policy'], 'tighten_only')
         self.assertEqual(result['editing']['datatypes_by_property']['geo_lat'], ['double', 'integer'])
         self.assertEqual(result['editing']['datatypes_by_property']['hermes_createdAt'], [])
@@ -134,14 +134,17 @@ class OntologyEditingNeo4jTests(unittest.TestCase):
                 OR n.uri STARTS WITH $foreign OR n.namespace=$foreign DETACH DELETE n''',
                         {'prefix': self.prefix, 'foreign': self.foreign}).consume()
 
-    def publish(self, patch, *, expected=None, operation_id=None):
+    def publish(self, patch=None, *, expected=None, operation_id=None, operations=None, confirm=False):
+        version = self.store.ontology_overlay()['version'] if expected is None else expected
+        approval = self.editor.validate(expected_namespace=self.prefix, expected_version=version, patch=patch, operations=operations)['risk'] if confirm else {}
         return self.editor.publish(expected_namespace=self.prefix,
-            expected_version=self.store.ontology_overlay()['version'] if expected is None else expected,
-            patch=patch, operation_id=operation_id or 'ontology-' + uuid.uuid4().hex)
+            expected_version=version, patch=patch, operations=operations,
+            operation_id=operation_id or 'ontology-' + uuid.uuid4().hex,
+            confirmation=approval.get('confirmation_phrase'), confirmation_token=approval.get('confirmation_token'))
 
-    def preview(self, patch, expected=None):
+    def preview(self, patch=None, expected=None, operations=None):
         return self.editor.validate(expected_namespace=self.prefix,
-            expected_version=self.store.ontology_overlay()['version'] if expected is None else expected, patch=patch)
+            expected_version=self.store.ontology_overlay()['version'] if expected is None else expected, patch=patch, operations=operations)
 
     def sql(self, query, **params):
         with self.store.driver.session(database=self.config.database) as session:
@@ -152,7 +155,8 @@ class OntologyEditingNeo4jTests(unittest.TestCase):
         result = self.preview(patch)
         self.assertTrue(result['can_publish'])
         self.assertFalse(result['structural'])
-        self.assertEqual(result['impact'], {'affected_nodes': 1, 'affected_relations': 0, 'checked_nodes': 0, 'checked_relations': 0, 'violations': []})
+        self.assertEqual({key: value for key, value in result['impact'].items() if key != 'definitions'}, {'affected_nodes': 1, 'affected_relations': 0, 'checked_nodes': 0, 'checked_relations': 0, 'violations': []})
+        self.assertEqual(result['risk']['level'], 'low')
         self.assertEqual(self.store.ontology_overlay()['version'], 0)
         self.assertEqual(result['schema']['version'], 0)
         self.assertEqual(self.preview({'relations': {'RELATED_TO': {'label': '自定义关联'}}})['impact']['affected_relations'], 1)
@@ -285,8 +289,9 @@ class OntologyEditingNeo4jTests(unittest.TestCase):
 
     def test_failed_impact_count_cannot_publish_or_fabricate_zero(self):
         with patch.object(self.editor, '_affected', side_effect=RuntimeError('Synthetic unavailable count')):
-            with self.assertRaisesRegex(RuntimeError, 'unavailable count'):
+            with self.assertRaises(OntologyEditError) as failure:
                 self.publish({'entity_types': {'concept': {'label': 'Uncounted'}}})
+            self.assertEqual(failure.exception.status, 503)
         self.assertEqual(self.store.ontology_overlay()['version'], 0)
 
     def test_alias_preparation_version_race_is_rejected_inside_the_write_lock(self):
@@ -374,7 +379,10 @@ class OntologyEditingNeo4jTests(unittest.TestCase):
                                           'props': {'memo': 'Literal legacy property'}}], [], origin='auto')
         review_id = receipt['review_batch_id']
         self.sql('MATCH (b:KGReviewBatch {review_id:$id}) REMOVE b.ontology_aliases_json', id=review_id)
-        self.publish({'properties': {'hermes_note': {'aliases': ['note', 'memo']}}})
+        # Simulate a legacy published/restored overlay. New publication now
+        # rejects this alias because the pending batch owns the literal field.
+        self.sql('''MERGE (s:KGOntologySchema {namespace:$namespace}) SET s.version=1,s.patch_json=$patch''',
+                 namespace=self.prefix, patch=json.dumps({'properties': {'hermes_note': {'aliases': ['note', 'memo']}}}))
         service = MemoryService(self.config, self.store, review_validator=lambda payload: None)
         with self.assertRaisesRegex(VersionConflict, 'Review aliases changed'):
             service.resolve_review(review_id, 'approve', operation_id='synthetic-legacy-alias-approval')

@@ -502,3 +502,28 @@
 .ov3-edit-property {
   margin-top: 12px;
 }
+.ov3-definition-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+.ov3-definition-state span,
+.ov3-property .is-disabled,
+.ov3-inactive-label {
+  display: inline-block;
+  color: #654e26;
+  background: #f5eddc;
+  border: 1px solid #dbc79d;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+}
+.ov3-inspector .ov3-lifecycle-note {
+  padding: 10px 12px;
+  border-left: 3px solid #9a7a40;
+  color: #5d4b2b;
+  background: #faf4e7;
+  font-size: 0.75rem;
+}

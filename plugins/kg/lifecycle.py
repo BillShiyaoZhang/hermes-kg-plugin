@@ -77,14 +77,14 @@ def evidence_for(evidence, uri, *, relation=False):
     return json.loads(dumps(values))
 
 
-def payload_evidence(payload, config):
+def payload_evidence(payload, config, ontology=None):
     from .schema import prepare_entity, prepare_relation
     result = {"entities": {}, "relations": {}}
     if not payload:
         return result
     for key, prepare in (("entities", prepare_entity), ("relations", prepare_relation)):
         for item in payload.get(key, []):
-            prepared = prepare(item, config)
+            prepared = prepare(item, config, ontology)
             if key == "entities":
                 identifier = prepared[0]["uri"]
             else:
@@ -109,17 +109,17 @@ class MemoryService:
         self.store.close()
 
     def _uri(self, uri):
-        from .schema import canonical_urn
-        result = canonical_urn(uri, prefix=self.config.urn_prefix)
+        from .schema import canonical_urn, schema_for_store
+        result = canonical_urn(uri, prefix=self.config.urn_prefix, ontology=schema_for_store(self.store))
         if not result.startswith(self.config.urn_prefix):
             raise ValueError("The workbench only manages this profile's namespace")
         return result
 
     @staticmethod
     def _card(row):
-        from .schema import ENTITY_LABELS
+        from .schema import runtime_kind
         props = dict(row.get("properties", {}))
-        kind = next((key for key, value in ENTITY_LABELS.items() if value in row.get("labels", [])), None)
+        kind = runtime_kind(row.get("labels", []))
         return {"uri": props.get("uri"), "type": kind,
             "name": props.get("foaf_name") if kind == "person" else props.get("hermes_name"),
             "props": props, "version": props.get("hermes_revision", 0),
@@ -130,12 +130,14 @@ class MemoryService:
             "updated_at": props.get("hermes_updatedAt")}
 
     def list_memories(self, *, include_archived=False, entity_type=None, query="", limit=50, offset=0):
-        from .schema import ENTITY_LABELS, entity_type as normalize_type
+        from .schema import runtime_entity_labels, schema_for_store, entity_type as normalize_type
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 10000:
             raise ValueError("limit must be between 1 and 10000")
         if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
             raise ValueError("offset must be nonnegative")
-        labels = [ENTITY_LABELS[normalize_type(entity_type)]] if entity_type else list(ENTITY_LABELS.values())
+        ontology = schema_for_store(self.store)
+        known = runtime_entity_labels(ontology)
+        labels = [known[normalize_type(entity_type, ontology)]] if entity_type else list(known.values())
         rows = self.store.run_read("""MATCH (n)
             WHERE n.uri STARTS WITH $prefix AND any(label IN labels(n) WHERE label IN $labels)
                 AND NOT n:KGLegacyAlias AND NOT n:KGLegacyUnresolved
@@ -154,13 +156,15 @@ class MemoryService:
 
     def detail(self, uri):
         uri = self._uri(uri)
-        from .schema import ENTITY_LABELS
+        from .schema import runtime_entity_labels, schema_for_store
+        ontology = schema_for_store(self.store)
+        entity_labels = list(runtime_entity_labels(ontology).values())
         rows = self.store.run_read("""MATCH (n {uri:$uri})
             WHERE NOT n:KGLegacyAlias AND NOT n:KGLegacyUnresolved
                 AND any(label IN labels(n) WHERE label IN $entity_labels)
                 AND coalesce(n.hermes_aliasConfirmed,false)=false
             RETURN labels(n) AS labels, properties(n) AS properties""",
-            {"uri": uri, "entity_labels": list(ENTITY_LABELS.values())})
+            {"uri": uri, "entity_labels": entity_labels})
         if len(rows) != 1:
             raise MemoryNotFound("Memory was not found")
         result = self._card(rows[0])
@@ -183,8 +187,8 @@ class MemoryService:
                 other.hermes_timePrecision AS related_time_precision,
                 NOT other.uri STARTS WITH $prefix AS related_read_only,
                 properties(r) AS props ORDER BY from_urn,relation_type,to_urn""",
-            {"uri": uri, "prefix": self.config.urn_prefix, "entity_labels": list(ENTITY_LABELS.values())})
-        from .schema import normalize_rel
+            {"uri": uri, "prefix": self.config.urn_prefix, "entity_labels": entity_labels})
+        from .schema import normalize_rel, runtime_kind
         for relation in result["relations"]:
             outgoing = relation["from_urn"] == uri
             labels = {
@@ -196,12 +200,14 @@ class MemoryService:
                 "CAUSED_BY": "原因" if outgoing else "影响", "owl_sameAs": "同一身份",
             }
             try:
-                canonical_type = normalize_rel(relation["relation_type"])
+                canonical_type = normalize_rel(relation["relation_type"], ontology)
             except ValueError:
                 canonical_type = relation["relation_type"]
-            relation["relation_label"] = labels.get(canonical_type, "关联")
+            definition = next((entry for entry in (ontology or {}).get('relations', []) if entry['key'] == canonical_type), None)
+            relation["relation_label"] = (definition['label'] if definition and
+                (definition.get('custom') or 'label' in definition.get('customized_fields', [])) else labels.get(canonical_type, "关联"))
             if relation.get("related_type"):
-                relation["related_type"] = relation["related_type"].lower()
+                relation["related_type"] = runtime_kind([relation['related_type']], ontology) or relation["related_type"].lower()
         return result
 
     def revisions(self, uri, *, limit=100):
@@ -300,8 +306,10 @@ class MemoryService:
         if current["version"] != expected_version:
             raise VersionConflict("Memory version changed; refresh before correcting it")
         props = {key: value for key, value in current["props"].items() if key not in RESERVED_PROPERTIES}
-        from .ontology_editing import canonical_input
+        from .ontology_editing import canonical_input, aliases_for
         state = self.store.ontology_overlay() if callable(getattr(self.store, 'ontology_overlay', None)) else {'version': 0, 'patch': {}}
+        if set(props) & set(aliases_for(state)['properties']):
+            raise VersionConflict('Ontology alias conflicts with stored literal fields; withdraw conflicting alias before correcting')
         canonical_changes = canonical_input({'type': current['type'], **changes}, state)
         updates = canonical_changes.get('props', {})
         props = corrected_properties(props, updates, current['type'], self.config)
@@ -374,14 +382,16 @@ class MemoryService:
         evidence = json.loads(dumps(review["evidence"]))
         if edits:
             from .schema import prepare_entity, normalize_properties
-            by_uri = {prepare_entity(canonical_input(item, state), self.config)[0]["uri"]: item for item in entities}
+            from .ontology_editing import effective_schema
+            ontology = effective_schema(self.config, state)
+            by_uri = {prepare_entity(canonical_input(item, state), self.config, ontology)[0]["uri"]: item for item in entities}
             if not set(edits) <= set(by_uri):
                 raise ValueError("Review edits cannot add or rename entity identifiers")
             for uri, edit in edits.items():
                 if not isinstance(edit, dict) or not set(edit) <= {"name", "props"}:
                     raise ValueError("Review edits accept name and props only")
                 item = by_uri[uri]
-                prepared, _ = prepare_entity(canonical_input(item, state), self.config)
+                prepared, _ = prepare_entity(canonical_input(item, state), self.config, ontology)
                 canonical_edit = canonical_input({'type': prepared['type'], **edit}, state)
                 updates = canonical_edit.get('props', {})
                 props = corrected_properties(prepared['properties'], updates, prepared['type'], self.config)
@@ -398,7 +408,7 @@ class MemoryService:
                     "changes": edit, "reason": reason})
                 item.pop("evidence", None)
                 item.pop("supporting_evidence", None)
-                prepare_entity(item, self.config)
+                prepare_entity(item, self.config, ontology)
         versions = dict(review["base_versions"] if expected_versions is None else expected_versions) if action == "approve" else {}
         if action == "approve" and set(versions) != set(review["base_versions"]):
             raise ValueError("Review approval requires current versions for every original endpoint")

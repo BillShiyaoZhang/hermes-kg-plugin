@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .config import load_config
-from .schema import ENTITY_LABELS, EVENT_TYPES, canonical_urn, entity_type as normalize_entity_type, parse_time, relationship_pattern
+from .schema import (ENTITY_LABELS, EVENT_TYPES, canonical_urn, entity_type as normalize_entity_type,
+                     parse_time, relationship_pattern, runtime_entity_labels, schema_for_store)
 from .store import KGStore
 
 
@@ -59,10 +60,15 @@ def _read(query, params, config, store):
 
 def query_entities(keyword="", entity_type=None, owner_urn=None, limit=20, *, config=None, store=None):
     config = config or getattr(store, "config", None) or load_config()
-    kind = normalize_entity_type(entity_type) if entity_type else None
+    if store is None:
+        with KGStore(config) as connection:
+            return query_entities(keyword, entity_type, owner_urn, limit, config=config, store=connection)
+    ontology = schema_for_store(store)
+    known = runtime_entity_labels(ontology)
+    kind = normalize_entity_type(entity_type, ontology) if entity_type else None
     params = {"prefix": config.urn_prefix, "keyword": keyword.strip().lower(), "limit": _limit(limit, config.query_limit)}
     clauses = [_visible("n"), "any(label IN labels(n) WHERE label IN $entity_labels)"]
-    params["entity_labels"] = [ENTITY_LABELS[kind]] if kind else list(ENTITY_LABELS.values())
+    params["entity_labels"] = [known[kind]] if kind else list(known.values())
     # Include known external labels without permitting arbitrary Cypher labels.
     params["entity_labels"] += ["foaf:Person"] if not kind or kind == "person" else []
     uri = _exact_uri(keyword.strip())
@@ -75,7 +81,7 @@ def query_entities(keyword="", entity_type=None, owner_urn=None, limit=20, *, co
                 AND (alias.uri STARTS WITH $prefix OR alias.shared=true)
         })""")
     elif keyword.strip():
-        clauses.append(f"any(value IN [{_name('n')},n.hermes_description,n.hermes_note,n.hermes_preferenceKey,n.hermes_preferenceValue,n.hermes_decisionText,n.hermes_decisionContext,n.uri] + coalesce(n.hermes_aliasNames,[]) WHERE toLower(toString(value)) CONTAINS $keyword)")
+        clauses.append(f"any(value IN [{_name('n')},n.hermes_description,n.hermes_note,n.hermes_preferenceKey,n.hermes_preferenceValue,n.hermes_decisionText,n.hermes_decisionContext,n.uri] + coalesce(n.hermes_aliasNames,[]) + [key IN keys(n) WHERE key STARTS WITH 'x_' | n[key]] WHERE toLower(toString(value)) CONTAINS $keyword)")
     if owner_urn:
         params["owner"] = canonical_urn(owner_urn, "person", prefix=config.urn_prefix)
         owned = relationship_pattern('HERMES_participant', 'HERMES_hasPreference', 'HERMES_hasDecision')
@@ -90,6 +96,7 @@ def query_entities(keyword="", entity_type=None, owner_urn=None, limit=20, *, co
         LIMIT $limit
         RETURN head([label IN labels(n) WHERE label IN $entity_labels]) AS type,
             n.uri AS uri, {_name('n')} AS name, n.hermes_description AS description,
+            properties(n) AS properties,
             n.hermes_note AS note,
             CASE WHEN n.hermes_timePrecision='unknown' THEN null ELSE n.hermes_eventTime END AS time,
             CASE WHEN n.hermes_timePrecision='unknown' THEN null ELSE n.hermes_eventEndTime END AS end_time,
@@ -104,7 +111,9 @@ def query_entities(keyword="", entity_type=None, owner_urn=None, limit=20, *, co
             n.hermes_decisionText AS decision_text, n.hermes_decisionContext AS decision_context,
             linked_persons
     """
-    return _read(query, params, config, store)
+    rows = _read(query, params, config, store)
+    custom_types = {label: key for key, label in known.items() if key not in ENTITY_LABELS}
+    return [{**row, 'type': custom_types.get(row.get('type'), row.get('type'))} for row in rows]
 
 
 def query_events(from_date=None, to_date=None, person_urn=None, event_type=None, limit=50, *, config=None, store=None, exclusive_to=None):

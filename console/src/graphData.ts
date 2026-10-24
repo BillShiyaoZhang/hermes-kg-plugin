@@ -7,8 +7,8 @@ import type {
 import type { Review } from "./types";
 import { isPendingReview } from "./mutationState";
 import { relationLabel } from "./ontologyHelpers";
-import { typeLabels } from "./lib";
 import { ontologyDefinitionDescription } from "./ontologyPresentation";
+import { ontologyDefinitionLabel, ontologyTypeLabel } from "./ontologyV3";
 
 export interface GraphSnapshot {
   namespace: string;
@@ -38,8 +38,6 @@ export const REVIEW_PAGE_SIZE = 20;
 export const CANDIDATE_NODE_LIMIT = 60;
 export const savedId = (uri: string) => `saved:${uri}`;
 export const reviewId = (id: string) => `review:${id}`;
-const title = (type: string) =>
-  typeLabels[type as keyof typeof typeLabels] || type;
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 
 /** Candidate identities never overwrite a saved entity, even with the same URI. */
@@ -57,10 +55,12 @@ export function workspaceGraph(
     const id = `schema:${entity.key}`;
     nodes.push({
       id,
-      label: title(entity.key),
+      label: ontologyDefinitionLabel(entity),
       type: entity.key,
       layer: "schema",
       description: ontologyDefinitionDescription(entity),
+      disabled: entity.active === false,
+      custom: entity.custom,
     });
     definitions.set(id, entity);
   }
@@ -73,6 +73,8 @@ export function workspaceGraph(
       type: "relation",
       layer: "schema",
       description: ontologyDefinitionDescription(relation),
+      disabled: relation.active === false,
+      custom: relation.custom,
     });
     definitions.set(id, relation);
     for (const [direction, types] of [
@@ -88,7 +90,9 @@ export function workspaceGraph(
           target: direction === "domain" ? id : endpoint,
           kind: "definition",
           label: direction === "domain" ? "起点类型" : "终点类型",
-          description: `${relationLabel(relation)} · ${direction === "domain" ? "允许的起点" : "允许的终点"}：${type === "any" ? "任意业务类型" : title(type)}`,
+          disabled: relation.active === false,
+          custom: relation.custom,
+          description: `${relationLabel(relation)} · ${direction === "domain" ? "允许的起点" : "允许的终点"}：${ontologyTypeLabel(type, schema ?? undefined)}`,
         });
       }
     }
@@ -128,10 +132,12 @@ export function workspaceGraph(
       source: savedId(edge.source.uri),
       target: savedId(edge.target.uri),
       kind: "saved",
-      label: relationLabel({
-        key: edge.relation_type,
-        label: edge.relation_type,
-      }),
+      label: relationLabel(
+        schema?.relations.find((item) => item.key === edge.relation_type) ?? {
+          key: edge.relation_type,
+          label: edge.relation_type,
+        },
+      ),
       description: edge.relation_type,
       relationType: edge.relation_type,
     });
@@ -255,7 +261,7 @@ export function workspaceGraph(
         source,
         target,
         kind: "candidate",
-        label: `待审 · ${relationLabel({ key, label: key })}`,
+        label: `待审 · ${relationLabel(schema?.relations.find((item) => item.key === key) ?? { key, label: key })}`,
         description: "待审提议，批准整个批次后才可能生效。",
         reviewId: review.id,
       });

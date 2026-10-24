@@ -80,7 +80,9 @@ export function ontologyEditableFields(
     schema.read_only ||
     !Number.isInteger(schema.version) ||
     (schema.version ?? -1) < 0 ||
-    !resource?.runtime_supported
+    !resource?.runtime_supported ||
+    (resource.allowed_actions !== undefined &&
+      !resource.allowed_actions.includes("update"))
   )
     return [];
   if (
@@ -118,6 +120,13 @@ export function ontologyEditConstraints(
   target: OntologyEditTarget,
 ): OntologyStructuralConstraints | undefined {
   if (target.kind === "entity_types") return undefined;
+  if (ontologyEditResource(schema, target)?.custom)
+    return {
+      domain: ["any"],
+      range: target.kind === "relations" ? ["any"] : [],
+      aliases: [],
+      required_for: [],
+    };
   const builtin =
     schema.editing?.builtin_constraints?.[target.kind]?.[target.key];
   if (builtin) return builtin;
@@ -258,6 +267,7 @@ export function ontologyDraftIssues(
     if (draft.range.length !== 1) issues.push("属性值类型须且只能选择一项。");
     const supported =
       schema.editing?.datatypes_by_property[target.key] ??
+      (resource.custom ? schema.editing?.create_datatypes : undefined) ??
       (resource as OntologyProperty).range;
     if (draft.range.some((type) => !supported.includes(type)))
       issues.push("选择的值类型未被当前运行服务支持。");

@@ -39,6 +39,9 @@ import {
   type OntologyEditTarget,
 } from "./ontologyEditorHelpers";
 import "./ontologyEditor.css";
+import "./ontologyCrud.css";
+import OntologyRiskPanel from "./OntologyRiskPanel";
+import { ontologyConfirmationMatches, ontologyRiskReady } from "./ontologyCrud";
 
 export interface OntologyEditorProps {
   schema: OntologySchema;
@@ -93,6 +96,7 @@ export default function OntologyEditor({
   );
   const [touched, setTouched] = useState<OntologyEditField[]>([]);
   const [reason, setReason] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState<Busy>(null);
   const busyRef = useRef<Busy>(null);
   const [error, setError] = useState<unknown>(null);
@@ -135,7 +139,11 @@ export default function OntologyEditor({
     !busy &&
     !!changedFields.length &&
     !issues.length;
-  const canPublish = canValidate && currentPreview?.can_publish === true;
+  const canPublish =
+    canValidate &&
+    currentPreview?.can_publish === true &&
+    (!currentPreview.risk ||
+      ontologyConfirmationMatches(currentPreview.risk, confirmation));
   const resultRegion = useRef<HTMLDivElement>(null);
   const editorRegion = useRef<HTMLElement>(null);
 
@@ -191,6 +199,7 @@ export default function OntologyEditor({
       current.includes(field) ? current : [...current, field],
     );
     setPreview(null);
+    setConfirmation("");
     setError(null);
     setNotice("");
     operation.current = null;
@@ -236,6 +245,11 @@ export default function OntologyEditor({
         throw new Error(
           "服务返回的影响预览不属于当前空间或基线版本。草稿未发布。",
         );
+      if (result.risk && !ontologyRiskReady(result.risk))
+        throw new Error(
+          "服务返回的风险确认信息不完整，请重新预览。草稿仍保留。",
+        );
+      setConfirmation("");
       setPreview({ key: requestKey, result });
     } catch (failure) {
       if (!controller.signal.aborted && mounted.current) recordFailure(failure);
@@ -293,7 +307,12 @@ export default function OntologyEditor({
   const publish = async () => {
     if (!canPublish || busyRef.current) return;
     reportLock.current?.(true);
-    const key = fingerprint([request, reason.trim()]);
+    const key = fingerprint([
+      request,
+      reason.trim(),
+      confirmation.trim(),
+      currentPreview?.risk?.confirmation_token,
+    ]);
     if (operation.current?.key !== key)
       operation.current = {
         key,
@@ -301,6 +320,12 @@ export default function OntologyEditor({
           ...request,
           operation_id: crypto.randomUUID(),
           ...(reason.trim() ? { reason: reason.trim() } : {}),
+          ...(currentPreview?.risk?.requires_confirmation
+            ? {
+                confirmation: confirmation.trim(),
+                confirmation_token: currentPreview.risk.confirmation_token,
+              }
+            : {}),
         },
       };
     const publishRequest = operation.current.request;
@@ -370,7 +395,7 @@ export default function OntologyEditor({
                   : toggleScope(field, value, event.target.checked)
               }
             />
-            <span>{datatype ? value : ontologyTypeLabel(value)}</span>
+            <span>{datatype ? value : ontologyTypeLabel(value, baseline)}</span>
           </label>
         ))}
       </div>
@@ -390,6 +415,13 @@ export default function OntologyEditor({
         role="region"
         aria-label="编辑本体定义"
         data-ontology-target={`${target.kind}:${target.key}`}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && !event.defaultPrevented) {
+            event.preventDefault();
+            event.stopPropagation();
+            requestClose();
+          }
+        }}
       >
         <header className="oe-header">
           <span>
@@ -433,7 +465,9 @@ export default function OntologyEditor({
               </dd>
             </div>
           </dl>
-          <p>类型、关系和属性标识与保存字段不可修改；此编辑器不创建新类型。</p>
+          <p>
+            已发布定义的标识与保存字段不可修改。新增、停用和删除可从“管理本体”进入。
+          </p>
         </details>
         {scopeChanged && (
           <div className="oe-error" role="alert">
@@ -512,6 +546,9 @@ export default function OntologyEditor({
                 target.kind === "relations" ? "允许的终点类型" : "属性值类型",
                 target.kind === "properties"
                   ? (baseline.editing?.datatypes_by_property[target.key] ??
+                      (resource?.custom
+                        ? baseline.editing?.create_datatypes
+                        : undefined) ??
                       initial.range)
                   : ontologyScopeOptions(
                       baseline,
@@ -694,6 +731,17 @@ export default function OntologyEditor({
                 </ul>
               )}
               <p>预览不会批准候选、改写历史记录或迁移数据。</p>
+              <OntologyRiskPanel
+                preview={currentPreview}
+                confirmation={confirmation}
+                disabled={
+                  !!busy || !writeEnabled || scopeChanged || needsRebase
+                }
+                onConfirmation={(value) => {
+                  setConfirmation(value);
+                  operation.current = null;
+                }}
+              />
             </div>
           )}
         </div>

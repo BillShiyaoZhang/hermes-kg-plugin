@@ -72,8 +72,8 @@ class DetailBody(BaseModel):
 class GraphQueryBody(BaseModel):
     model_config = {'extra': 'forbid', 'strict': True}
     q: str = Field(default='',max_length=200)
-    types: list[str] = Field(default_factory=list,max_length=6)
-    relation_types: list[str] = Field(default_factory=list,max_length=9)
+    types: list[str] = Field(default_factory=list,max_length=128)
+    relation_types: list[str] = Field(default_factory=list,max_length=128)
     focus_uri: str | None = Field(default=None,min_length=1,max_length=2000)
     node_limit: int = Field(default=120,ge=1,le=200)
     edge_limit: int = Field(default=240,ge=1,le=500)
@@ -82,15 +82,15 @@ class GraphQueryBody(BaseModel):
 class GraphOverviewBody(BaseModel):
     model_config = {'extra': 'forbid', 'strict': True}
     q: str = Field(default='',max_length=200)
-    types: list[str] = Field(default_factory=list,max_length=6)
-    relation_types: list[str] = Field(default_factory=list,max_length=9)
+    types: list[str] = Field(default_factory=list,max_length=128)
+    relation_types: list[str] = Field(default_factory=list,max_length=128)
 
 
 class GraphNeighborsBody(BaseModel):
     model_config = {'extra': 'forbid', 'strict': True}
     center_uri: str = Field(min_length=1,max_length=2000)
     direction: Literal['in','out','both'] = 'both'
-    relation_types: list[str] = Field(default_factory=list,max_length=9)
+    relation_types: list[str] = Field(default_factory=list,max_length=128)
     cursor: str | None = Field(default=None,min_length=1,max_length=4000)
     limit: int = Field(default=30,ge=1,le=100)
 
@@ -100,7 +100,7 @@ class GraphPathsBody(BaseModel):
     source_uri: str = Field(min_length=1,max_length=2000)
     target_uri: str = Field(min_length=1,max_length=2000)
     mode: Literal['shortest','common_neighbors'] = 'shortest'
-    relation_types: list[str] = Field(default_factory=list,max_length=9)
+    relation_types: list[str] = Field(default_factory=list,max_length=128)
     direction: Literal['out','both'] = 'both'
     max_hops: int = Field(default=6,ge=1,le=6)
     limit: int = Field(default=5,ge=1,le=5)
@@ -121,15 +121,15 @@ class OntologyEntityPatch(BaseModel):
 
 class OntologyPropertyPatch(OntologyEntityPatch):
     aliases: list[str] = Field(default=None,max_length=24)
-    required_for: list[str] = Field(default=None,max_length=6)
-    domain: list[str] = Field(default=None,min_length=1,max_length=6)
+    required_for: list[str] = Field(default=None,max_length=128)
+    domain: list[str] = Field(default=None,min_length=1,max_length=128)
     range: list[str] = Field(default=None,min_length=1,max_length=1)
 
 
 class OntologyRelationPatch(OntologyEntityPatch):
     aliases: list[str] = Field(default=None,max_length=24)
-    domain: list[str] = Field(default=None,min_length=1,max_length=6)
-    range: list[str] = Field(default=None,min_length=1,max_length=6)
+    domain: list[str] = Field(default=None,min_length=1,max_length=128)
+    range: list[str] = Field(default=None,min_length=1,max_length=128)
 
 
 class OntologyPatch(BaseModel):
@@ -143,12 +143,31 @@ class OntologyValidateBody(BaseModel):
     model_config = {'extra': 'forbid', 'strict': True}
     expected_namespace: str = Field(min_length=1,max_length=2000)
     expected_version: int = Field(ge=0)
-    patch: OntologyPatch
+    patch: OntologyPatch = Field(default_factory=OntologyPatch)
+    operations: list['OntologyOperation'] = Field(default_factory=list,max_length=32)
+
+
+class OntologyCreateDefinition(OntologyEntityPatch):
+    aliases: list[str] = Field(default=None,max_length=24)
+    required_for: list[str] = Field(default=None,max_length=128)
+    domain: list[str] = Field(default=None,min_length=1,max_length=128)
+    range: list[str] = Field(default=None,min_length=1,max_length=128)
+    value_shape: Literal['scalar'] = 'scalar'
+
+
+class OntologyOperation(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+    action: Literal['create','deactivate','restore','delete']
+    kind: Literal['entity_types','properties','relations']
+    key: str = Field(min_length=1,max_length=64)
+    definition: OntologyCreateDefinition | None = None
 
 
 class OntologyPublishBody(OntologyValidateBody):
     operation_id: str = Field(min_length=8,max_length=160)
     reason: str = Field(default='',max_length=2000)
+    confirmation: str | None = Field(default=None,max_length=4000)
+    confirmation_token: str | None = Field(default=None,max_length=64)
 
 
 def console_token(home):
@@ -343,6 +362,9 @@ def create_app(config=None, *, token=None, memory=None, search=None, background=
             message=str(exc)
             conflict=any(word in message.lower() for word in ("version","conflict","revision","concurrent","resolved"))
             detail='这条记录已发生变化。你的输入未提交，请读取最新版本并重新核对。' if conflict else '输入未通过校验，请检查字段类型、必填项和当前记录状态。'
+            if message == 'Ontology alias conflicts with stored literal fields; withdraw conflicting alias before correcting':
+                conflict=True
+                detail='兼容名称与已保存的字面字段冲突。你的输入未提交，请先在本体管理中撤销冲突兼容名称，再重试更正。'
             if 'already been resolved' in message.lower():
                 detail='这批候选已处理。请刷新审阅列表并核对结果。'
             elif 'namespace' in message.lower() or 'outside this profile' in message.lower():

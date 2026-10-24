@@ -414,7 +414,7 @@ export default function ReviewImpact({
                     </span>
                   </header>
                   <p className="ri-meta">
-                    {typeLabels[candidate.type]}
+                    {typeLabels[candidate.type] || candidate.type}
                     {original.state === "ready" && (
                       <>
                         {" "}

@@ -13,7 +13,8 @@ import re
 from datetime import timedelta
 
 from .embedding import DIMENSIONS, EMBEDDING_REVISION, MODEL_REVISION, EmbeddingUnavailable, normalized_vector
-from .schema import ENTITY_LABELS, entity_type, parse_time, relationship_types
+from .schema import (ENTITY_LABELS, CUSTOM_TYPE, entity_type, parse_time, relationship_types,
+                     runtime_entity_labels, runtime_kind, schema_for_store)
 
 FULLTEXT_INDEX = "kg_search_fulltext_v1"
 VECTOR_INDEX = "kg_search_vector_v1"
@@ -77,7 +78,7 @@ def _json(value):
 def entity_document(properties):
     """A deterministic projection of user content, excluding model/admin metadata."""
     pieces = []
-    for key in _TEXT_KEYS:
+    for key in (*_TEXT_KEYS, *sorted(key for key in properties if CUSTOM_TYPE.fullmatch(key))):
         value = properties.get(key)
         if value is None:
             continue
@@ -129,6 +130,8 @@ class HybridSearch:
     def __init__(self, store, embedder=None):
         self.store, self.embedder = store, embedder
         self.config = store.config
+        self._runtime_labels = dict(ENTITY_LABELS)
+        self._ontology = None
 
     @property
     def model_revision(self):
@@ -139,7 +142,9 @@ class HybridSearch:
         return getattr(self.embedder, "embedding_revision", EMBEDDING_REVISION)
 
     def _params(self):
-        return {"prefix": self.config.urn_prefix, "entity_labels": list(ENTITY_LABELS.values()) + ["foaf:Person"],
+        self._ontology = schema_for_store(self.store)
+        self._runtime_labels = runtime_entity_labels(self._ontology)
+        return {"prefix": self.config.urn_prefix, "entity_labels": list(self._runtime_labels.values()) + ["foaf:Person"],
                 "model_revision": self.model_revision, "embedding_revision": self.embedding_revision}
 
     def _run(self, query, params=None, *, write=False):
@@ -292,11 +297,13 @@ class HybridSearch:
         if unknown:
             raise ValueError("Unsupported search filters: " + ", ".join(sorted(unknown)))
         kinds = value.get("types", value.get("entity_type", value.get("type")))
+        ontology = schema_for_store(self.store) if self.config.enabled else None
+        self._runtime_labels = runtime_entity_labels(ontology)
         if isinstance(kinds, str):
             kinds = [kinds]
-        if kinds is not None and (not isinstance(kinds, (list, tuple)) or len(kinds) > len(ENTITY_LABELS)):
+        if kinds is not None and (not isinstance(kinds, (list, tuple)) or len(kinds) > len(self._runtime_labels)):
             raise ValueError("Search types must be an array of supported entity types")
-        value["types"] = [ENTITY_LABELS[entity_type(k)] for k in kinds] if kinds else []
+        value["types"] = [self._runtime_labels[entity_type(k, ontology)] for k in kinds] if kinds else []
         if "end_exclusive" in value and not isinstance(value["end_exclusive"], bool):
             raise ValueError("end_exclusive must be boolean")
         start = value.get("from", value.get("from_date", value.get("date_from")))
@@ -313,7 +320,7 @@ class HybridSearch:
     def _accept(self, row, filters):
         props, labels = row["properties"], set(row["labels"])
         uri = props.get("uri", "")
-        if labels & _EXCLUDED or not labels.intersection(set(ENTITY_LABELS.values()) | {"foaf:Person"}):
+        if labels & _EXCLUDED or not labels.intersection(set(self._runtime_labels.values()) | {"foaf:Person"}):
             return False
         if not (uri.startswith(self.config.urn_prefix) or props.get("shared") is True):
             return False
@@ -349,7 +356,8 @@ class HybridSearch:
     @staticmethod
     def _result(row):
         p, candidate = row["properties"], row["candidate"]
-        kind = next((label for label in row["labels"] if label in ENTITY_LABELS.values()), "Person")
+        canonical_kind = runtime_kind(row['labels'])
+        kind = ENTITY_LABELS.get(canonical_kind, canonical_kind) or 'Person'
         try:
             evidence = json.loads(p.get("hermes_evidenceJson") or "[]")
         except (ValueError, TypeError):
@@ -364,7 +372,7 @@ class HybridSearch:
                   "revision": p.get("hermes_revision", 0), "score": candidate.get("rrf_score", 0),
                   "version": p.get("hermes_revision", 0), "origin": p.get("hermes_origin"),
                   "user_confirmed": p.get("hermes_userConfirmed") is True, "evidence": evidence,
-                  "properties": {key: value for key, value in p.items() if key in business_keys},
+                  "properties": {key: value for key, value in p.items() if key in business_keys or CUSTOM_TYPE.fullmatch(key)},
                   "channels": candidate.get("channels", []), "matched_alias_uri": candidate.get("matched_alias_uri")}
         mapping = {"description": "hermes_description", "note": "hermes_note", "time": "hermes_eventTime",
                    "end_time": "hermes_eventEndTime", "time_precision": "hermes_timePrecision",
@@ -480,7 +488,7 @@ class HybridSearch:
                 RETURN DISTINCT n.uri AS uri,coalesce(n.hermes_revision,0) AS revision,
                     coalesce(toString(n.hermes_updatedAt),'') AS updated,seed.rrf_score AS source_score
                 ORDER BY source_score DESC,uri LIMIT $limit""",
-                {**scope, "seeds": graph_seeds, "relations": relationship_types(), "limit": candidate_limit})
+                {**scope, "seeds": graph_seeds, "relations": relationship_types(ontology=self._ontology), "limit": candidate_limit})
             # A graph neighbor is contextual support for a strong direct hit,
             # not an independent relevance vote. Adding all neighbors as an RRF
             # channel unfairly promotes highly connected hubs over precise,

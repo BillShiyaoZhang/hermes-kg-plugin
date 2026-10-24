@@ -4,7 +4,16 @@ export type OntologyEntityKey = Exclude<EntityType, "unknown">;
 /** "any" is a logical scope; other strings can describe future ontology types. */
 export type OntologyTypeReference = string;
 
-export interface OntologyProperty {
+export type OntologyCollection = "entity_types" | "properties" | "relations";
+export type OntologyLifecycleAction =
+  "create" | "deactivate" | "restore" | "delete";
+export interface OntologyDefinitionLifecycle {
+  custom?: boolean;
+  active?: boolean;
+  allowed_actions?: string[];
+}
+
+export interface OntologyProperty extends OntologyDefinitionLifecycle {
   key: string;
   label: string;
   description: string;
@@ -21,7 +30,7 @@ export interface OntologyProperty {
   customized_fields?: string[];
 }
 
-export interface OntologyEntityDefinition {
+export interface OntologyEntityDefinition extends OntologyDefinitionLifecycle {
   key: string;
   label: string;
   description: string;
@@ -33,7 +42,7 @@ export interface OntologyEntityDefinition {
   customized_fields?: string[];
 }
 
-export interface OntologyRelationDefinition {
+export interface OntologyRelationDefinition extends OntologyDefinitionLifecycle {
   key: string;
   label: string;
   description: string;
@@ -80,6 +89,12 @@ export interface OntologyEditingCapabilities {
   scope: "namespace_overlay";
   can_edit: boolean;
   can_add_types: boolean;
+  can_add_properties?: boolean;
+  can_add_relations?: boolean;
+  can_manage_lifecycle?: boolean;
+  custom_key_patterns?: Partial<Record<OntologyCollection, string>>;
+  create_datatypes?: string[];
+  create_value_shapes?: ("scalar" | "array")[];
   can_change_storage_ids: boolean;
   structural_policy: "tighten_only";
   entity_fields: string[];
@@ -129,11 +144,53 @@ export interface OntologyEditRequest {
   expected_namespace: string;
   expected_version: number;
   patch: OntologyPatch;
+  operations?: OntologyOperation[];
+}
+
+export interface OntologyCreateDefinition {
+  label: string;
+  description?: string;
+  aliases?: string[];
+  domain?: string[];
+  range?: string[];
+  required_for?: string[];
+  value_shape?: "scalar" | "array";
+}
+
+export interface OntologyOperation {
+  action: OntologyLifecycleAction;
+  kind: OntologyCollection;
+  key: string;
+  definition?: OntologyCreateDefinition;
+}
+
+export interface OntologyRisk {
+  level: "low" | "medium" | "high";
+  reasons: string[];
+  requires_confirmation: boolean;
+  confirmation_phrase?: string;
+  confirmation_token?: string;
+}
+
+export interface OntologyDefinitionImpact {
+  kind: OntologyCollection;
+  key: string;
+  label: string;
+  active_nodes: number | null;
+  archived_nodes: number | null;
+  active_relations: number | null;
+  archived_relations: number | null;
+  pending_reviews: number | null;
+  history_revisions?: number | null;
+  definition_references: number | null;
+  reference_count: number | null;
 }
 
 export interface OntologyPublishRequest extends OntologyEditRequest {
   operation_id: string;
   reason?: string;
+  confirmation?: string;
+  confirmation_token?: string;
 }
 
 export interface OntologyValidationResult {
@@ -142,6 +199,7 @@ export interface OntologyValidationResult {
   expected_version: number;
   can_publish: boolean;
   structural: boolean;
+  risk?: OntologyRisk;
   changes: { kind: string; key: string; fields: string[] }[];
   impact: {
     checked_nodes: number | null;
@@ -149,6 +207,7 @@ export interface OntologyValidationResult {
     affected_nodes?: number | null;
     affected_relations?: number | null;
     violations: { kind: string; key: string; code: string; count: number }[];
+    definitions?: OntologyDefinitionImpact[];
   };
   schema: OntologySchema;
 }

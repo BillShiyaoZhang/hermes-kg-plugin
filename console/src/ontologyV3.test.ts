@@ -279,6 +279,63 @@ describe("ontology property filters", () => {
 });
 
 describe("ontology instance reads", () => {
+  it("keeps disabled custom definitions and their labels as searchable history", () => {
+    const custom = entity("project", {
+      label: "项目",
+      custom: true,
+      active: false,
+    });
+    const rule = relation({
+      key: "custom_owns",
+      label: "负责",
+      custom: true,
+      active: false,
+      domain: ["person"],
+      range: ["project"],
+    });
+    const data = schema({
+      entity_types: [entity("person"), custom],
+      relations: [rule],
+    });
+    const graph = ontologyGraph(data);
+    expect(
+      graph.nodes.find((node) => node.id === "schema:project"),
+    ).toMatchObject({
+      label: "项目",
+      type: "project",
+      disabled: true,
+      custom: true,
+    });
+    expect(graph.edges[0]).toMatchObject({
+      label: "负责",
+      disabled: true,
+      target: "schema:project",
+    });
+    expect(graph.edges[0].description).toContain("项目");
+    expect(searchOntology(data, "项目")).toContain("schema:project");
+    expect(graph.definitions.get("schema:project")).toBe(custom);
+  });
+
+  it("sends a disabled custom definition's original key when reading historical instances", async () => {
+    const entities = vi.fn().mockResolvedValue({ items: [] });
+    const relations = vi.fn();
+    await loadOntologyInstances(
+      {
+        ontologyEntities: entities,
+        ontologyRelations: relations,
+      } as unknown as ConsoleApi,
+      entity("project", { active: false, custom: true }),
+      0,
+      "",
+      undefined,
+    );
+    expect(entities).toHaveBeenCalledWith(
+      { type: "project", q: "", offset: 0, limit: 20 },
+      undefined,
+    );
+    expect(relations).not.toHaveBeenCalled();
+  });
+
   it("sends type, query and pagination to the server using the abort signal", async () => {
     const entities = vi.fn().mockResolvedValue({ items: [] });
     const relations = vi.fn().mockResolvedValue({ items: [] });

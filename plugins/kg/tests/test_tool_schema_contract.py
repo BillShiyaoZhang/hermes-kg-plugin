@@ -19,7 +19,7 @@ class ToolSchemaContractTests(unittest.TestCase):
             self.assertEqual(normalize_properties({"event_type":value})["hermes_eventType"],value)
 
     def test_required_fields_share_runtime_contract(self):
-        self.assertEqual(set(ENTITY_SCHEMA["properties"]["type"]["enum"]),set(ENTITY_LABELS))
+        self.assertEqual(set(ENTITY_SCHEMA["properties"]["type"]["anyOf"][0]["enum"]),set(ENTITY_LABELS))
         for kind,keys in ENTITY_REQUIRED_PROPERTIES.items():
             expected=kind+": "+", ".join("props."+PREFERRED_PROPERTY_NAMES[key] for key in keys)
             self.assertIn(expected,ENTITY_SCHEMA["description"])
@@ -52,7 +52,7 @@ class ToolSchemaContractTests(unittest.TestCase):
         self.assertIn("Both typed endpoints",str(error.exception))
 
     def test_all_advertised_relation_values_are_accepted_and_directions_shown(self):
-        advertised=RELATION_SCHEMA["properties"]["relation_type"]["enum"]
+        advertised=RELATION_SCHEMA["properties"]["relation_type"]["anyOf"][0]["enum"]
         self.assertEqual(set(advertised),set(RELATION_ALIASES.values()))
         for value in advertised:
             self.assertIn(normalize_rel(value),RELATION_ALIASES.values())

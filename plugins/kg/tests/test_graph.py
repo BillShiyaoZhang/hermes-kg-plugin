@@ -106,7 +106,7 @@ class GraphServiceTests(unittest.TestCase):
 
     def test_invalid_query_shapes_fail_before_database_access(self):
         for kwargs in ({'q': 'a' * 201}, {'q': None}, {'types': 'person'}, {'types': [None]},
-                       {'types': ['Device']}, {'types': ['person'] * 7}, {'node_limit': 0},
+                       {'types': ['Device']}, {'types': ['person'] * 129}, {'node_limit': 0},
                        {'node_limit': 201}, {'node_limit': True}, {'edge_limit': 501},
                        {'edge_limit': False}, {'edge_limit': 1.5}, {'focus_uri': ''},
                        {'focus_uri': ' '}, {'focus_uri': 42}, {'focus_uri': 'a' * 2001}):
@@ -130,7 +130,7 @@ class GraphServiceTests(unittest.TestCase):
             self.assertIn('HERMES_KNOWS', params['relation_aliases'])
             self.assertNotIn('KNOWS', query)
         self.assertEqual(self.service.graph(relation_types=['LINKED_TO'])['edges'], [])
-        for values in ('KNOWS', [1], ['INVALID'], ['KNOWS'] * 10):
+        for values in ('KNOWS', [1], ['INVALID'], ['KNOWS'] * 129):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 self.service.graph(relation_types=values)
 

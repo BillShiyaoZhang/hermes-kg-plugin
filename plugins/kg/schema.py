@@ -55,34 +55,83 @@ RESERVED_PROPERTIES |= {
 }
 TEXT_PROPERTIES = {"foaf_name", "hermes_name", "hermes_description", "hermes_note", "hermes_preferenceKey", "hermes_preferenceValue", "hermes_decisionText", "hermes_decisionContext", "hermes_relLabel", "hermes_timePrecision", "hermes_eventStatus", "hermes_semanticScope", "hermes_status", "hermes_statusNote"}
 
+CUSTOM_TYPE = re.compile(r'x_[a-z][a-z0-9_]{0,47}\Z')
+CUSTOM_RELATION = re.compile(r'X_[A-Z][A-Z0-9_]{0,47}\Z')
 
-def entity_type(value):
+
+def schema_for_store(store):
+    """Request-local registry; never mutate global built-ins across namespaces."""
+    reader = getattr(store, 'ontology_overlay', None)
+    if not callable(reader):
+        return None
+    from .ontology_editing import effective_schema
+    return effective_schema(store.config, reader())
+
+
+def runtime_entity_labels(ontology=None):
+    result = dict(ENTITY_LABELS)
+    for item in (ontology or {}).get('entity_types', []):
+        key = item.get('key', '')
+        if CUSTOM_TYPE.fullmatch(key):
+            expected = 'KGCustom_' + key
+            if item.get('storage_label') != expected:
+                raise ValueError('Custom entity storage label must be server-derived')
+            result[key] = expected
+    return result
+
+
+def runtime_kind(labels, ontology=None):
+    known = runtime_entity_labels(ontology)
+    match = next((key for key, label in known.items() if label in labels), None)
+    if match is not None:
+        return match
+    # Audit revisions and already filtered historical rows retain their safe identity.
+    return next((label[len('KGCustom_'):] for label in labels
+                 if label.startswith('KGCustom_') and CUSTOM_TYPE.fullmatch(label[len('KGCustom_'):])), None)
+
+
+def runtime_relations(ontology=None):
+    result = dict(RELATION_ALIASES)
+    for item in (ontology or {}).get('relations', []):
+        key = item.get('key', '')
+        if CUSTOM_RELATION.fullmatch(key):
+            if item.get('storage_type') != key:
+                raise ValueError('Custom relationship storage type must be server-derived')
+            result[key] = key
+            for alias in item.get('aliases', []):
+                if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,63}', alias):
+                    raise ValueError('Invalid relationship alias')
+                result[alias.upper()] = key
+    return result
+
+
+def entity_type(value, ontology=None):
     key = str(value).split(":")[-1].lower()
-    if key not in ENTITY_LABELS:
+    if key not in runtime_entity_labels(ontology):
         raise ValueError("Unsupported KG entity type. Allowed types: " + ", ".join(ENTITY_LABELS) + ". Use Concept for a supported abstract concept; do not invent a new type.")
     return key
 
 
-def canonical_urn(value, type_=None, *, prefix="urn:hermes:kg:"):
+def canonical_urn(value, type_=None, *, prefix="urn:hermes:kg:", ontology=None):
     if not isinstance(value, str) or not value.strip():
         raise ValueError("Entity identifier is required")
     value = value.strip()
-    kind = entity_type(type_) if type_ else None
+    kind = entity_type(type_, ontology) if type_ else None
     if value.startswith("urn:"):
         if not value.startswith(prefix):
             # External endpoints retain their own namespace but must have the same typed form.
-            match = re.fullmatch(r"(urn:[A-Za-z0-9_-]+:kg:)([A-Za-z]+)[-:]([A-Za-z0-9][A-Za-z0-9_.-]*)", value)
+            match = re.fullmatch(r"(urn:[A-Za-z0-9_-]+:kg:)([A-Za-z][A-Za-z0-9_]*)[-:]([A-Za-z0-9][A-Za-z0-9_.-]*)", value)
             if not match:
                 raise ValueError("Malformed external KG URI")
-            external_kind = entity_type(match.group(2))
+            external_kind = entity_type(match.group(2), ontology)
             if kind and external_kind != kind:
                 raise ValueError("Entity type disagrees with URI")
             return match.group(1) + external_kind + "-" + match.group(3)
         value = value[len(prefix):]
-        match = re.fullmatch(r"([A-Za-z]+)[-:]([A-Za-z0-9][A-Za-z0-9_.-]*)", value)
+        match = re.fullmatch(r"([A-Za-z][A-Za-z0-9_]*)[-:]([A-Za-z0-9][A-Za-z0-9_.-]*)", value)
         if not match:
             raise ValueError("KG URI must contain a known type and a valid identifier")
-        actual_kind = entity_type(match.group(1))
+        actual_kind = entity_type(match.group(1), ontology)
         if kind and kind != actual_kind:
             raise ValueError("Entity type disagrees with URI")
         kind, value = actual_kind, match.group(2)
@@ -93,26 +142,28 @@ def canonical_urn(value, type_=None, *, prefix="urn:hermes:kg:"):
     return f"{prefix}{kind}-{value}"
 
 
-def normalize_rel(value):
+def normalize_rel(value, ontology=None):
     key = str(value).lstrip(":").upper()
-    if key not in RELATION_ALIASES:
+    aliases = runtime_relations(ontology)
+    if key not in aliases:
         raise ValueError("Unsupported KG relationship type. Allowed names/aliases: " + ", ".join(sorted(set(RELATION_ALIASES)|set(RELATION_ALIASES.values()))) + ". Both typed endpoints must exist or be created in the same batch.")
-    return RELATION_ALIASES[key]
+    return aliases[key]
 
 
-def relationship_types(*names):
+def relationship_types(*names, ontology=None):
     """Known stored spellings for canonical and historical relationships.
 
     Reads must understand historical names without rewriting audit data. New
     writes continue to use normalize_rel() and store only the canonical name.
     """
-    canonical = {normalize_rel(name) for name in names} if names else set(RELATION_ALIASES.values())
-    return tuple(sorted(canonical | {alias for alias, target in RELATION_ALIASES.items() if target in canonical}))
+    aliases = runtime_relations(ontology)
+    canonical = {normalize_rel(name, ontology) for name in names} if names else set(aliases.values())
+    return tuple(sorted(canonical | {alias for alias, target in aliases.items() if target in canonical}))
 
 
-def relationship_pattern(*names):
+def relationship_pattern(*names, ontology=None):
     """Build a typed Cypher pattern entirely from the relationship allowlist."""
-    return '|'.join('`' + name + '`' for name in relationship_types(*names))
+    return '|'.join('`' + name + '`' for name in relationship_types(*names, ontology=ontology))
 
 
 def parse_time(value, tz="Asia/Shanghai"):
@@ -134,7 +185,7 @@ def parse_time(value, tz="Asia/Shanghai"):
     return parsed.replace(tzinfo=ZoneInfo(tz)) if parsed.tzinfo is None else parsed
 
 
-def normalize_properties(properties, *, kind=None, tz="Asia/Shanghai"):
+def normalize_properties(properties, *, kind=None, tz="Asia/Shanghai", ontology=None):
     if not isinstance(properties, dict):
         raise ValueError("Entity properties must be an object")
     result = {}
@@ -146,8 +197,24 @@ def normalize_properties(properties, *, kind=None, tz="Asia/Shanghai"):
             mapped = "foaf_name" if kind == "person" else "hermes_name"
         if mapped in RESERVED_PROPERTIES or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", mapped):
             raise ValueError("Invalid or managed KG property name")
+        # Unknown x_ fields can be legacy data. The locked write preflight
+        # permits only unchanged values on the same existing fact; new use
+        # is rejected after authoritative current values have been read.
         if value is None:
             continue
+        custom_definition = next((item for item in (ontology or {}).get('properties', [])
+                                  if item.get('key') == mapped and mapped.startswith('x_')), None)
+        legacy_temporal = (mapped.startswith('x_') and custom_definition is None
+                           and type(value).__module__.startswith('neo4j.time')
+                           and type(value).__name__ in {'Date', 'DateTime'})
+        if custom_definition and custom_definition.get('range') == ['dateTime']:
+            value = parse_time(value, tz)
+        elif custom_definition and custom_definition.get('range') == ['date']:
+            value = value.to_native() if callable(getattr(value, 'to_native', None)) else value
+            if isinstance(value, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+                value = date.fromisoformat(value)
+            if not isinstance(value, date) or isinstance(value, datetime):
+                raise ValueError('Custom date property must be an ISO calendar date')
         if mapped in TEXT_PROPERTIES and not isinstance(value, str):
             # Preference values frequently arrive as JSON bool/number; represent
             # those explicitly as text while preserving native shared/coordinates.
@@ -184,7 +251,7 @@ def normalize_properties(properties, *, kind=None, tz="Asia/Shanghai"):
                 raise ValueError("KG arrays must contain primitive non-null values")
             if len({type(v) for v in value}) > 1:
                 raise ValueError("KG arrays must have one value type")
-        elif not isinstance(value, (str, bool, int, float, date, datetime)):
+        elif not isinstance(value, (str, bool, int, float, date, datetime)) and not legacy_temporal:
             raise ValueError("Unsupported KG property value")
         result[mapped] = value
     return result
@@ -207,11 +274,11 @@ def validate_event_timing(properties, tz="Asia/Shanghai"):
             raise ValueError("Exclusive event end_time must be later than event_time")
 
 
-def prepare_entity(entity, config):
+def prepare_entity(entity, config, ontology=None):
     if not isinstance(entity, dict):
         raise ValueError("Each entity must be an object")
-    kind = entity_type(entity.get("type", ""))
-    urn = canonical_urn(entity.get("uri") or entity.get("urn") or entity.get("id"), kind, prefix=config.urn_prefix)
+    kind = entity_type(entity.get("type", ""), ontology)
+    urn = canonical_urn(entity.get("uri") or entity.get("urn") or entity.get("id"), kind, prefix=config.urn_prefix, ontology=ontology)
     if not urn.startswith(config.urn_prefix):
         raise ValueError("Cannot write entities outside this profile's namespace")
     raw_properties=entity.get("properties",entity.get("props",{}))
@@ -219,7 +286,7 @@ def prepare_entity(entity, config):
         raise ValueError("Entity props must be an object; provide type-specific fields inside props.")
     raw = dict(raw_properties)
     raw.update({k: v for k, v in entity.items() if k.startswith(("hermes_", "foaf_", "geo_")) or k in PROPERTY_ALIASES or k == "shared"})
-    props = normalize_properties(raw, kind=kind, tz=config.timezone)
+    props = normalize_properties(raw, kind=kind, tz=config.timezone, ontology=ontology)
     name_key = "foaf_name" if kind == "person" else "hermes_name"
     name = entity.get("name", props.get(name_key))
     if not isinstance(name, str) or not name.strip():
@@ -242,25 +309,25 @@ def prepare_entity(entity, config):
         relations.append({"from": canonical_urn(anchor, "person", prefix=config.urn_prefix), "to": urn, "type": "HERMES_hasPreference" if kind == "preference" else "HERMES_hasDecision"})
     if kind == "event" and (entity.get("agent") or entity.get("agent_urn")):
         relations.append({"from": canonical_urn(entity.get("agent") or entity.get("agent_urn"), "person", prefix=config.urn_prefix), "to": urn, "type": "HERMES_participant"})
-    return {"uri": urn, "type": kind, "label": ENTITY_LABELS[kind], "properties": props}, relations
+    return {"uri": urn, "type": kind, "label": runtime_entity_labels(ontology)[kind], "properties": props}, relations
 
 
-def prepare_relation(relation, config):
+def prepare_relation(relation, config, ontology=None):
     if not isinstance(relation, dict):
         raise ValueError("Each relationship must be an object")
-    source = canonical_urn(relation.get("from") or relation.get("from_urn"), prefix=config.urn_prefix)
-    target = canonical_urn(relation.get("to") or relation.get("to_urn"), prefix=config.urn_prefix)
-    rel_type = normalize_rel(relation.get("type") or relation.get("rel_type") or relation.get("relation_type"))
+    source = canonical_urn(relation.get("from") or relation.get("from_urn"), prefix=config.urn_prefix, ontology=ontology)
+    target = canonical_urn(relation.get("to") or relation.get("to_urn"), prefix=config.urn_prefix, ontology=ontology)
+    rel_type = normalize_rel(relation.get("type") or relation.get("rel_type") or relation.get("relation_type"), ontology)
     expected=RELATION_ENDPOINTS.get(rel_type)
     if expected:
-        source_label=ENTITY_LABELS[source.rsplit(":",1)[-1].split("-",1)[0]]
-        target_label=ENTITY_LABELS[target.rsplit(":",1)[-1].split("-",1)[0]]
+        source_label=runtime_entity_labels(ontology)[source.rsplit(":",1)[-1].split("-",1)[0]]
+        target_label=runtime_entity_labels(ontology)[target.rsplit(":",1)[-1].split("-",1)[0]]
         if source_label not in expected[0] or target_label not in expected[1]:
             direction="/".join(sorted(expected[0]))+" -> "+"/".join(sorted(expected[1]))
             raise ValueError(f"Relationship {rel_type} requires {direction}; received {source_label} -> {target_label}. Reverse or correct the relation only when the facts support it.")
     if not source.startswith(config.urn_prefix):
         raise ValueError("Relationships must originate in this profile's namespace")
-    props = normalize_properties(relation.get("properties", relation.get("props", {})), tz=config.timezone)
+    props = normalize_properties(relation.get("properties", relation.get("props", {})), tz=config.timezone, ontology=ontology)
     label = relation.get("label", relation.get("rel_label"))
     if label is not None:
         props["hermes_relLabel"] = str(label)

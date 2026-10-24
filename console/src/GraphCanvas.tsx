@@ -236,7 +236,7 @@ const GraphEdgeGlyph = memo(function GraphEdgeGlyph({
           >
             {collapsed
               ? `${count} 条关系 +`
-              : `${label(edge.label)}${count > 1 ? ` ×${count}` : ""}`}
+              : `${label(edge.label)}${edge.disabled ? " · 已停用" : ""}${count > 1 ? ` ×${count}` : ""}`}
           </text>
         </g>
       )}
@@ -372,7 +372,8 @@ const GraphNodeArtwork = memo(function GraphNodeArtwork({
         y={compact ? 26 / zoom : schema ? 15 : collection ? 58 : 48}
         textAnchor="middle"
       >
-        {label(node.label, schema ? 10 : 16)}
+        {label(node.label, schema ? (node.disabled ? 6 : 10) : 16)}
+        {node.disabled ? " · 已停用" : ""}
       </text>
       <text
         className="graph-node-layer"
@@ -1363,7 +1364,13 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       geometricSiblings = new Map<string, GraphEdge[]>();
     validEdges.forEach((edge) => {
       // A bundle never merges opposite directions, facts, rules or proposals.
-      const key = JSON.stringify([edge.source, edge.target, edge.kind]),
+      const key = JSON.stringify([
+          edge.source,
+          edge.target,
+          edge.kind,
+          edge.kind === "definition" ? (edge.relationType ?? edge.id) : "",
+          !!edge.disabled,
+        ]),
         canonical = JSON.stringify([edge.source, edge.target].sort());
       const group = groups.get(key) ?? [];
       group.push(edge);
@@ -1911,18 +1918,19 @@ export default function GraphCanvas(props: GraphCanvasProps) {
                       : (edge.count ?? 1),
                     description = collapsed
                       ? `${members.length} 条平行关系，点击展开`
-                      : `${byId.get(edge.source)!.label} → ${edge.label} → ${byId.get(edge.target)!.label}${count > 1 ? `，${count} 条关系汇总` : ""}`,
+                      : `${byId.get(edge.source)!.label} → ${edge.label} → ${byId.get(edge.target)!.label}${edge.disabled ? "，定义已停用，历史内容保留" : ""}${count > 1 ? `，${count} 条关系汇总` : ""}`,
                     showLabel =
                       selected ||
                       highlighted ||
                       (!compact && !medium && drawings.length <= 55) ||
-                      collapsed;
+                      collapsed ||
+                      !!edge.disabled;
                   return (
                     <GraphEdgeGlyph
                       key={edge.id}
                       drawing={drawing}
                       description={description}
-                      className={`graph-edge graph-edge-${edge.kind}${highlighted ? " is-highlighted" : ""}${selected ? " is-selected" : ""}${emphasized && (!emphasized.has(edge.source) || !emphasized.has(edge.target)) ? " is-muted" : ""}${collapsed ? " is-bundle" : ""}`}
+                      className={`graph-edge graph-edge-${edge.kind}${highlighted ? " is-highlighted" : ""}${selected ? " is-selected" : ""}${emphasized && (!emphasized.has(edge.source) || !emphasized.has(edge.target)) ? " is-muted" : ""}${collapsed ? " is-bundle" : ""}${edge.disabled ? " is-disabled" : ""}`}
                       selected={selected}
                       showLabel={showLabel}
                       compact={compact}
@@ -1947,6 +1955,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
                       selected ||
                       hovered ||
                       spotlightId === node.id ||
+                      node.disabled ||
                       (!compact &&
                         (!medium || priorityIds.has(node.id) || collection));
                   return (
@@ -1954,7 +1963,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
                       key={node.id}
                       ref={stableNodeRef(node.id)}
                       transform={`translate(${node.x} ${node.y})`}
-                      className={`graph-node graph-node-${node.layer}${selected ? " is-selected" : ""}${focused ? " is-focused" : ""}${pinned ? " is-pinned" : ""}${searchSet.has(node.id) ? " is-search-match" : ""}${spotlightId === node.id ? " is-spotlight" : ""}${emphasized && !emphasized.has(node.id) ? " is-muted" : ""}`}
+                      className={`graph-node graph-node-${node.layer}${selected ? " is-selected" : ""}${focused ? " is-focused" : ""}${pinned ? " is-pinned" : ""}${searchSet.has(node.id) ? " is-search-match" : ""}${spotlightId === node.id ? " is-spotlight" : ""}${emphasized && !emphasized.has(node.id) ? " is-muted" : ""}${node.disabled ? " is-disabled" : ""}`}
                       style={
                         {
                           "--graph-fill": color.fill,
@@ -1965,7 +1974,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
                       data-node-id={node.id}
                       data-graph-interactive="true"
                       role="button"
-                      aria-label={`${node.label}，${GRAPH_TYPE_LABELS[node.type] ?? node.type}，${GRAPH_LAYER_LABELS[node.layer]}${node.count ? `，${node.count} 项` : ""}${pinned ? "，已固定" : ""}`}
+                      aria-label={`${node.label}，${GRAPH_TYPE_LABELS[node.type] ?? node.type}，${GRAPH_LAYER_LABELS[node.layer]}${node.disabled ? "，定义已停用，历史内容保留" : ""}${node.count ? `，${node.count} 项` : ""}${pinned ? "，已固定" : ""}`}
                       aria-pressed={selected}
                       tabIndex={activeId === node.id ? 0 : -1}
                       onFocus={() => {

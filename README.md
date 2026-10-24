@@ -17,13 +17,18 @@ comparison, local saved views and PNG/SVG export. Definitions, actual record
 collections, saved facts and candidates retain distinct identities. One shared
 inspector preserves evidence, attributes and the protected review/edit flows;
 pending writes and drafts prevent accidental navigation away.
-The ontology inspector also supports versioned editing of existing types,
-properties and relations within the current namespace. Preview changes and
-affected records before publishing; structural restrictions must remain
-compatible with the built-in storage contract and existing active data.
-Concurrent updates retain the draft for explicit review. Technical identifiers
-and new storage types remain outside this editor. See the
-[ontology editing verification](docs/ontology-editing-validation.md).
+The ontology perspective includes a **管理本体 / Manage ontology** directory for
+creating, finding and editing custom types, properties and relations, as well as
+deactivating, restoring and deleting definitions within the current namespace.
+Published custom definitions participate in actual storage validation, queries
+and graph exploration. Display edits use an inline preview; structural changes
+show compatibility effects; deactivation and deletion require an explicit,
+version- and reference-bound confirmation. Deletion is restricted to custom
+definitions with no current, archived, historical, pending-review or definition
+references, and never cascades into facts. Built-in identities remain protected.
+Concurrent changes and connection failures preserve drafts. See the
+[CRUD risk and verification record](docs/ontology-crud-validation.md) and the
+earlier [ontology editing verification](docs/ontology-editing-validation.md).
 The “语义与停用” view preserves semantic lookup, archive/restore and permitted
 shared read-only details. Saved graph browsing is bounded and restricted to
 active records in the current namespace, including both ends of each edge.

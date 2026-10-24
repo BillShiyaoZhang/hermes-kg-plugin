@@ -45,6 +45,21 @@ const render = (value = definition) =>
   );
 
 describe("ontology inspector structure", () => {
+  it("distinguishes a disabled definition from an archived entity without blocking historical browsing", () => {
+    const html = render({
+      ...definition,
+      key: "project",
+      label: "项目",
+      custom: true,
+      active: false,
+    });
+    expect(html).toContain("项目的本体定义");
+    expect(html).toContain("自定义定义");
+    expect(html).toContain("已停用");
+    expect(html).toContain("既有记录和规则仍保留供核对");
+    expect(html).toContain("在图中查看此类实例");
+    expect(html).not.toContain("当前运行接口尚未支持此定义");
+  });
   it("keeps all four tabs linked to real panels for assistive technology", () => {
     const html = render();
     expect(html.match(/role="tab"/g)).toHaveLength(4);

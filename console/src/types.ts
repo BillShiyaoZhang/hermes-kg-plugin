@@ -1,5 +1,5 @@
 export type JsonRecord = Record<string, unknown>;
-export type EntityType =
+export type BuiltinEntityType =
   | "person"
   | "event"
   | "decision"
@@ -7,6 +7,8 @@ export type EntityType =
   | "location"
   | "concept"
   | "unknown";
+/** The server may register namespace-scoped entity types beyond the builtins. */
+export type EntityType = BuiltinEntityType | (string & {});
 export type MemoryState = "active" | "archived";
 export type Version = number | string;
 

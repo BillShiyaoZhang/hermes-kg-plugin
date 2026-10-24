@@ -12,7 +12,8 @@ import zipfile
 from contextlib import closing
 from pathlib import Path
 
-from .schema import ENTITY_LABELS
+from .schema import (ENTITY_LABELS, canonical_urn, runtime_entity_labels,
+                     runtime_relations, schema_for_store)
 
 LABELS=set(ENTITY_LABELS.values())|{"KGEntity","KGQuarantined","KGLegacyAlias","KGLegacyUnresolved","KGMemoryRevision","KGReviewBatch","KGSyncReceipt","KGOntologySchema","KGOntologyRevision","KGOntologyReceipt"}
 SELECT_NODES="""MATCH (n) WHERE
@@ -134,10 +135,11 @@ def decode(value):
 
 
 def migration_preview(store):
+    entity_labels = list(runtime_entity_labels(schema_for_store(store)).values())
     rows=store.run_read("""MATCH (n) WHERE n.uri STARTS WITH $prefix
        AND any(label IN labels(n) WHERE label IN $labels)
        RETURN n.uri AS uri,count(n) AS copies,collect(labels(n)) AS labels""",
-       {"prefix":store.config.urn_prefix,"labels":list(ENTITY_LABELS.values())})
+       {"prefix":store.config.urn_prefix,"labels":entity_labels})
     duplicates=[r["uri"] for r in rows if r["copies"]!=1]
     return {"ok":not duplicates,"namespace":store.config.urn_prefix,"entities":len(rows),"duplicate_uris":duplicates,
             "preserves":["uri","visibility","quarantine","aliases"],"action":"label canonical legacy entities; version 0 remains readable; no facts re-extracted"}
@@ -148,12 +150,13 @@ def migrate(store):
     if not preview["ok"]:
         raise ValueError("Duplicate URIs must be repaired before migration")
     store.ensure_schema()
+    entity_labels = list(runtime_entity_labels(schema_for_store(store)).values())
     with store.driver.session(database=store.config.database) as session:
         store._execute(session,"write",lambda tx:tx.run("""MATCH (n) WHERE n.uri STARTS WITH $prefix
             AND any(label IN labels(n) WHERE label IN $labels)
             AND NOT n:KGLegacyAlias AND NOT n:KGLegacyUnresolved
             SET n:KGEntity RETURN count(n) AS migrated""",
-            {"prefix":store.config.urn_prefix,"labels":list(ENTITY_LABELS.values())}).consume())
+            {"prefix":store.config.urn_prefix,"labels":entity_labels}).consume())
     return {**preview,"applied":True}
 
 
@@ -258,10 +261,27 @@ def _validated_sqlite_files(files):
     return result
 
 
+def _backup_ontology(store, graph):
+    from .ontology_editing import effective_schema
+    states = [node for node in graph.get('nodes', []) if isinstance(node, dict)
+              and node.get('labels') == ['KGOntologySchema']]
+    if len(states) > 1:
+        raise ValueError('Duplicate ontology state in backup')
+    state = {'version': 0, 'patch': {}}
+    if states:
+        props = states[0].get('props', {})
+        if props.get('namespace') != store.config.urn_prefix:
+            raise ValueError('Backup ontology belongs to another namespace')
+        state = {'version': props.get('version'), 'patch': json.loads(props.get('patch_json', '{}'))}
+    return effective_schema(store.config, state)
+
+
 def _validate_graph(store, graph):
-    from .schema import RELATION_ALIASES, canonical_urn
     if not isinstance(graph, dict) or not isinstance(graph.get('nodes'), list) or not isinstance(graph.get('relations'), list):
         raise ValueError("Malformed backup graph")
+    ontology = _backup_ontology(store, graph)
+    allowed_labels = LABELS | set(runtime_entity_labels(ontology).values())
+    allowed_relations = runtime_relations(ontology)
     ids = set()
     uris = set()
     prefix = store.config.urn_prefix
@@ -274,7 +294,7 @@ def _validate_graph(store, graph):
         if node['id'] in ids:
             raise ValueError("Duplicate backup node id")
         ids.add(node['id'])
-        if not isinstance(node['labels'], list) or not set(node['labels'])<=LABELS or not node['labels']:
+        if not isinstance(node['labels'], list) or not set(node['labels'])<=allowed_labels or not node['labels']:
             raise ValueError("Unsupported graph labels in backup")
         props = node['props']
         if not isinstance(props, dict):
@@ -307,8 +327,8 @@ def _validate_graph(store, graph):
                 if label != 'KGOntologyReceipt':
                     if isinstance(props.get('version'), bool) or not isinstance(props.get('version'), int) or props['version'] < 0:
                         raise ValueError('Invalid ontology backup version')
-                    from .ontology_editing import merge_patch
-                    merge_patch(store.config, {'version': 0, 'patch': {}}, json.loads(props.get('patch_json', '{}')))
+                    from .ontology_editing import validate_state
+                    validate_state(store.config, {'version': props['version'], 'patch': json.loads(props.get('patch_json', '{}'))})
                 else:
                     result = json.loads(props.get('result_json', '{}'))
                     if (result.get('namespace') != prefix or result.get('operation_id') != props['operation_id']
@@ -331,7 +351,7 @@ def _validate_graph(store, graph):
     # alias membership also makes interpolating the preserved type into Cypher
     # safe: no arbitrary identifier or backtick can enter the query.
     def known_relation(value):
-        return isinstance(value, str) and value.upper() in RELATION_ALIASES
+        return isinstance(value, str) and value.upper() in allowed_relations
     for rel in graph['relations']:
         if not isinstance(rel, dict) or not known_relation(rel.get('type')) or rel.get('source') not in ids or rel.get('target') not in ids or not isinstance(rel.get('props'), dict):
             raise ValueError("Unsupported relationship or missing backup endpoint")
@@ -341,7 +361,7 @@ def _validate_graph(store, graph):
         if not isinstance(rel, dict) or rel.get('source') not in ids or not known_relation(rel.get('type')) or not isinstance(rel.get('props'), dict):
             raise ValueError("Malformed external relationship reference")
         uri = rel.get('target_uri')
-        canonical_urn(uri, prefix=prefix)
+        canonical_urn(uri, prefix=prefix, ontology=ontology)
         if uri.startswith(prefix):
             raise ValueError("An external reference cannot create a missing local entity")
 
@@ -447,14 +467,16 @@ def _restore_locked(store, files, graph, backup_hash):
                 {'rows': rows}).consume()
         external_count, unresolved = 0, []
         from .schema import RELATION_ENDPOINTS, normalize_rel
+        ontology = _backup_ontology(store, graph)
+        entity_labels = set(runtime_entity_labels(ontology).values())
         for rel in graph.get('external_relations', []):
             target = list(tx.run("""MATCH (b {uri:$uri}) WHERE b.shared=true
                 AND NOT b:KGQuarantined AND NOT b:KGLegacyAlias AND NOT b:KGLegacyUnresolved
                 AND coalesce(b.hermes_aliasConfirmed,false)=false
                 RETURN elementId(b) AS id,labels(b) AS labels""", {'uri': rel['target_uri']}))
-            expected = RELATION_ENDPOINTS.get(normalize_rel(rel['type']))
+            expected = RELATION_ENDPOINTS.get(normalize_rel(rel['type'], ontology))
             source_labels = set(node_by_id[rel['source']]['labels'])
-            if len(target) != 1 or not source_labels & set(ENTITY_LABELS.values()) or not set(target[0]['labels']) & set(ENTITY_LABELS.values()) or (expected and (not source_labels & expected[0] or not set(target[0]['labels']) & expected[1])):
+            if len(target) != 1 or not source_labels & entity_labels or not set(target[0]['labels']) & entity_labels or (expected and (not source_labels & expected[0] or not set(target[0]['labels']) & expected[1])):
                 unresolved.append({'target_uri': rel['target_uri'], 'type': rel['type']})
                 continue
             tx.run(f"MATCH (a),(b) WHERE elementId(a)=$source AND elementId(b)=$target CREATE (a)-[r:`{rel['type']}`]->(b) SET r=$props",

@@ -2,6 +2,7 @@ import { typeLabels } from "./lib";
 import type {
   OntologyEntityKey,
   OntologyRelationDefinition,
+  OntologySchema,
   OntologyTypeReference,
 } from "./ontologyTypes";
 
@@ -28,18 +29,30 @@ export function displayCount(value: number | null | undefined): string {
 export function relationLabel(
   relation: Pick<
     OntologyRelationDefinition,
-    "key" | "label" | "customized_fields"
+    "key" | "label" | "customized_fields" | "custom"
   >,
 ): string {
-  if (relation.customized_fields?.includes("label")) return relation.label;
+  if (relation.custom || relation.customized_fields?.includes("label"))
+    return relation.label;
   return relationLabels[relation.key] || relation.label || relation.key;
 }
 
-export function describeTypes(types: OntologyTypeReference[]): string {
+export function describeTypes(
+  types: OntologyTypeReference[],
+  schema?: Pick<OntologySchema, "entity_types">,
+): string {
   if (types.includes("any")) return "任意业务类型";
   return (
     types
-      .map((key) => typeLabels[key as OntologyEntityKey] || key)
+      .map((key) => {
+        const definition = schema?.entity_types.find(
+          (item) => item.key === key,
+        );
+        return definition &&
+          (definition.custom || definition.customized_fields?.includes("label"))
+          ? definition.label
+          : typeLabels[key as OntologyEntityKey] || definition?.label || key;
+      })
       .join("、") || "未声明"
   );
 }
