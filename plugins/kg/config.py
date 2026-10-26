@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,7 @@ ENV_KEYS = {
     "query_limit": ("KG_QUERY_LIMIT", "HERMES_KG_QUERY_LIMIT"),
     "connection_timeout": ("KG_CONNECTION_TIMEOUT", "HERMES_KG_CONNECTION_TIMEOUT"),
     "query_timeout": ("KG_QUERY_TIMEOUT", "HERMES_KG_QUERY_TIMEOUT"),
+    "recall_timeout": ("KG_RECALL_TIMEOUT", "HERMES_KG_RECALL_TIMEOUT"),
     "timezone": ("KG_TIMEZONE", "HERMES_KG_TIMEZONE"),
     "default_shared": ("KG_DEFAULT_SHARED", "HERMES_KG_DEFAULT_SHARED"),
     "console_url": ("KG_CONSOLE_URL", "HERMES_KG_CONSOLE_URL"),
@@ -71,6 +73,8 @@ class KGConfig:
     query_cadence: int = 3
     connection_timeout: float = 5
     query_timeout: float = 10
+    # HTTP budget for the local recall service, independent of Bolt queries.
+    recall_timeout: float = 3.5
     query_limit: int = 10
     timezone: str = "Asia/Shanghai"
     default_shared: bool = True
@@ -93,6 +97,9 @@ class KGConfig:
                 raise ValueError(f"{key} must be positive")
         if not isinstance(self.query_cadence, int) or not isinstance(self.query_limit, int):
             raise ValueError("query_cadence and query_limit must be integers")
+        if (isinstance(self.recall_timeout, bool) or not isinstance(self.recall_timeout, (int, float))
+                or not math.isfinite(self.recall_timeout) or not 0.1 <= self.recall_timeout <= 30):
+            raise ValueError("recall_timeout must be a finite number between 0.1 and 30 seconds")
 
     @property
     def bolt_url(self):
@@ -119,7 +126,7 @@ def load_config(home=None, hermes_home=None) -> KGConfig:
     for key in ("query_cadence", "query_limit"):
         if key in data and isinstance(data[key], str):
             data[key] = int(data[key])
-    for key in ("connection_timeout", "query_timeout"):
+    for key in ("connection_timeout", "query_timeout", "recall_timeout"):
         if key in data and isinstance(data[key], str):
             data[key] = float(data[key])
     return KGConfig(home=root, **data)

@@ -32,14 +32,16 @@ class TextChunk:
     index: int
 
 
-def normalized_vector(value):
+def normalized_vector(value, *, dimensions=DIMENSIONS):
     """Reject malformed/zero/NaN vectors before persistence or ANN queries."""
     values = [float(component) for component in value]
-    if len(values) != DIMENSIONS or not all(math.isfinite(v) for v in values):
-        raise ValueError("Embedding must have 384 finite components")
-    norm = math.sqrt(sum(v * v for v in values))
-    if not norm:
-        raise ValueError("Embedding must have a nonzero norm")
+    if isinstance(dimensions, bool) or not isinstance(dimensions, int) or dimensions <= 0:
+        raise ValueError("Embedding dimensions must be a positive integer")
+    if len(values) != dimensions or not all(math.isfinite(v) for v in values):
+        raise ValueError(f"Embedding must have {dimensions} finite components")
+    norm = math.hypot(*values)
+    if not norm or not math.isfinite(norm):
+        raise ValueError("Embedding must have a finite nonzero norm")
     return [v / norm for v in values]
 
 

@@ -1,0 +1,14 @@
+{
+  "format": "kg-retrieval-research-v1",
+  "authored_synthetic_questions": 200,
+  "synthetic_dev": 60,
+  "synthetic_blind": 140,
+  "pending_real_questions": 100,
+  "real_dev": 40,
+  "real_blind": 60,
+  "ontology_questions": 60,
+  "static_snapshot_safety_scenarios": 120,
+  "human_gold_required_for_promotion": 100,
+  "legacy50": "regression_only",
+  "note": "Counts specify preparation, not completion of human review or a winning model."
+}

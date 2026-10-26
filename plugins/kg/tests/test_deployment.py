@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 import urllib.error
 from unittest.mock import patch
@@ -18,7 +19,8 @@ class DeploymentTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        # Match entry-point canonical identities even when macOS TEMP uses /var.
+        self.root = Path(self.tmp.name).resolve()
         self.home = self.root / '合成 profile'
         self.source = self.root / 'source'
         for name in ('requirements-console.lock', 'console/package-lock.json', 'plugins/kg/requirements.lock'):
@@ -322,6 +324,42 @@ class DeploymentTests(unittest.TestCase):
             with d.DeploymentLock(self.home):
                 self.fail('must not acquire')
 
+    def test_contained_rejects_root_and_plain_escaped_candidates(self):
+        managed = self.root / 'managed-boundary'
+        managed.mkdir()
+        for candidate in (managed, managed / '..' / 'outside-file'):
+            with self.subTest(candidate=str(candidate)), self.assertRaises(d.DeploymentError):
+                d.contained(managed, candidate)
+
+    def test_contained_allows_alias_above_root_but_rejects_managed_internal_links(self):
+        parent = self.root / 'canonical-parent'
+        managed = parent / 'managed-profile'
+        payload = managed / 'payload'
+        payload.mkdir(parents=True)
+        target = payload / 'module.py'
+        target.write_bytes(b'synthetic owned payload')
+        alias = self.root / 'parent-alias'
+        try:
+            alias.symlink_to(parent, target_is_directory=True)
+        except OSError:
+            self.skipTest('This platform does not permit test symlinks')
+        lexical_root = alias / 'managed-profile'
+        lexical_target = lexical_root / 'payload/module.py'
+        for boundary, candidate in ((lexical_root, lexical_target), (managed, target), (lexical_root, target)):
+            with self.subTest(boundary=str(boundary), candidate=str(candidate)):
+                self.assertEqual(d.contained(boundary, candidate), target.resolve())
+        internal = managed / 'internal-link'
+        internal.symlink_to(payload, target_is_directory=True)
+        with self.assertRaises(d.DeploymentError):
+            d.contained(managed, internal / 'module.py')
+        outside = self.root / 'outside-managed'
+        outside.mkdir()
+        (outside / 'module.py').write_bytes(b'unmanaged synthetic payload')
+        escaped = managed / 'outside-link'
+        escaped.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(d.DeploymentError):
+            d.contained(managed, escaped / 'module.py')
+
     def test_active_real_runner_lock_blocks_before_console_stop_or_payload_swap(self):
         from kg.runner import _RunLock
         self.existing()
@@ -570,9 +608,20 @@ class DeploymentTests(unittest.TestCase):
             record.update(pid=Child.pid if argv[0] == str(base) else Child.pid + 1, control_port=43210)
             d.atomic_json(controller.record_path, record)
             return Child()
-        with patch.object(d.os, 'name', 'nt'), patch.object(d, 'require_free_port'), \
-             patch.object(d.subprocess, 'Popen', side_effect=popen), patch.object(controller, 'identity', return_value={}):
+        # Patch the module seam, not the shared stdlib os object: changing
+        # os.name globally makes pathlib instantiate WindowsPath on POSIX.
+        host_os_name = os.name
+        windows_os = SimpleNamespace(**vars(os))
+        windows_os.name = 'nt'
+        windows_processes = SimpleNamespace(**vars(subprocess))
+        windows_processes.CREATE_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+        windows_processes.DETACHED_PROCESS = getattr(subprocess, 'DETACHED_PROCESS', 0x00000008)
+        with patch.object(d, 'os', windows_os), patch.object(d, 'subprocess', windows_processes), \
+             patch.object(d, 'require_free_port'), patch.object(windows_processes, 'Popen', side_effect=popen), \
+             patch.object(controller, 'identity', return_value={}):
+            self.assertEqual(os.name, host_os_name)
             running = controller.start('synthetic-release')
+            self.assertEqual(os.name, host_os_name)
         self.assertEqual(running['pid'], Child.pid)
         self.assertEqual(calls[0][0], str(base))
         self.assertIn('-I', calls[0])

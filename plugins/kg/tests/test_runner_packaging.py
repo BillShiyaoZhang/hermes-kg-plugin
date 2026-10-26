@@ -42,7 +42,7 @@ class RunnerPackagingTests(unittest.TestCase):
 
     def test_legacy_default_home_does_not_override_explicit_environment_or_config(self):
         legacy = self.load_wrapper()
-        with patch.dict(os.environ, {"HERMES_HOME": "", "HERMES_AGENT_HOME": ""}), patch.object(runner, "run", return_value=(0, {})) as run:
+        with patch.dict(os.environ, {"KG_HOME": "", "HERMES_HOME": "", "HERMES_AGENT_HOME": ""}), patch.object(runner, "run", return_value=(0, {})) as run:
             legacy.run(verify_only=True)
             self.assertEqual(run.call_args.kwargs["home"], ROOT)
             legacy.run(home=Path("/explicit"), verify_only=True)

@@ -2,6 +2,7 @@ name: Alpha checks
 on: [push, pull_request, workflow_dispatch]
 jobs:
   python:
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -17,12 +18,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install -r requirements-console.lock jsonschema "setuptools>=75"
-      - run: python scripts/run_tests.py
+      - run: python -m pip install -r requirements-console.lock jsonschema "setuptools>=75" ruamel.yaml==0.18.16
+      - run: python scripts/run_tests.py -v
       - run: python -c "from kg.embedding import LocalEmbedder; import onnxruntime; print(onnxruntime.get_available_providers())"
         env:
           PYTHONPATH: plugins
   neo4j:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     services:
       neo4j:
@@ -43,14 +45,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install -r requirements-console.lock jsonschema "setuptools>=75"
-      - run: python scripts/run_tests.py
+      - run: python -m pip install -r requirements-console.lock jsonschema "setuptools>=75" ruamel.yaml==0.18.16
+      - run: python scripts/run_tests.py -v
         env:
           KG_TEST_BOLT_URL: bolt://127.0.0.1:7687
           KG_TEST_PASSWORD: local-development-password
           KG_SEARCH_TEST_URL: bolt://127.0.0.1:7687
           KG_SEARCH_TEST_PASSWORD: local-development-password
+          KG_RESEARCH_TEST_URL: bolt://127.0.0.1:7687
+          KG_RESEARCH_TEST_PASSWORD: local-development-password
   frontend:
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -66,6 +71,7 @@ jobs:
       - run: npm test
       - run: npm run build
   upstream-compatibility:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:

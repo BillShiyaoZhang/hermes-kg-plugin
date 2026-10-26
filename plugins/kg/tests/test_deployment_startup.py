@@ -19,14 +19,16 @@ class DeploymentStartupTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(prefix='kg-startup-test-')
         self.addCleanup(self.directory.cleanup)
-        self.root = Path(self.directory.name)
+        # macOS tempfile paths can use /var while production entry points
+        # canonicalize to /private/var. Keep every fixture identity canonical.
+        self.root = Path(self.directory.name).resolve()
         self.home = self.root / '合成 profile'
         self.home.mkdir()
         self.folder = self.root / 'synthetic Startup'
         self.folder.mkdir()
         self.entry = self.folder / startup.ENTRY_NAME
         self.backup = self.home / 'kg-deploy/backups/fixture/startup'
-        self.python = self.home / 'kg-runtime' / ('a' * 20) / 'Scripts/python.exe'
+        self.python = self.home / 'kg-runtime' / ('a' * 20) / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
         self.python.parent.mkdir(parents=True)
         self.python.write_bytes(b'synthetic managed interpreter')
         self.environment = patch.dict(os.environ, {}, clear=True)
@@ -174,6 +176,17 @@ class DeploymentStartupTests(unittest.TestCase):
         self.assertEqual(self.service.env['KG_HERMES_PYTHON'], value['hermes_python'])
         self.assertEqual(self.service.calls, [('start', value['source_sha256']), ('probe', True)])
         free.assert_called_once_with(18888)
+
+    def test_manifest_accepts_both_locked_runtime_leaf_layouts_on_any_host(self):
+        for relative in ('Scripts/python.exe', 'bin/python'):
+            with self.subTest(relative=relative):
+                self.python = self.home / 'kg-runtime' / ('a' * 20) / relative
+                self.python.parent.mkdir(parents=True, exist_ok=True)
+                self.python.write_bytes(b'synthetic managed interpreter')
+                value = self.manifest()
+                actual, python = startup._installed_manifest(self.home)
+                self.assertEqual(actual, value)
+                self.assertEqual(python, self.python)
 
     def test_same_release_running_only_probes_without_restarting(self):
         value = self.manifest()

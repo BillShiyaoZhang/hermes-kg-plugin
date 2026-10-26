@@ -84,7 +84,42 @@ class ToolSchemaContractTests(unittest.TestCase):
             self.assertEqual(schema["parameters"]["type"],"object")
         self.assertEqual(ENTITY_SCHEMA["type"],"object")
         self.assertNotIn("anyOf",ENTITY_SCHEMA)
-        self.assertLess(len(json.dumps([SEARCH_SCHEMA,WRITE_SCHEMA])),5500)
+        # Five finite structured-plan alternatives are now part of the search
+        # tool; retain a bounded model-facing contract rather than dynamic schema.
+        self.assertLess(len(json.dumps([SEARCH_SCHEMA,WRITE_SCHEMA])),9000)
+
+    def test_structured_query_plan_schema_covers_finite_read_only_operations(self):
+        schema=SEARCH_SCHEMA['parameters']['properties']['query_plan']
+        shapes=schema['anyOf']
+        self.assertEqual({shape['properties']['op']['enum'][0] for shape in shapes},
+                         {'schema','relations','count','path'})
+        for shape in shapes:
+            self.assertFalse(shape['additionalProperties'])
+            self.assertIn('op',shape['required'])
+            self.assertNotIn('cypher',shape['properties'])
+        self.assertEqual(SEARCH_SCHEMA['parameters']['required'],['question'])
+
+    def test_search_json_schema_accepts_old_calls_and_rejects_invalid_plans(self):
+        try:
+            from jsonschema import Draft7Validator
+        except ImportError:
+            self.skipTest('jsonschema not installed; SDK serialization remains tested')
+        Draft7Validator.check_schema(SEARCH_SCHEMA['parameters'])
+        validator=Draft7Validator(SEARCH_SCHEMA['parameters'])
+        self.assertTrue(validator.is_valid({'question':'legacy search','limit':10}))
+        for plan in ({'op':'schema'},{'op':'relations','center_uri':'urn:fixture:person-a','direction':'out'},
+                     {'op':'count','target':'entities','types':['person']},
+                     {'op':'count','target':'relations'},
+                     {'op':'path','source_uri':'urn:fixture:person-a','target_uri':'urn:fixture:concept-b','direction':'both'}):
+            self.assertTrue(validator.is_valid({'question':'fixture','query_plan':plan}))
+        for plan in (None,{'op':'cypher'},{'op':'relations'},
+                     {'op':'count','target':'entities','center_uri':'urn:fixture:person-a'},
+                     {'op':'count','target':'relations','center_uri':'urn:fixture:person-a'},
+                     {'op':'count','target':'relations','direction':'both'},
+                     {'op':'path','source_uri':'a','target_uri':'b','direction':'in'},
+                     {'op':'schema','limit':True},{'op':'schema','query':'x'*201},
+                     {'op':'path','source_uri':'a','target_uri':'b','direction':'out','from':'2026-01-01'}):
+            self.assertFalse(validator.is_valid({'question':'fixture','query_plan':plan}))
 
     def test_json_schema_is_valid_and_rejects_wrong_category_or_missing_fields(self):
         try:

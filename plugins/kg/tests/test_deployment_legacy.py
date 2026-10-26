@@ -18,7 +18,10 @@ class LegacyDeploymentTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.home = Path(self.tmp.name) / '合成 legacy profile'
+        # Match production's canonical profile identity on macOS, where the
+        # temporary directory may be spelled /var but resolves to /private/var.
+        self.root = Path(self.tmp.name).resolve()
+        self.home = self.root / '合成 legacy profile'
         self.home.mkdir()
         self.base = self.home / 'base/python.exe'
         self.python = self.home / 'venv/Scripts/python.exe'

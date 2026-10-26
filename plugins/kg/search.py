@@ -54,8 +54,9 @@ def _lookup_uri(expression, outer, *, allow_missing=False):
     """Seek canonical entities by their unique index, with a gated legacy path.
 
     An unlabeled ``MATCH (n {uri:...})`` cannot use the KGEntity URI constraint.
-    Keeping its fallback behind the null branch preserves old shared external
-    entities without scanning the entire graph for every canonical result.
+    The empty UNWIND gates the scan behind an actual zero-row dependency;
+    a WHERE-only null guard can be planned after AllNodesScan. This preserves
+    old shared external entities without scanning for every canonical result.
     Only library-owned expressions/variable names are passed here.
     """
     return f"""OPTIONAL MATCH (kg_primary:KGEntity {{uri:{expression}}})
@@ -65,8 +66,8 @@ def _lookup_uri(expression, outer, *, allow_missing=False):
             RETURN kg_primary AS n
             UNION
             WITH kg_primary,{outer}
-            WITH kg_primary,{outer} WHERE kg_primary IS NULL
-            {'OPTIONAL MATCH' if allow_missing else 'MATCH'} (n {{uri:{expression}}}) WHERE NOT n:KGEntity
+            UNWIND CASE WHEN kg_primary IS NULL THEN [{expression}] ELSE [] END AS legacy_uri
+            {'OPTIONAL MATCH' if allow_missing else 'MATCH'} (n {{uri:legacy_uri}}) WHERE NOT n:KGEntity
             RETURN n
         }}"""
 

@@ -53,15 +53,29 @@ def atomic_json(path, value):
 
 
 def contained(root, path):
-    root, path = Path(root).resolve(), Path(os.path.abspath(path))
-    if not path.resolve().is_relative_to(root) or path.resolve() == root:
+    # The selected root can itself have a legitimate OS alias (/var on macOS,
+    # or a Windows short-name TEMP directory). Walk below that lexical boundary,
+    # not until an unrelated canonical spelling which may never be reached.
+    lexical_root = Path(os.path.abspath(root))
+    root, path = lexical_root.resolve(), Path(os.path.abspath(path))
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root) or resolved == root:
         raise DeploymentError('Deployment path escapes its managed directory')
+    if path.is_relative_to(lexical_root):
+        boundary = lexical_root
+    elif path.is_relative_to(root):
+        boundary = root
+    else:
+        raise DeploymentError('Deployment path is outside its lexical managed directory')
     cursor = path
-    while cursor != root:
+    while cursor != boundary:
         if cursor.is_symlink() or (hasattr(cursor, 'is_junction') and cursor.is_junction()):
             raise DeploymentError('Deployment refuses linked destination paths')
-        cursor = cursor.parent
-    return path
+        parent = cursor.parent
+        if parent == cursor:
+            raise DeploymentError('Deployment path has no managed ancestor')
+        cursor = parent
+    return resolved
 
 
 def remove_managed(root, path):

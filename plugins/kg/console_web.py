@@ -32,6 +32,7 @@ class SearchBody(BaseModel):
     filters: dict = Field(default_factory=dict)
     interpret: bool = False
     scope: Literal['profile','shared'] = 'profile'
+    query_plan: dict | None = None
 
 
 class MutationBody(BaseModel):
@@ -518,6 +519,11 @@ def create_app(config=None, *, token=None, memory=None, search=None, background=
 
     @app.post("/api/v1/search")
     def find(body:SearchBody):
+        if body.query_plan is not None:
+            if body.interpret or body.filters:
+                raise HTTPException(400, '结构化计划不能同时使用智能理解或独立筛选；请在计划内明确查询范围')
+            from .retrieval_plan import StructuredGraphSearch
+            return invoke(StructuredGraphSearch(memory.store).execute, body.query_plan)
         question,filters=body.question,dict(body.filters)
         if body.interpret:
             from .query_planner import interpret_query

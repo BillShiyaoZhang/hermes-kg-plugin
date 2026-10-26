@@ -1,0 +1,17 @@
+{
+  "version": "kg-retrieval-protocol-v1",
+  "primary_metric": "ndcg@10",
+  "estimand": "source-family macro mean",
+  "observed_improvement_minimum": 0.03,
+  "ci95_lower_minimum_exclusive": 0.0,
+  "holm_alpha": 0.05,
+  "answerable_coverage_minimum": 0.9,
+  "noanswer_false_positive_maximum": 0.05,
+  "critical_group_recall5_maximum_decline": 0.03,
+  "http_p95_ms_maximum": 3000,
+  "http_samples_minimum": 100,
+  "ann_recall_minimum": 0.98,
+  "human_real_gold_required": 100,
+  "required_evidence": ["blind_freeze_proof", "ann_evidence", "installed_safety_evidence", "http_performance_evidence"],
+  "note": "Frozen local research gates; integrity digests do not authenticate a human reviewer. Eligibility still requires manual production approval."
+}

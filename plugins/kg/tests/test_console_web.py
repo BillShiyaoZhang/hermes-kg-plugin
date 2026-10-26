@@ -43,7 +43,10 @@ class FakeSearch:
 class ConsoleWebTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        self.app=create_app(KGConfig(home=Path(self.tmp.name)),token='fixture-access-token',memory=FakeMemory(),search=FakeSearch(),background=False)
+        # KGConfig resolves home; use that same identity in fixtures/assertions
+        # when macOS temporary roots are aliases such as /var -> /private/var.
+        self.home=Path(self.tmp.name).resolve()
+        self.app=create_app(KGConfig(home=self.home),token='fixture-access-token',memory=FakeMemory(),search=FakeSearch(),background=False)
         self.client=TestClient(self.app,raise_server_exceptions=False)
         self.auth={'Authorization':'Bearer fixture-access-token'}
         self.addCleanup(self.client.close)
@@ -55,22 +58,22 @@ class ConsoleWebTests(unittest.TestCase):
     def test_generic_console_token_overrides_legacy_without_persisting_a_secret(self):
         environment={'KG_CONSOLE_TOKEN':'product-console-token','HERMES_KG_CONSOLE_TOKEN':'legacy-console-token'}
         with patch.dict(os.environ,environment):
-            self.assertEqual(console_token(Path(self.tmp.name)),'product-console-token')
-        self.assertFalse((Path(self.tmp.name)/'kg-console.token').exists())
+            self.assertEqual(console_token(self.home),'product-console-token')
+        self.assertFalse((self.home/'kg-console.token').exists())
 
     def test_legacy_console_token_remains_supported(self):
         environment={key:value for key,value in os.environ.items() if key!='KG_CONSOLE_TOKEN'}
         environment['HERMES_KG_CONSOLE_TOKEN']='legacy-console-token'
         with patch.dict(os.environ,environment,clear=True):
-            self.assertEqual(console_token(Path(self.tmp.name)),'legacy-console-token')
+            self.assertEqual(console_token(self.home),'legacy-console-token')
 
     def test_invalid_generic_console_token_cannot_fall_back_to_another_token(self):
         with patch.dict(os.environ,{'KG_CONSOLE_TOKEN':'short','HERMES_KG_CONSOLE_TOKEN':'legacy-console-token'}):
             with self.assertRaisesRegex(ValueError,'at least 16'):
-                console_token(Path(self.tmp.name))
+                console_token(self.home)
 
     def test_generic_model_cache_and_static_directory_reach_console_runtime(self):
-        home=Path(self.tmp.name);assets=home/'assets';assets.mkdir()
+        home=self.home;assets=home/'assets';assets.mkdir()
         (assets/'index.html').write_text('product asset fixture',encoding='utf-8')
         cache=str(home/'models')
         environment={'KG_MODEL_CACHE':cache,'HERMES_KG_MODEL_CACHE':str(home/'wrong-models'),
@@ -114,7 +117,7 @@ class ConsoleWebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['search_freshness'], report)
         refresh.assert_called_once_with([uri])
-        notify.assert_called_once_with(Path(self.tmp.name))
+        notify.assert_called_once_with(self.home)
 
     def test_derived_refresh_failures_never_hide_an_already_committed_receipt(self):
         with patch.object(self.app.state.search, 'index_uris', side_effect=RuntimeError('synthetic index unavailable'), create=True), \
@@ -154,7 +157,7 @@ class ConsoleWebTests(unittest.TestCase):
                 'expected_namespace': 'urn:hermes:kg:', 'expected_version': 1, 'patch': {},
                 'operation_id': 'published-schema-notify'})
         self.assertEqual(response.status_code, 200, response.text)
-        notify.assert_called_once_with(Path(self.tmp.name))
+        notify.assert_called_once_with(self.home)
         with patch('kg.freshness.bump_recall_generation') as notify:
             response = self.client.post('/api/v1/memories/correct', headers=self.auth, json={
                 'uri': 'urn:hermes:kg:concept-example', 'changes': {'name': '不提交'},
@@ -184,14 +187,14 @@ class ConsoleWebTests(unittest.TestCase):
     def test_external_sync_scheduler_can_disable_console_schedule(self):
         from unittest.mock import patch
         with patch.dict('os.environ',{'KG_SYNC_SCHEDULER_ENABLED':'false'}):
-            app=create_app(KGConfig(home=Path(self.tmp.name)),token='fixture-access-token',memory=FakeMemory(),search=FakeSearch(),background=False)
+            app=create_app(KGConfig(home=self.home),token='fixture-access-token',memory=FakeMemory(),search=FakeSearch(),background=False)
         with TestClient(app) as client:
             result=client.get('/api/v1/status',headers=self.auth)
             self.assertEqual(result.status_code,200,result.text)
             self.assertFalse(result.json()['sync']['scheduler_enabled'])
         with patch.dict('os.environ',{'KG_SYNC_SCHEDULER_ENABLED':'invalid'}):
             with self.assertRaisesRegex(ValueError,'sync_scheduler_enabled'):
-                create_app(KGConfig(home=Path(self.tmp.name)),token='fixture-access-token',memory=FakeMemory(),search=FakeSearch(),background=False)
+                create_app(KGConfig(home=self.home),token='fixture-access-token',memory=FakeMemory(),search=FakeSearch(),background=False)
 
     def test_explicit_reindex_completes_all_cards_instead_of_one_background_batch(self):
         response=self.client.post('/api/v1/search/reindex',headers=self.auth)
@@ -322,7 +325,7 @@ class ConsoleWebTests(unittest.TestCase):
             response=self.client.get('/api/v1/status',headers=self.auth)
         self.assertNotIn('urn:private',response.text)
         self.assertNotIn('private-db',response.text)
-        self.assertNotIn(str(Path(self.tmp.name)),response.text)
+        self.assertNotIn(str(self.home),response.text)
         settings=self.client.get('/api/v1/settings',headers=self.auth).json()
         for key in ('profile','namespace','user_person_urn','database'):
             self.assertNotIn(key,settings)

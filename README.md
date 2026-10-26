@@ -255,6 +255,22 @@ The [real-model validation report](docs/real-model-validation.md) records the
 subsequent live cutover, actual Hermes engine/tool calls, external extraction
 quality and cached E5 inference, including the remaining failures.
 
+### Retrieval research
+
+The [retrieval research protocol](docs/retrieval-research-protocol.md) freezes
+data splits, model comparisons and promotion gates. The
+[experiment record](docs/retrieval-research-results-2026-10-24.md) separates
+measured development results from pending human review and production checks.
+Research dependencies and model caches stay outside the Hermes runtime:
+
+```powershell
+python scripts/run_retrieval_research.py --output reports/retrieval-dev --allow-download
+```
+
+This runs development experiments only. It does not switch the active model or
+read a default Hermes profile. See [tool details](plugins/kg/research/README.md)
+for local human review, strict resume, offline runs and evidence requirements.
+
 ---
 
 ## Documentation
@@ -267,6 +283,10 @@ quality and cached E5 inference, including the remaining failures.
 | `skills/kg-memory/ontology/core.ttl` | RDF ontology, parsed by RDFLib and validated by `skills/kg-memory/scripts/validate.py`. |
 | `skills/kg-memory-sync/SKILL.md` | The extraction contract: snapshot analysis, evidence rules, staging and replay. |
 | `docs/known-issues.md` | Open problems, including the prompt-template drift above. |
+| `docs/retrieval-research-protocol.md` | Frozen graph retrieval experiment design, datasets, metrics and promotion gates. |
+| `docs/retrieval-research-results-2026-10-24.md` | Measured development results, interpretation, reproduction and remaining work. |
+| `docs/retrieval-online-contract.md` | Experimental current-source validation, request context and read-only shadow HTTP boundaries. |
+| `docs/research-readiness.md` | Read-only evidence audit, human-label import and remaining selection gates. |
 | `docs/product-ui-ux-design.md` | Product personas, scenarios, requirements, interaction design and Apple HIG references. |
 | `docs/ontology-ui-validation.md` | Ontology API, interface and responsive acceptance evidence and limitations. |
 | `docs/web-p0-validation.md` | Whole-workbench P0 behavior, fault recovery, privacy, accessibility evidence and remaining release gates. |
