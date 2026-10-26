@@ -63,7 +63,7 @@ class ProfileTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.cache = Path(self.temp.name)
+        self.cache = Path(self.temp.name).resolve()
         FakeSentenceTransformer.instances = []
         FakeSentenceTransformer.result = None
         FakeSentenceTransformer.dimensions = 768
