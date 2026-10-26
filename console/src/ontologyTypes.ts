@@ -7,10 +7,23 @@ export type OntologyTypeReference = string;
 export type OntologyCollection = "entity_types" | "properties" | "relations";
 export type OntologyLifecycleAction =
   "create" | "deactivate" | "restore" | "delete";
+/** Read-only binding; operational key/IRI and accepted tool inputs stay separate. */
+export interface OntologySemanticBinding {
+  iri: string;
+  mapping: string;
+  source: string;
+  source_version: string;
+  direction?: string;
+  note?: string;
+  preset_id?: string;
+  profile_version?: string;
+  profile_digest?: string;
+}
 export interface OntologyDefinitionLifecycle {
   custom?: boolean;
   active?: boolean;
   allowed_actions?: string[];
+  semantic?: OntologySemanticBinding;
 }
 
 export interface OntologyProperty extends OntologyDefinitionLifecycle {
@@ -65,6 +78,13 @@ export interface OntologySchema {
   read_only: boolean;
   /** Absent on older viewer-only services. Editing requires an explicit version. */
   version?: number;
+  profile_digest?: string;
+  presets?: {
+    id: string;
+    version: string;
+    digest: string;
+    sources?: Record<string, unknown>[];
+  }[];
   editing?: OntologyEditingCapabilities;
   stats_available: boolean;
   stats_error: { error_type: string } | null;

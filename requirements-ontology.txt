@@ -1,0 +1,4 @@
+# Offline authoring/verification only; the memory provider does not need a reasoner.
+rdflib==7.1.4
+owlrl==7.1.4
+pyshacl==0.30.1

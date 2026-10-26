@@ -103,9 +103,10 @@ The session discovery/queue/retry workflow belongs to `kg-memory-sync`.
 
 - Canonical entity URIs are `urn:hermes:kg:<type>-<id>` under the configured prefix.
   Legacy `<type>:<id>` input is normalized before writing.
-- Each business node has `KGEntity` plus exactly one of Person, Event, Preference,
-  Decision, Location or Concept. Shared receipt and migration metadata are not
-  business memories.
+- Each business node has `KGEntity` plus exactly one core or published namespace
+  business label. The compatible core is Person, Event, Preference, Decision,
+  Location and Concept; extensions use server-derived `KGCustom_x_*` labels.
+  Shared receipt and migration metadata are not business memories.
 - Own-namespace entities are readable. External entities require boolean
   `shared=true`; related people/locations are filtered by the same rule.
 - `KGLegacyAlias` and `KGLegacyUnresolved` nodes are excluded from normal queries.
@@ -159,22 +160,47 @@ The session discovery/queue/retry workflow belongs to `kg-memory-sync`.
 
 ## Ontology and maintenance
 
+The personal preset reuses pinned Schema.org, SKOS, PROV-O and Dublin Core
+vocabularies. Newly initialized namespaces install it; existing namespaces opt in
+with `hermes-kg --home <profile> ontology install-preset personal --dry-run`, then
+the same command without `--dry-run`. Reads and backup restoration never install it.
+Discover current active keys with the schema query plan; do not assume another
+namespace's definitions are installed. Standard semantic IRIs are explanations,
+not type keys or writable aliases. Preserve the original fact/evidence boundary.
+
+Use Task for durable actions, Goal for intended outcomes, and Project for grouped
+work. A deadline is not an event occurrence. Resources are information content;
+Items are physical objects; topics are SKOS concepts, while old Concept records
+retain their existing meaning. Course enrollment does not prove a Skill; one
+activity does not prove a Habit; interest does not prove completed reading or
+ownership. Skills, habits and health/finance records preserve the stated person.
+Do not infer missing dates, currency, diagnosis, ability levels or indirect family
+relationships. Use the preset's independent business-state field; do not mark a
+paused task `status=disabled`, which hides memories. Money amounts use decimal text.
+
+The source profile, locked upstream resources, generated manifest and SHACL live
+under `ontology/personal/`. Existing storage keys and URNs remain authoritative;
+semantic provenance is visible in the ontology inspector. Update the RDF profile
+and rebuild instead of hand-editing generated resources. Runtime writes continue
+to validate against the current namespace; no online OWL inference is required.
+
 `ontology/core.ttl` is parsed by RDFLib. Run:
 
 ```text
 skills/kg-memory/scripts/validate.py
 skills/kg-memory/scripts/validate.py --graph
 skills/kg-memory/scripts/discover_gaps.py
-skills/kg-memory/scripts/add_concept.py --class Project --desc "A project concept" --dry-run
 ```
 
 The first validation checks RDF syntax and storage mappings; `--graph` adds
 read-only checks of searchable instances and relationship endpoint types without
 printing their private text. Content quarantine is excluded from these checks and
-remains separately counted by `kg_status`. Ontology extensions serialize RDF safely, validate the complete
-draft and atomically replace the file. Adding a new ontology class alone does not
-add a seventh writable business type: update the explicit Python schema and
-queries with tests, or use Concept for domain concepts.
+remains separately counted by `kg_status`. Runtime extensions are published through
+namespace ontology management, not by adding an unsupported class to `core.ttl`.
+For bundled preset development, edit the source profile in a repository checkout
+and run `scripts/build_personal_ontology.py`; `--check` verifies the generated files
+without rewriting them. Existing core identities and the fixed storage contract
+remain compatible.
 
 Do not run historical bulk-deletion recipes. Existing alias/unresolved nodes need
 an evidence-based migration; schema labels alone cannot recover their missing

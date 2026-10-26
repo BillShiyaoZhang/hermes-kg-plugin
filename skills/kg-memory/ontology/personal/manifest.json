@@ -1,0 +1,1443 @@
+{
+  "bindings": {
+    "entity_types": {
+      "concept": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:LegacyConcept",
+        "mapping": "local",
+        "note": "兼容曾容纳项目和文档的旧 Concept；不整体等价于 SKOS Concept，也不自动重分类。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "decision": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:Decision",
+        "mapping": "local",
+        "note": "明确作出的选择及背景，不将建议转换为决策。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "event": {
+        "direction": "forward",
+        "iri": "https://schema.org/Event",
+        "mapping": "projection",
+        "note": "保留来源支持的发生或计划状态；事件时间不是消息时间。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "location": {
+        "direction": "forward",
+        "iri": "https://schema.org/Place",
+        "mapping": "projection",
+        "note": "有名称的现实地点，保留现有 Location URN。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "person": {
+        "direction": "forward",
+        "iri": "https://schema.org/Person",
+        "mapping": "projection",
+        "note": "将有明确人物身份的旧 Person 投影为标准人物，不改存储身份。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "preference": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:Preference",
+        "mapping": "local",
+        "note": "明确表达的偏好键值；喜好不是已经发生的行为。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_finance_record": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:FinanceRecord",
+        "mapping": "local",
+        "note": "用户提供的收支、账单、订阅、预算或资产负债记录。金额和币种据来源填写，不把记录等同于金融产品。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_goal": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:Goal",
+        "mapping": "local",
+        "note": "用户期望达到的结果，可记录成功标准和目标日期，不强制生成项目或任务。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_habit": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:Habit",
+        "mapping": "local",
+        "note": "某个人明确持续进行的行为规律。标识应包含拥有者，喜好或一次行为不证明形成习惯。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_health_record": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:HealthRecord",
+        "mapping": "local",
+        "note": "用户陈述的症状、检查、用药、运动或健康指标记录。保持原文及单位，不把记录等同于疾病、药物或专业诊断。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_item": {
+        "direction": "forward",
+        "iri": "http://purl.org/dc/dcmitype/PhysicalObject",
+        "mapping": "reuse",
+        "note": "设备、家居、车辆、实物书等具体非生命实物。数字内容用资料表示，账户或金融产品不归入此类。",
+        "source": "dcmitype",
+        "source_version": "2020-01-20"
+      },
+      "x_personal_organization": {
+        "direction": "forward",
+        "iri": "https://schema.org/Organization",
+        "mapping": "reuse",
+        "note": "公司、学校、机构或商家。组织身份与某个人的任职记录分开。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "x_personal_project": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:Project",
+        "mapping": "local",
+        "note": "Schema.org Project 继承 Organization；此处的个人任务集合不作同名等价。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_resource": {
+        "direction": "forward",
+        "iri": "https://schema.org/CreativeWork",
+        "mapping": "reuse",
+        "note": "书籍内容、课程、文档、网页、软件或影音等信息作品。资料不是拥有的实物副本，使用不代表读完。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "x_personal_skill": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:Skill",
+        "mapping": "local",
+        "note": "技能主题可以关联主题节点；它与某人的熟练度记录不同。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_task": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:Task",
+        "mapping": "local",
+        "note": "待办描述不等同于 schema:Action 或已发生事件。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_topic": {
+        "direction": "forward",
+        "iri": "http://www.w3.org/2004/02/skos/core#Concept",
+        "mapping": "reuse",
+        "note": "具有明确含义的知识主题、术语或分类概念。与描述它的资料及旧 Concept 类型分开。",
+        "source": "skos",
+        "source_version": "2009-08-18"
+      }
+    },
+    "properties": {
+      "foaf_name": {
+        "direction": "forward",
+        "iri": "https://schema.org/name",
+        "mapping": "projection",
+        "note": "旧 foaf_name 是存储键，不据此声明全局 FOAF 等价。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "hermes_description": {
+        "direction": "forward",
+        "iri": "https://schema.org/description",
+        "mapping": "projection",
+        "note": "",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "hermes_eventTime": {
+        "direction": "forward",
+        "iri": "https://schema.org/startDate",
+        "mapping": "projection",
+        "note": "保留原文时间精度；日期边界不代表精确发生时刻。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "hermes_name": {
+        "direction": "forward",
+        "iri": "https://schema.org/name",
+        "mapping": "projection",
+        "note": "非人物记录的显示名称。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "x_personal_amount": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:amount",
+        "mapping": "local",
+        "note": "十进制字符串保存来源金额，例如 35.50，避免二进制浮点舍入；不自动汇率换算。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_brand": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:brand",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_currency": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:currency",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_due_at": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:dueAt",
+        "mapping": "local",
+        "note": "来源支持的精确截止时刻，按配置时区保存。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_due_date": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:dueDate",
+        "mapping": "local",
+        "note": "只知道日期时使用，不补造具体时刻，也不作为事件发生日期。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_frequency": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:frequency",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_kind": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:kind",
+        "mapping": "local",
+        "note": "来源支持的分类说明，例如学校、书籍、体检或支出。建议词汇不构成封闭枚举。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_model": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:model",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_record_date": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:recordDate",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_recorded_at": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:recordedAt",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_skill_level": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:skillLevel",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_state": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:state",
+        "mapping": "local",
+        "note": "原文支持的进行、完成、暂停或取消等业务状态；独立于记忆的归档、隐藏和定义停用。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_success_criteria": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:successCriteria",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_target_date": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:targetDate",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_unit": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:unit",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "x_personal_url": {
+        "direction": "forward",
+        "iri": "https://schema.org/url",
+        "mapping": "reuse",
+        "note": "来源明确给出的网址；不自动检索或推断。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "x_personal_value": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:value",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      }
+    },
+    "relations": {
+      "HERMES_knows": {
+        "direction": "forward",
+        "iri": "https://schema.org/knows",
+        "mapping": "projection",
+        "note": "",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "HERMES_locatedAt": {
+        "direction": "forward",
+        "iri": "https://schema.org/location",
+        "mapping": "annotation",
+        "note": "仅为相关参考。旧关系允许 Person/Event，而锁定的 Schema.org 30.1 location 不含 Person 候选域；不强行投影，也不修改旧事实。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "HERMES_participant": {
+        "direction": "reverse",
+        "iri": "https://schema.org/attendee",
+        "mapping": "projection",
+        "note": "Person→Event 在临时标准投影中变为 Event→Person，不改存储边，也不新增事实。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "X_PERSONAL_ABOUT": {
+        "direction": "forward",
+        "iri": "https://schema.org/about",
+        "mapping": "reuse",
+        "note": "",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "X_PERSONAL_AUTHOR": {
+        "direction": "forward",
+        "iri": "https://schema.org/author",
+        "mapping": "reuse",
+        "note": "",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "X_PERSONAL_BROADER": {
+        "direction": "forward",
+        "iri": "http://www.w3.org/2004/02/skos/core#broader",
+        "mapping": "reuse",
+        "note": "",
+        "source": "skos",
+        "source_version": "2009-08-18"
+      },
+      "X_PERSONAL_CHILD": {
+        "direction": "forward",
+        "iri": "https://schema.org/children",
+        "mapping": "reuse",
+        "note": "",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "X_PERSONAL_COLLEAGUE": {
+        "direction": "forward",
+        "iri": "https://schema.org/colleague",
+        "mapping": "reuse",
+        "note": "",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "X_PERSONAL_HAS_EVENT": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:hasEvent",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "X_PERSONAL_HAS_GOAL": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:hasGoal",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "X_PERSONAL_HAS_HABIT": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:hasHabit",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "X_PERSONAL_HAS_RECORD": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:hasRecord",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "X_PERSONAL_HAS_SKILL": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:hasSkill",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "X_PERSONAL_LOCATED_AT": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:locatedAt",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "X_PERSONAL_MEMBER_OF": {
+        "direction": "forward",
+        "iri": "https://schema.org/memberOf",
+        "mapping": "reuse",
+        "note": "来源支持的组织成员身份；历史身份须在说明中明确，不自动视为现任。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "X_PERSONAL_OWNS": {
+        "direction": "forward",
+        "iri": "https://schema.org/owns",
+        "mapping": "reuse",
+        "note": "明确拥有实物；想购买不表示拥有。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "X_PERSONAL_PARENT": {
+        "direction": "forward",
+        "iri": "https://schema.org/parent",
+        "mapping": "reuse",
+        "note": "人物指向其父亲或母亲；仅记录来源明确支持的关系。",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "X_PERSONAL_PART_OF": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:partOf",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "X_PERSONAL_RELATED_TOPIC": {
+        "direction": "forward",
+        "iri": "http://www.w3.org/2004/02/skos/core#related",
+        "mapping": "reuse",
+        "note": "",
+        "source": "skos",
+        "source_version": "2009-08-18"
+      },
+      "X_PERSONAL_SIBLING": {
+        "direction": "forward",
+        "iri": "https://schema.org/sibling",
+        "mapping": "reuse",
+        "note": "",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "X_PERSONAL_SPOUSE": {
+        "direction": "forward",
+        "iri": "https://schema.org/spouse",
+        "mapping": "reuse",
+        "note": "",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "X_PERSONAL_SUPPORTS": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:supports",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "X_PERSONAL_USES": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:uses",
+        "mapping": "local",
+        "note": "明确使用资料或实物；使用资料不代表已经读完。",
+        "source": "personal",
+        "source_version": "1.0.0"
+      },
+      "X_PERSONAL_WORKS_FOR": {
+        "direction": "forward",
+        "iri": "https://schema.org/worksFor",
+        "mapping": "reuse",
+        "note": "",
+        "source": "schema",
+        "source_version": "30.1"
+      },
+      "X_PERSONAL_WORKS_ON": {
+        "direction": "forward",
+        "iri": "urn:hermes:personal:worksOn",
+        "mapping": "local",
+        "note": "",
+        "source": "personal",
+        "source_version": "1.0.0"
+      }
+    }
+  },
+  "compiler": "personal-profile-3",
+  "core_contract": {
+    "event_precisions": [
+      "day",
+      "datetime",
+      "unknown"
+    ],
+    "event_types": [
+      "daily",
+      "general",
+      "meeting",
+      "social",
+      "system",
+      "task",
+      "travel"
+    ],
+    "properties": {
+      "hermes_decisionText": {
+        "datatype": "string",
+        "iri": "urn:hermes:personal:storage-property:hermes_decisionText"
+      },
+      "hermes_eventEndTime": {
+        "datatype": "dateTime",
+        "iri": "urn:hermes:personal:storage-property:hermes_eventEndTime"
+      },
+      "hermes_eventStatus": {
+        "datatype": "string",
+        "iri": "urn:hermes:personal:storage-property:hermes_eventStatus"
+      },
+      "hermes_eventTime": {
+        "datatype": "dateTime",
+        "iri": "https://schema.org/startDate"
+      },
+      "hermes_eventType": {
+        "datatype": "string",
+        "iri": "urn:hermes:personal:storage-property:hermes_eventType"
+      },
+      "hermes_preferenceKey": {
+        "datatype": "string",
+        "iri": "urn:hermes:personal:storage-property:hermes_preferenceKey"
+      },
+      "hermes_preferenceValue": {
+        "datatype": "string",
+        "iri": "urn:hermes:personal:storage-property:hermes_preferenceValue"
+      },
+      "hermes_timePrecision": {
+        "datatype": "string",
+        "iri": "urn:hermes:personal:storage-property:hermes_timePrecision"
+      }
+    },
+    "required_properties": {
+      "decision": [
+        "hermes_decisionText"
+      ],
+      "event": [
+        "hermes_eventTime"
+      ],
+      "preference": [
+        "hermes_preferenceKey",
+        "hermes_preferenceValue"
+      ]
+    }
+  },
+  "digest": "44cb1e21b9e76ccbef315ded3ee25ea845b9f151d3c0b31144ac12d1bedbd699",
+  "id": "personal",
+  "operations": [
+    {
+      "action": "create",
+      "definition": {
+        "description": "用户提供的收支、账单、订阅、预算或资产负债记录。金额和币种据来源填写，不把记录等同于金融产品。",
+        "label": "财务记录"
+      },
+      "key": "x_personal_finance_record",
+      "kind": "entity_types"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "description": "用户期望达到的结果，可记录成功标准和目标日期，不强制生成项目或任务。",
+        "label": "目标"
+      },
+      "key": "x_personal_goal",
+      "kind": "entity_types"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "description": "某个人明确持续进行的行为规律。标识应包含拥有者，喜好或一次行为不证明形成习惯。",
+        "label": "习惯"
+      },
+      "key": "x_personal_habit",
+      "kind": "entity_types"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "description": "用户陈述的症状、检查、用药、运动或健康指标记录。保持原文及单位，不把记录等同于疾病、药物或专业诊断。",
+        "label": "健康记录"
+      },
+      "key": "x_personal_health_record",
+      "kind": "entity_types"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "description": "设备、家居、车辆、实物书等具体非生命实物。数字内容用资料表示，账户或金融产品不归入此类。",
+        "label": "物品"
+      },
+      "key": "x_personal_item",
+      "kind": "entity_types"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "description": "公司、学校、机构或商家。组织身份与某个人的任职记录分开。",
+        "label": "组织"
+      },
+      "key": "x_personal_organization",
+      "kind": "entity_types"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "description": "为达到结果而组织的一组持续工作，不要求一定属于组织。",
+        "label": "项目"
+      },
+      "key": "x_personal_project",
+      "kind": "entity_types"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "description": "书籍内容、课程、文档、网页、软件或影音等信息作品。资料不是拥有的实物副本，使用不代表读完。",
+        "label": "资料"
+      },
+      "key": "x_personal_resource",
+      "kind": "entity_types"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "description": "某个人明确具有的能力及其原话熟练度。标识应包含拥有者，报名课程或接触主题不证明掌握技能。",
+        "label": "个人技能"
+      },
+      "key": "x_personal_skill",
+      "kind": "entity_types"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "description": "明确需要执行、正在执行或已经完成的一项行动。期限可缺失；截止日期不证明行动已经发生。临时要求修改代码等对话指令不是持久待办。",
+        "label": "任务"
+      },
+      "key": "x_personal_task",
+      "kind": "entity_types"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "description": "具有明确含义的知识主题、术语或分类概念。与描述它的资料及旧 Concept 类型分开。",
+        "label": "主题与术语"
+      },
+      "key": "x_personal_topic",
+      "kind": "entity_types"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "十进制字符串保存来源金额，例如 35.50，避免二进制浮点舍入；不自动汇率换算。",
+        "domain": [
+          "x_personal_finance_record"
+        ],
+        "label": "金额",
+        "range": [
+          "string"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_amount",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_item"
+        ],
+        "label": "品牌",
+        "range": [
+          "string"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_brand",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_finance_record"
+        ],
+        "label": "币种",
+        "range": [
+          "string"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_currency",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "来源支持的精确截止时刻，按配置时区保存。",
+        "domain": [
+          "x_personal_task"
+        ],
+        "label": "截止时刻",
+        "range": [
+          "dateTime"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_due_at",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "只知道日期时使用，不补造具体时刻，也不作为事件发生日期。",
+        "domain": [
+          "x_personal_task"
+        ],
+        "label": "截止日期",
+        "range": [
+          "date"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_due_date",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_finance_record",
+          "x_personal_habit"
+        ],
+        "label": "频率或周期",
+        "range": [
+          "string"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_frequency",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "来源支持的分类说明，例如学校、书籍、体检或支出。建议词汇不构成封闭枚举。",
+        "domain": [
+          "x_personal_finance_record",
+          "x_personal_health_record",
+          "x_personal_item",
+          "x_personal_organization",
+          "x_personal_resource"
+        ],
+        "label": "类别",
+        "range": [
+          "string"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_kind",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_item"
+        ],
+        "label": "型号",
+        "range": [
+          "string"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_model",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_finance_record",
+          "x_personal_health_record"
+        ],
+        "label": "记录所述日期",
+        "range": [
+          "date"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_record_date",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_finance_record",
+          "x_personal_health_record"
+        ],
+        "label": "记录所述时刻",
+        "range": [
+          "dateTime"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_recorded_at",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_skill"
+        ],
+        "label": "熟练度",
+        "range": [
+          "string"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_skill_level",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "原文支持的进行、完成、暂停或取消等业务状态；独立于记忆的归档、隐藏和定义停用。",
+        "domain": [
+          "x_personal_finance_record",
+          "x_personal_goal",
+          "x_personal_habit",
+          "x_personal_project",
+          "x_personal_task"
+        ],
+        "label": "业务状态",
+        "range": [
+          "string"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_state",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_goal"
+        ],
+        "label": "成功标准",
+        "range": [
+          "string"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_success_criteria",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_goal",
+          "x_personal_project"
+        ],
+        "label": "目标日期",
+        "range": [
+          "date"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_target_date",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_health_record"
+        ],
+        "label": "原文单位",
+        "range": [
+          "string"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_unit",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "来源明确给出的网址；不自动检索或推断。",
+        "domain": [
+          "x_personal_organization",
+          "x_personal_resource"
+        ],
+        "label": "网址",
+        "range": [
+          "string"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_url",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_health_record"
+        ],
+        "label": "测量数值",
+        "range": [
+          "double"
+        ],
+        "required_for": [],
+        "value_shape": "scalar"
+      },
+      "key": "x_personal_value",
+      "kind": "properties"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_finance_record",
+          "x_personal_health_record",
+          "x_personal_resource"
+        ],
+        "label": "描述主题",
+        "range": [
+          "x_personal_topic"
+        ]
+      },
+      "key": "X_PERSONAL_ABOUT",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_resource"
+        ],
+        "label": "作者",
+        "range": [
+          "person"
+        ]
+      },
+      "key": "X_PERSONAL_AUTHOR",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_topic"
+        ],
+        "label": "上位主题",
+        "range": [
+          "x_personal_topic"
+        ]
+      },
+      "key": "X_PERSONAL_BROADER",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "person"
+        ],
+        "label": "子女",
+        "range": [
+          "person"
+        ]
+      },
+      "key": "X_PERSONAL_CHILD",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "person"
+        ],
+        "label": "同事",
+        "range": [
+          "person"
+        ]
+      },
+      "key": "X_PERSONAL_COLLEAGUE",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_habit",
+          "x_personal_project",
+          "x_personal_task"
+        ],
+        "label": "关联活动",
+        "range": [
+          "event"
+        ]
+      },
+      "key": "X_PERSONAL_HAS_EVENT",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "person"
+        ],
+        "label": "拥有目标",
+        "range": [
+          "x_personal_goal"
+        ]
+      },
+      "key": "X_PERSONAL_HAS_GOAL",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "person"
+        ],
+        "label": "具有习惯",
+        "range": [
+          "x_personal_habit"
+        ]
+      },
+      "key": "X_PERSONAL_HAS_HABIT",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "person"
+        ],
+        "label": "拥有个人记录",
+        "range": [
+          "x_personal_finance_record",
+          "x_personal_health_record"
+        ]
+      },
+      "key": "X_PERSONAL_HAS_RECORD",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "person"
+        ],
+        "label": "具有技能",
+        "range": [
+          "x_personal_skill"
+        ]
+      },
+      "key": "X_PERSONAL_HAS_SKILL",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_item",
+          "x_personal_organization"
+        ],
+        "label": "实物或组织位于",
+        "range": [
+          "location"
+        ]
+      },
+      "key": "X_PERSONAL_LOCATED_AT",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "来源支持的组织成员身份；历史身份须在说明中明确，不自动视为现任。",
+        "domain": [
+          "person"
+        ],
+        "label": "属于组织",
+        "range": [
+          "x_personal_organization"
+        ]
+      },
+      "key": "X_PERSONAL_MEMBER_OF",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "明确拥有实物；想购买不表示拥有。",
+        "domain": [
+          "person"
+        ],
+        "label": "拥有",
+        "range": [
+          "x_personal_item"
+        ]
+      },
+      "key": "X_PERSONAL_OWNS",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "人物指向其父亲或母亲；仅记录来源明确支持的关系。",
+        "domain": [
+          "person"
+        ],
+        "label": "父母",
+        "range": [
+          "person"
+        ]
+      },
+      "key": "X_PERSONAL_PARENT",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_task"
+        ],
+        "label": "属于工作",
+        "range": [
+          "x_personal_project",
+          "x_personal_task"
+        ]
+      },
+      "key": "X_PERSONAL_PART_OF",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_topic"
+        ],
+        "label": "相关主题",
+        "range": [
+          "x_personal_topic"
+        ]
+      },
+      "key": "X_PERSONAL_RELATED_TOPIC",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "person"
+        ],
+        "label": "兄弟姐妹",
+        "range": [
+          "person"
+        ]
+      },
+      "key": "X_PERSONAL_SIBLING",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "person"
+        ],
+        "label": "配偶",
+        "range": [
+          "person"
+        ]
+      },
+      "key": "X_PERSONAL_SPOUSE",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "x_personal_habit",
+          "x_personal_project",
+          "x_personal_skill",
+          "x_personal_task"
+        ],
+        "label": "支持目标",
+        "range": [
+          "x_personal_goal"
+        ]
+      },
+      "key": "X_PERSONAL_SUPPORTS",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "明确使用资料或实物；使用资料不代表已经读完。",
+        "domain": [
+          "person",
+          "x_personal_goal",
+          "x_personal_habit",
+          "x_personal_project",
+          "x_personal_task"
+        ],
+        "label": "使用",
+        "range": [
+          "x_personal_item",
+          "x_personal_resource"
+        ]
+      },
+      "key": "X_PERSONAL_USES",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "person"
+        ],
+        "label": "任职于",
+        "range": [
+          "x_personal_organization"
+        ]
+      },
+      "key": "X_PERSONAL_WORKS_FOR",
+      "kind": "relations"
+    },
+    {
+      "action": "create",
+      "definition": {
+        "aliases": [],
+        "description": "",
+        "domain": [
+          "person"
+        ],
+        "label": "推进工作",
+        "range": [
+          "x_personal_project",
+          "x_personal_task"
+        ]
+      },
+      "key": "X_PERSONAL_WORKS_ON",
+      "kind": "relations"
+    }
+  ],
+  "provenance": {
+    "activity_class": "urn:hermes:personal:Extraction",
+    "agent_class": "http://www.w3.org/ns/prov#Agent",
+    "associated_with": "http://www.w3.org/ns/prov#wasAssociatedWith",
+    "conforms_to": "http://purl.org/dc/terms/conformsTo",
+    "derived_from": "http://www.w3.org/ns/prov#wasDerivedFrom",
+    "generated_by": "http://www.w3.org/ns/prov#wasGeneratedBy",
+    "license_metadata": "http://purl.org/dc/terms/license",
+    "record_class": "urn:hermes:personal:MemoryRecord",
+    "snapshot_class": "urn:hermes:personal:Snapshot",
+    "source_class": "urn:hermes:personal:SourceMessage",
+    "source_metadata": "http://purl.org/dc/terms/source"
+  },
+  "sources": [
+    {
+      "file": "upstream/dcmi-type-2020.ttl",
+      "format": "turtle",
+      "id": "dcmitype",
+      "iri": "http://purl.org/dc/dcmitype/",
+      "license": "CC-BY-4.0",
+      "license_url": "https://www.dublincore.org/about/copyright/",
+      "modified": false,
+      "sha256": "f987b11d556e556fef95d7e9410c1c561fc1b7ac05ccd457128dc8962641b01e",
+      "url": "https://www.dublincore.org/2020/01/20/dublin_core_type.ttl",
+      "version": "2020-01-20"
+    },
+    {
+      "file": "upstream/dcmi-terms-2020.ttl",
+      "format": "turtle",
+      "id": "dcterms",
+      "iri": "http://purl.org/dc/terms/",
+      "license": "CC-BY-4.0",
+      "license_url": "https://www.dublincore.org/about/copyright/",
+      "modified": false,
+      "sha256": "075287f7774f59bf450d0d464bf5e4d3c101358da36b061ab7a45140d96feaf8",
+      "url": "https://www.dublincore.org/2020/01/20/dublin_core_terms.ttl",
+      "version": "2020-01-20"
+    },
+    {
+      "file": "upstream/prov-o-2013.ttl",
+      "format": "turtle",
+      "id": "prov",
+      "iri": "http://www.w3.org/ns/prov#",
+      "license": "W3C Document License",
+      "license_url": "https://www.w3.org/Consortium/Legal/2002/copyright-documents-20021231",
+      "modified": false,
+      "sha256": "3d03c8e15753178541fb8cd59fbefecaf1861f9c37ef75190c6e938b85fb0c3d",
+      "url": "https://www.w3.org/ns/prov-o-20130430.ttl",
+      "version": "2013-04-30"
+    },
+    {
+      "file": "upstream/schemaorg-30.1.ttl",
+      "format": "turtle",
+      "id": "schema",
+      "iri": "https://schema.org/",
+      "license": "CC-BY-SA-3.0",
+      "license_url": "https://schema.org/docs/terms.html",
+      "modified": false,
+      "sha256": "7f15ca89398c4f235f478a4b3b8d1f975d63c5a860b77c8a8fce01f791b7ae2f",
+      "url": "https://raw.githubusercontent.com/schemaorg/schemaorg/main/data/releases/30.1/schemaorg-current-https.ttl",
+      "version": "30.1"
+    },
+    {
+      "file": "upstream/skos-2009.rdf",
+      "format": "xml",
+      "id": "skos",
+      "iri": "http://www.w3.org/2004/02/skos/core#",
+      "license": "W3C Document License",
+      "license_url": "https://www.w3.org/Consortium/Legal/2002/copyright-documents-20021231",
+      "modified": false,
+      "sha256": "e79633b8d0564816cee8a99f5c9acf9a0e6fc7257c7209acd684ecad53a89dd6",
+      "url": "https://www.w3.org/2009/08/skos-reference/skos.rdf",
+      "version": "2009-08-18"
+    }
+  ],
+  "version": "1.0.0"
+}

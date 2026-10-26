@@ -21,6 +21,17 @@ snapshot. Cron, the extractor's own sessions and background memory automation
 are excluded from input. Original compacted messages remain eligible; inactive
 rewound messages and generated compression summaries are excluded.
 
+Extraction reads the current namespace's active ontology, including an installed
+personal preset. Use its exact runtime type/property/relation keys; standard
+semantic IRIs are vocabulary metadata, not new facts or writable type aliases.
+Distinguish durable Tasks from occurred Events, Goals from Projects, Resources
+from physical Items, and knowledge Topics from legacy Concept records. Never
+infer a skill from enrollment, a habit from one action, or experience from an
+interest. Preserve the subject of skills, habits and health/finance records.
+Missing deadlines, dates, units and currency stay missing. Business state uses
+the preset field, not the system's visibility status. Indirect relationships and
+other inferred conclusions are not extracted as user-confirmed facts.
+
 ## Inspect and prepare
 
 Examples below use PowerShell on the Windows installation. In another profile,

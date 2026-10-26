@@ -40,6 +40,43 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.ov3-semantic {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #d8e0d9;
+  border-radius: 8px;
+  background: #f7faf6;
+}
+.ov3-semantic summary {
+  cursor: pointer;
+  min-height: 28px;
+  font-weight: 650;
+}
+.ov3-semantic dl {
+  margin: 8px 0;
+}
+.ov3-semantic dl > div {
+  display: grid;
+  grid-template-columns: minmax(4.5em, 0.35fr) minmax(0, 1fr);
+  gap: 8px;
+  padding: 4px 0;
+}
+.ov3-semantic dt {
+  color: #53635b;
+}
+.ov3-semantic dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ov3-semantic a {
+  color: #264b38;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+.ov3-inspector .ov3-semantic-note {
+  margin-bottom: 0;
+  font-size: 0.6875rem;
+}
 .ov3-inspector button {
   cursor: pointer;
   color: inherit;

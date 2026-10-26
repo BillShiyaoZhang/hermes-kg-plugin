@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from kg.retrieval_documents import (dataset_to_documents, entity_card, ontology_cards,
-                                    relation_cards)
+                                    relation_cards, _schema_fingerprint)
 
 NS = 'urn:retrieval-fixture:kg:'
 
@@ -52,6 +52,30 @@ def fixture():
 
 
 class RetrievalDocumentTests(unittest.TestCase):
+    def test_semantic_bindings_and_profile_digest_invalidate_rules_and_fact_dependencies(self):
+        original = schema()
+        original['profile_digest'] = 'profile-v1'
+        original['entity_types'][0]['semantic'] = {
+            'iri': 'https://schema.org/Person', 'source': 'schema', 'source_version': '30.1',
+            'mapping': 'projection', 'direction': 'forward', 'note': '保留本地存储身份。'}
+        rules = ontology_cards(original)
+        person = next(doc for doc in rules if doc.metadata['definition_key'] == 'person')
+        self.assertIn('https://schema.org/Person', person.text)
+        self.assertIn('来源版本: 30.1', person.text)
+        self.assertIn('保留本地存储身份。', person.text)
+        entity = entity_card(fixture()['entities'][0], schema=original)
+        for change in ('binding', 'digest'):
+            changed = deepcopy(original)
+            if change == 'binding':
+                changed['entity_types'][0]['semantic']['note'] = '新的对齐说明'
+            else:
+                changed['profile_digest'] = 'profile-v2'
+            with self.subTest(change=change):
+                self.assertNotEqual(_schema_fingerprint(original), _schema_fingerprint(changed))
+                current = next(doc for doc in ontology_cards(changed) if doc.metadata['definition_key'] == 'person')
+                self.assertNotEqual(current.fingerprint, person.fingerprint)
+                self.assertNotEqual(entity.fingerprint, entity_card(fixture()['entities'][0], schema=changed).fingerprint)
+
     def test_representations_have_explicit_rule_and_fact_boundaries(self):
         data = fixture()
         self.assertEqual([doc.kind for doc in dataset_to_documents(data, 'values')], ['entity', 'entity'])

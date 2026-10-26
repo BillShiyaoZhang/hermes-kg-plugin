@@ -110,6 +110,20 @@ describe("unified graph identities and scope", () => {
 });
 
 describe("stable graph layout", () => {
+  it.each(["schema", "aggregate", "group", "saved", "review"] as const)(
+    "keeps %s edges finite while distinct nodes share the initial origin",
+    (layer) => {
+      const source = { id: "a", label: "起点", type: "person", layer, x: 0, y: 0 };
+      const target = { ...source, id: "b", label: "终点" };
+      for (const [from, to] of [[source, target], [target, source]]) {
+        const path = graphEdgeGeometry(from, to, 18);
+        expect(path.d).not.toMatch(/NaN|Infinity/);
+        expect(Number.isFinite(path.x) && Number.isFinite(path.y)).toBe(true);
+        expect(graphEdgeGeometry(from, to, 18)).toEqual(path);
+      }
+    },
+  );
+
   it.each([1, 2, 3, 4, 5, 6, 7, 8])(
     "keeps a focused center and %i neighbors readable without overlapping label cells",
     (count) => {

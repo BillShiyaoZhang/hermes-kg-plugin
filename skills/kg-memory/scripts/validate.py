@@ -47,37 +47,44 @@ def validate(ttl_path=ONTOLOGY_PATH):
 
 def validate_graph(store=None):
     from kg.config import load_config
-    from kg.schema import ENTITY_LABELS, RELATION_ENDPOINTS, validate_event_timing
+    from kg.schema import (RELATION_ENDPOINTS, normalize_rel, runtime_entity_labels,
+                           schema_for_store, validate_event_timing)
+    from kg.ontology_editing import entity_violations, relation_violations
     from kg.store import KGStore
     if store is None:
         with KGStore(load_config()) as connection:
             return validate_graph(connection)
     counts = Counter()
+    ontology = schema_for_store(store)
+    registry = runtime_entity_labels(ontology)
+    kinds_by_label = {label: key for key, label in registry.items()}
     rows = store.run_read("""
         MATCH (n) WHERE n.uri STARTS WITH $prefix
             AND NOT n:KGLegacyAlias AND NOT n:KGLegacyUnresolved AND NOT n:KGQuarantined
         RETURN labels(n) AS labels, properties(n) AS properties
     """, {"prefix": store.config.urn_prefix})
     for row in rows:
-        labels = set(row["labels"]) & set(ENTITY_LABELS.values())
+        labels = set(row["labels"]) & set(registry.values())
         props = row["properties"]
         if len(labels) != 1:
             counts["missing_or_ambiguous_entity_type"] += 1
             continue
-        kind = next(iter(labels))
+        kind = kinds_by_label[next(iter(labels))]
         if not isinstance(props.get("shared"), bool):
             counts["shared_not_boolean"] += 1
-        name = props.get("foaf_name") if kind == "Person" else props.get("hermes_name")
+        name = props.get("foaf_name") if kind == "person" else props.get("hermes_name")
         if not isinstance(name, str) or not name.strip():
             counts["missing_name"] += 1
-        if kind == "Event":
+        if kind == "event":
             try:
                 validate_event_timing(props, store.config.timezone)
             except (ValueError, TypeError, OverflowError):
                 counts["invalid_event_time"] += 1
-        required = {"Preference": ("hermes_preferenceKey", "hermes_preferenceValue"), "Decision": ("hermes_decisionText",)}.get(kind, ())
+        required = {"preference": ("hermes_preferenceKey", "hermes_preferenceValue"), "decision": ("hermes_decisionText",)}.get(kind, ())
         if any(key not in props or props[key] == "" for key in required):
             counts["missing_required_property"] += 1
+        if ontology and entity_violations(ontology, kind, props):
+            counts["published_entity_constraint"] += 1
     edges = store.run_read("""
         MATCH (a)-[r]->(b) WHERE a.uri STARTS WITH $prefix
             AND NOT a:KGLegacyAlias AND NOT a:KGLegacyUnresolved AND NOT a:KGQuarantined
@@ -85,8 +92,15 @@ def validate_graph(store=None):
         RETURN labels(a) AS source_labels, type(r) AS type, labels(b) AS target_labels
     """, {"prefix": store.config.urn_prefix})
     for row in edges:
-        expected = RELATION_ENDPOINTS.get(row["type"])
-        if expected and (not set(row["source_labels"]) & expected[0] or not set(row["target_labels"]) & expected[1]):
+        try:
+            canonical = normalize_rel(row["type"], ontology)
+        except ValueError:
+            canonical = row['type']  # Preserve the existing unmapped-history check policy.
+        expected = RELATION_ENDPOINTS.get(canonical)
+        invalid = expected and (not set(row["source_labels"]) & expected[0] or not set(row["target_labels"]) & expected[1])
+        source = next((kinds_by_label[label] for label in row['source_labels'] if label in kinds_by_label), None)
+        target = next((kinds_by_label[label] for label in row['target_labels'] if label in kinds_by_label), None)
+        if invalid or (ontology and relation_violations(ontology, canonical, source, target)):
             counts["invalid_relationship_endpoint_type"] += 1
     return [f"{key}: {count}" for key, count in sorted(counts.items())]
 

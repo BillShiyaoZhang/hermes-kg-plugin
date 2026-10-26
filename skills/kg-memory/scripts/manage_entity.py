@@ -22,7 +22,11 @@ def _parse_props(prop_list):
 
 
 def _make_urn(id_, type_):
-    return canonical_urn(id_, type_, prefix=load_config().urn_prefix)
+    config = load_config()
+    if str(type_).lower() in ENTITY_LABELS:
+        return canonical_urn(id_, type_, prefix=config.urn_prefix)
+    with KGStore(config) as store:
+        return canonical_urn(id_, type_, prefix=config.urn_prefix, ontology=store.ontology_schema())
 
 
 def _write_entity(kind, id_, name, props=None, **extra):
@@ -69,7 +73,8 @@ def delete_entity(type_, id_):
 def main(argv=None):
     _kg_import.configure_output()
     parser = argparse.ArgumentParser(description="KG Memory entity and relationship CRUD")
-    parser.add_argument("--type", required=True, choices=[*ENTITY_LABELS, "relation"])
+    parser.add_argument("--type", required=True,
+                        help="Built-in type, published active namespace x_ type, or relation; validated by the store")
     parser.add_argument("--id")
     parser.add_argument("--name")
     parser.add_argument("--prop", action="append")

@@ -38,6 +38,31 @@ const receipt = {
 };
 
 describe("namespace ontology publication transport", () => {
+  it("preserves optional semantic bindings and profile identity on ontology reads", async () => {
+    const value = {
+      ...schema,
+      profile_digest: "synthetic-profile-digest",
+      presets: [{ id: "personal", version: "1.0.0", digest: "synthetic-profile-digest" }],
+      entity_types: [
+        {
+          key: "person",
+          iri: "urn:local:Person",
+          semantic: {
+            iri: "https://schema.org/Person",
+            source: "schema",
+            source_version: "30.1",
+            mapping: "projection",
+          },
+        },
+      ],
+    };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(value));
+    const result = await createApi(() => "synthetic-auth", fetcher).ontologySchema();
+    expect(result.profile_digest).toBe("synthetic-profile-digest");
+    expect(result.entity_types[0].iri).toBe("urn:local:Person");
+    expect(result.entity_types[0].semantic).toEqual(value.entity_types[0].semantic);
+  });
+
   it("keeps draft definitions, scope and version inside authenticated POST bodies", async () => {
     const fetcher = vi
       .fn<typeof fetch>()

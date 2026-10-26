@@ -318,6 +318,18 @@ class ConsoleWebTests(unittest.TestCase):
         self.assertIn('本地搜索',response.text)
         self.assertNotIn('private-credential',response.text)
 
+    def test_explicit_query_interpretation_receives_current_namespace_ontology(self):
+        ontology = {'namespace': 'urn:hermes:kg:', 'entity_types': [
+            {'key': 'x_personal_task', 'storage_label': 'KGCustom_x_personal_task', 'active': True}]}
+        with patch('kg.schema.schema_for_store', return_value=ontology), \
+             patch('kg.query_planner.interpret_query', return_value={
+                 'text': '待办', 'filters': {'entity_type': 'x_personal_task'}}) as interpret, \
+             patch.object(self.app.state.search, 'search', wraps=FakeSearch().search) as search:
+            response = self.client.post('/api/v1/search', json={'question': '我的待办', 'interpret': True}, headers=self.auth)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIs(interpret.call_args.kwargs['ontology'], ontology)
+        self.assertEqual(search.call_args.kwargs['filters']['entity_type'], 'x_personal_task')
+
     def test_default_diagnostics_exclude_host_and_person_identity(self):
         with patch('kg.health.check_health',return_value={
             'connected':True,'database':'private-db','namespace':'urn:private:kg:',

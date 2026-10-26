@@ -45,6 +45,45 @@ const render = (value = definition) =>
   );
 
 describe("ontology inspector structure", () => {
+  it("shows read-only standard provenance without replacing operational identity", () => {
+    const html = render({
+      ...definition,
+      semantic: {
+        iri: "https://schema.org/Person",
+        source: "schema",
+        source_version: "30.1",
+        mapping: "projection",
+        direction: "reverse",
+        note: "此映射只影响语义投影。",
+      },
+    });
+    expect(html).toContain("语义定义与来源");
+    expect(html).toContain("Schema.org");
+    expect(html).toContain("30.1");
+    expect(html).toContain('href="https://schema.org/Person"');
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(html).toContain("存储与语义映射");
+    expect(html).not.toContain("对齐方向");
+    expect(html).toContain("来源信息只读");
+    expect(html).toContain("urn:test:Person");
+    expect(html).not.toContain("<input");
+  });
+
+  it("renders non-web semantic identifiers as text without executable links", () => {
+    const html = render({
+      ...definition,
+      semantic: {
+        iri: "javascript:alert(1)",
+        source: "personal",
+        source_version: "1.0.0",
+        mapping: "local",
+      },
+    });
+    expect(html).toContain("javascript:alert(1)");
+    expect(html).toContain("个人记忆本体");
+    expect(html).not.toContain('href="javascript:');
+  });
+
   it("distinguishes a disabled definition from an archived entity without blocking historical browsing", () => {
     const html = render({
       ...definition,

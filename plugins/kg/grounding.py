@@ -49,13 +49,13 @@ def _source_local_date(source, config):
         raise ValueError('Event date source timestamp is outside the supported range') from exc
 
 
-def _event_grounding(value, source, quote, config, supporting=()):
+def _event_grounding(value, source, quote, config, supporting=(), *, date_only=False):
     local = value.astimezone(ZoneInfo(config.timezone))
     citations = [(source, quote), *supporting]
     # Full ISO timestamps carry their own offset when one is explicitly stated.
     stamps = [stamp for _, text in citations for stamp in re.findall(
         r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?', text)]
-    if stamps:
+    if stamps and not date_only:
         from .schema import parse_time
         if not any(value == parse_time(stamp, config.timezone) for stamp in stamps):
             raise ValueError('Event time disagrees with the quoted timestamp')
@@ -95,6 +95,8 @@ def _event_grounding(value, source, quote, config, supporting=()):
     matching = [inferred for date, inferred in dates if date == local.date()]
     if not matching:
         raise ValueError('Event date needs a quoted absolute date, a source-year month/day, or today/yesterday/tomorrow')
+    if date_only:
+        return 'day', all(matching)
     times = [clock for _, text in citations for clock in re.findall(
         r'(?<!\d)([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?(?!\d)', text)]
     allowed = {(int(h),int(m),int(s or 0)) for h,m,s in times} if times else {(0,0,0)}
@@ -139,6 +141,22 @@ def validate_entity_evidence(entity, snapshot, config, ontology=None):
             # Existing absolute/relative evidence payloads remain byte-stable;
             # do not introduce a new false-valued property on every replay.
             entity[property_key].pop('hermes_timeYearInferred', None)
+    # Preset deadlines and record dates are facts too. Reuse the existing
+    # source-relative date checks without turning them into Event timestamps.
+    personal_dates = {'x_personal_target_date', 'x_personal_due_date', 'x_personal_due_at',
+                      'x_personal_record_date', 'x_personal_recorded_at'}
+    definitions = {item['key']: item for item in (ontology or {}).get('properties', [])}
+    for key in personal_dates & prepared['properties'].keys():
+        definition = definitions.get(key)
+        if not definition or definition.get('range') not in (['date'], ['dateTime']):
+            continue
+        value = prepared['properties'][key]
+        date_only = definition['range'] == ['date']
+        if date_only:
+            value = datetime(value.year, value.month, value.day, tzinfo=ZoneInfo(config.timezone))
+        precision, _ = _event_grounding(value, source, quote, config, supporting, date_only=date_only)
+        if not date_only and precision != 'datetime':
+            raise ValueError('A personal record/deadline timestamp requires quoted clock time; use the date field for a date-only source')
     return source, quote
 
 

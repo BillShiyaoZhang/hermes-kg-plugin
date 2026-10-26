@@ -273,6 +273,9 @@ def _backup_ontology(store, graph):
         if props.get('namespace') != store.config.urn_prefix:
             raise ValueError('Backup ontology belongs to another namespace')
         state = {'version': props.get('version'), 'patch': json.loads(props.get('patch_json', '{}'))}
+        if props.get('presets_json') is not None:
+            from .ontology_presets import validate_presets
+            state['presets'] = validate_presets(json.loads(props['presets_json']))
     return effective_schema(store.config, state)
 
 
@@ -328,7 +331,11 @@ def _validate_graph(store, graph):
                     if isinstance(props.get('version'), bool) or not isinstance(props.get('version'), int) or props['version'] < 0:
                         raise ValueError('Invalid ontology backup version')
                     from .ontology_editing import validate_state
-                    validate_state(store.config, {'version': props['version'], 'patch': json.loads(props.get('patch_json', '{}'))})
+                    state = {'version': props['version'], 'patch': json.loads(props.get('patch_json', '{}'))}
+                    if props.get('presets_json') is not None:
+                        from .ontology_presets import validate_presets
+                        state['presets'] = validate_presets(json.loads(props['presets_json']))
+                    validate_state(store.config, state)
                 else:
                     result = json.loads(props.get('result_json', '{}'))
                     if (result.get('namespace') != prefix or result.get('operation_id') != props['operation_id']

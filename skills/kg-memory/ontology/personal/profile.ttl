@@ -1,0 +1,169 @@
+@prefix app: <urn:hermes:personal:profile#> .
+@prefix p: <urn:hermes:personal:> .
+@prefix schema: <https://schema.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix dctype: <http://purl.org/dc/dcmitype/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# The only manually maintained application profile. Upstream source files are
+# unmodified, locked separately, and never imported over the network.
+p:Personal a owl:Ontology ; app:id "personal" ; app:version "1.0.0" ;
+    dct:title "个人记忆应用本体" ; dct:license <https://creativecommons.org/licenses/by-sa/3.0/> ;
+    dct:conformsTo <https://schema.org/version/30.1/>,
+      <https://www.w3.org/TR/2009/REC-skos-reference-20090818/>,
+      <https://www.w3.org/TR/2013/REC-prov-o-20130430/> .
+
+# Existing storage identities are preserved. A binding is a semantic projection,
+# not an assertion that the old class/property is globally equivalent.
+schema:Person app:kind "entity_types" ; app:key "person" ; app:install false ;
+    app:source "schema" ; app:mapping "projection" ; app:label "人物" ;
+    app:note "将有明确人物身份的旧 Person 投影为标准人物，不改存储身份。" .
+schema:Event app:kind "entity_types" ; app:key "event" ; app:install false ;
+    app:source "schema" ; app:mapping "projection" ; app:label "事件" ;
+    app:note "保留来源支持的发生或计划状态；事件时间不是消息时间。" .
+schema:Place app:kind "entity_types" ; app:key "location" ; app:install false ;
+    app:source "schema" ; app:mapping "projection" ; app:label "地点" ;
+    app:note "有名称的现实地点，保留现有 Location URN。" .
+p:Preference a owl:Class ; app:kind "entity_types" ; app:key "preference" ; app:install false ;
+    app:source "personal" ; app:mapping "local" ; app:label "偏好" ;
+    app:note "明确表达的偏好键值；喜好不是已经发生的行为。" .
+p:Decision a owl:Class ; app:kind "entity_types" ; app:key "decision" ; app:install false ;
+    app:source "personal" ; app:mapping "local" ; app:label "决策" ;
+    app:note "明确作出的选择及背景，不将建议转换为决策。" .
+p:LegacyConcept a owl:Class ; app:kind "entity_types" ; app:key "concept" ; app:install false ;
+    app:source "personal" ; app:mapping "local" ; app:label "历史概念" ;
+    app:note "兼容曾容纳项目和文档的旧 Concept；不整体等价于 SKOS Concept，也不自动重分类。" .
+
+schema:Organization app:kind "entity_types" ; app:key "x_personal_organization" ;
+    app:source "schema" ; app:mapping "reuse" ; app:label "组织" ;
+    app:description "公司、学校、机构或商家。组织身份与某个人的任职记录分开。" .
+schema:CreativeWork app:kind "entity_types" ; app:key "x_personal_resource" ;
+    app:source "schema" ; app:mapping "reuse" ; app:label "资料" ;
+    app:description "书籍内容、课程、文档、网页、软件或影音等信息作品。资料不是拥有的实物副本，使用不代表读完。" .
+dctype:PhysicalObject app:kind "entity_types" ; app:key "x_personal_item" ;
+    app:source "dcmitype" ; app:mapping "reuse" ; app:label "物品" ;
+    app:description "设备、家居、车辆、实物书等具体非生命实物。数字内容用资料表示，账户或金融产品不归入此类。" .
+skos:Concept app:kind "entity_types" ; app:key "x_personal_topic" ;
+    app:source "skos" ; app:mapping "reuse" ; app:label "主题与术语" ;
+    app:description "具有明确含义的知识主题、术语或分类概念。与描述它的资料及旧 Concept 类型分开。" .
+p:Project a owl:Class ; app:kind "entity_types" ; app:key "x_personal_project" ;
+    app:source "personal" ; app:mapping "local" ; app:label "项目" ;
+    app:description "为达到结果而组织的一组持续工作，不要求一定属于组织。" ;
+    app:note "Schema.org Project 继承 Organization；此处的个人任务集合不作同名等价。" .
+p:Task a owl:Class ; app:kind "entity_types" ; app:key "x_personal_task" ;
+    app:source "personal" ; app:mapping "local" ; app:label "任务" ;
+    app:description "明确需要执行、正在执行或已经完成的一项行动。期限可缺失；截止日期不证明行动已经发生。临时要求修改代码等对话指令不是持久待办。" ;
+    app:note "待办描述不等同于 schema:Action 或已发生事件。" .
+p:Goal a owl:Class ; app:kind "entity_types" ; app:key "x_personal_goal" ;
+    app:source "personal" ; app:mapping "local" ; app:label "目标" ;
+    app:description "用户期望达到的结果，可记录成功标准和目标日期，不强制生成项目或任务。" .
+p:Skill a owl:Class ; app:kind "entity_types" ; app:key "x_personal_skill" ;
+    app:source "personal" ; app:mapping "local" ; app:label "个人技能" ;
+    app:description "某个人明确具有的能力及其原话熟练度。标识应包含拥有者，报名课程或接触主题不证明掌握技能。" ;
+    app:note "技能主题可以关联主题节点；它与某人的熟练度记录不同。" .
+p:Habit a owl:Class ; app:kind "entity_types" ; app:key "x_personal_habit" ;
+    app:source "personal" ; app:mapping "local" ; app:label "习惯" ;
+    app:description "某个人明确持续进行的行为规律。标识应包含拥有者，喜好或一次行为不证明形成习惯。" .
+p:HealthRecord a owl:Class ; rdfs:subClassOf schema:CreativeWork ;
+    app:kind "entity_types" ; app:key "x_personal_health_record" ;
+    app:source "personal" ; app:mapping "local" ; app:label "健康记录" ;
+    app:description "用户陈述的症状、检查、用药、运动或健康指标记录。保持原文及单位，不把记录等同于疾病、药物或专业诊断。" .
+p:FinanceRecord a owl:Class ; rdfs:subClassOf schema:CreativeWork ;
+    app:kind "entity_types" ; app:key "x_personal_finance_record" ;
+    app:source "personal" ; app:mapping "local" ; app:label "财务记录" ;
+    app:description "用户提供的收支、账单、订阅、预算或资产负债记录。金额和币种据来源填写，不把记录等同于金融产品。" .
+
+# Optional scalar fields. Absence preserves uncertainty; no default dates,
+# currency, skill level, or business status is manufactured.
+p:state a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_state" ;
+    app:source "personal" ; app:mapping "local" ; app:label "业务状态" ; app:datatype "string" ;
+    app:domain "x_personal_project", "x_personal_task", "x_personal_goal", "x_personal_habit", "x_personal_finance_record" ;
+    app:description "原文支持的进行、完成、暂停或取消等业务状态；独立于记忆的归档、隐藏和定义停用。" .
+p:kind a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_kind" ;
+    app:source "personal" ; app:mapping "local" ; app:label "类别" ; app:datatype "string" ;
+    app:domain "x_personal_organization", "x_personal_resource", "x_personal_item", "x_personal_health_record", "x_personal_finance_record" ;
+    app:description "来源支持的分类说明，例如学校、书籍、体检或支出。建议词汇不构成封闭枚举。" .
+schema:url app:kind "properties" ; app:key "x_personal_url" ; app:source "schema" ; app:mapping "reuse" ;
+    app:label "网址" ; app:datatype "string" ; app:domain "x_personal_organization", "x_personal_resource" ;
+    app:description "来源明确给出的网址；不自动检索或推断。" .
+p:successCriteria a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_success_criteria" ;
+    app:source "personal" ; app:mapping "local" ; app:label "成功标准" ; app:datatype "string" ; app:domain "x_personal_goal" .
+p:targetDate a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_target_date" ;
+    app:source "personal" ; app:mapping "local" ; app:label "目标日期" ; app:datatype "date" ; app:domain "x_personal_goal", "x_personal_project" .
+p:dueDate a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_due_date" ;
+    app:source "personal" ; app:mapping "local" ; app:label "截止日期" ; app:datatype "date" ; app:domain "x_personal_task" ;
+    app:description "只知道日期时使用，不补造具体时刻，也不作为事件发生日期。" .
+p:dueAt a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_due_at" ;
+    app:source "personal" ; app:mapping "local" ; app:label "截止时刻" ; app:datatype "dateTime" ; app:domain "x_personal_task" ;
+    app:description "来源支持的精确截止时刻，按配置时区保存。" .
+p:recordDate a owl:DatatypeProperty ; rdfs:subPropertyOf dct:date ; app:kind "properties" ; app:key "x_personal_record_date" ;
+    app:source "personal" ; app:mapping "local" ; app:label "记录所述日期" ; app:datatype "date" ; app:domain "x_personal_health_record", "x_personal_finance_record" .
+p:recordedAt a owl:DatatypeProperty ; rdfs:subPropertyOf dct:date ; app:kind "properties" ; app:key "x_personal_recorded_at" ;
+    app:source "personal" ; app:mapping "local" ; app:label "记录所述时刻" ; app:datatype "dateTime" ; app:domain "x_personal_health_record", "x_personal_finance_record" .
+p:value a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_value" ;
+    app:source "personal" ; app:mapping "local" ; app:label "测量数值" ; app:datatype "double" ; app:domain "x_personal_health_record" .
+p:unit a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_unit" ;
+    app:source "personal" ; app:mapping "local" ; app:label "原文单位" ; app:datatype "string" ; app:domain "x_personal_health_record" .
+p:amount a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_amount" ;
+    app:source "personal" ; app:mapping "local" ; app:label "金额" ; app:datatype "string" ; app:domain "x_personal_finance_record" ;
+    app:description "十进制字符串保存来源金额，例如 35.50，避免二进制浮点舍入；不自动汇率换算。" .
+p:currency a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_currency" ;
+    app:source "personal" ; app:mapping "local" ; app:label "币种" ; app:datatype "string" ; app:domain "x_personal_finance_record" .
+p:frequency a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_frequency" ;
+    app:source "personal" ; app:mapping "local" ; app:label "频率或周期" ; app:datatype "string" ; app:domain "x_personal_habit", "x_personal_finance_record" .
+p:skillLevel a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_skill_level" ;
+    app:source "personal" ; app:mapping "local" ; app:label "熟练度" ; app:datatype "string" ; app:domain "x_personal_skill" .
+p:brand a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_brand" ;
+    app:source "personal" ; app:mapping "local" ; app:label "品牌" ; app:datatype "string" ; app:domain "x_personal_item" .
+p:model a owl:DatatypeProperty ; app:kind "properties" ; app:key "x_personal_model" ;
+    app:source "personal" ; app:mapping "local" ; app:label "型号" ; app:datatype "string" ; app:domain "x_personal_item" .
+
+# Reused human relationships retain their published direction. No inverse facts
+# are created automatically. A father/mother role can be retained as edge text.
+schema:parent app:kind "relations" ; app:key "X_PERSONAL_PARENT" ; app:source "schema" ; app:mapping "reuse" ; app:label "父母" ; app:domain "person" ; app:range "person" ; app:description "人物指向其父亲或母亲；仅记录来源明确支持的关系。" .
+schema:children app:kind "relations" ; app:key "X_PERSONAL_CHILD" ; app:source "schema" ; app:mapping "reuse" ; app:label "子女" ; app:domain "person" ; app:range "person" .
+schema:spouse app:kind "relations" ; app:key "X_PERSONAL_SPOUSE" ; app:source "schema" ; app:mapping "reuse" ; app:label "配偶" ; app:domain "person" ; app:range "person" .
+schema:sibling app:kind "relations" ; app:key "X_PERSONAL_SIBLING" ; app:source "schema" ; app:mapping "reuse" ; app:label "兄弟姐妹" ; app:domain "person" ; app:range "person" .
+schema:colleague app:kind "relations" ; app:key "X_PERSONAL_COLLEAGUE" ; app:source "schema" ; app:mapping "reuse" ; app:label "同事" ; app:domain "person" ; app:range "person" .
+schema:memberOf app:kind "relations" ; app:key "X_PERSONAL_MEMBER_OF" ; app:source "schema" ; app:mapping "reuse" ; app:label "属于组织" ; app:domain "person" ; app:range "x_personal_organization" ; app:description "来源支持的组织成员身份；历史身份须在说明中明确，不自动视为现任。" .
+schema:worksFor app:kind "relations" ; app:key "X_PERSONAL_WORKS_FOR" ; app:source "schema" ; app:mapping "reuse" ; app:label "任职于" ; app:domain "person" ; app:range "x_personal_organization" .
+schema:owns app:kind "relations" ; app:key "X_PERSONAL_OWNS" ; app:source "schema" ; app:mapping "reuse" ; app:label "拥有" ; app:domain "person" ; app:range "x_personal_item" ; app:description "明确拥有实物；想购买不表示拥有。" .
+schema:about app:kind "relations" ; app:key "X_PERSONAL_ABOUT" ; app:source "schema" ; app:mapping "reuse" ; app:label "描述主题" ; app:domain "x_personal_resource", "x_personal_health_record", "x_personal_finance_record" ; app:range "x_personal_topic" .
+schema:author app:kind "relations" ; app:key "X_PERSONAL_AUTHOR" ; app:source "schema" ; app:mapping "reuse" ; app:label "作者" ; app:domain "x_personal_resource" ; app:range "person" .
+skos:broader app:kind "relations" ; app:key "X_PERSONAL_BROADER" ; app:source "skos" ; app:mapping "reuse" ; app:label "上位主题" ; app:domain "x_personal_topic" ; app:range "x_personal_topic" .
+skos:related app:kind "relations" ; app:key "X_PERSONAL_RELATED_TOPIC" ; app:source "skos" ; app:mapping "reuse" ; app:label "相关主题" ; app:domain "x_personal_topic" ; app:range "x_personal_topic" .
+p:hasGoal a owl:ObjectProperty ; app:kind "relations" ; app:key "X_PERSONAL_HAS_GOAL" ; app:source "personal" ; app:mapping "local" ; app:label "拥有目标" ; app:domain "person" ; app:range "x_personal_goal" .
+p:worksOn a owl:ObjectProperty ; app:kind "relations" ; app:key "X_PERSONAL_WORKS_ON" ; app:source "personal" ; app:mapping "local" ; app:label "推进工作" ; app:domain "person" ; app:range "x_personal_project", "x_personal_task" .
+p:partOf a owl:ObjectProperty ; app:kind "relations" ; app:key "X_PERSONAL_PART_OF" ; app:source "personal" ; app:mapping "local" ; app:label "属于工作" ; app:domain "x_personal_task" ; app:range "x_personal_project", "x_personal_task" .
+p:supports a owl:ObjectProperty ; app:kind "relations" ; app:key "X_PERSONAL_SUPPORTS" ; app:source "personal" ; app:mapping "local" ; app:label "支持目标" ; app:domain "x_personal_project", "x_personal_task", "x_personal_habit", "x_personal_skill" ; app:range "x_personal_goal" .
+p:uses a owl:ObjectProperty ; app:kind "relations" ; app:key "X_PERSONAL_USES" ; app:source "personal" ; app:mapping "local" ; app:label "使用" ; app:domain "person", "x_personal_project", "x_personal_task", "x_personal_goal", "x_personal_habit" ; app:range "x_personal_resource", "x_personal_item" ; app:description "明确使用资料或实物；使用资料不代表已经读完。" .
+p:hasRecord a owl:ObjectProperty ; app:kind "relations" ; app:key "X_PERSONAL_HAS_RECORD" ; app:source "personal" ; app:mapping "local" ; app:label "拥有个人记录" ; app:domain "person" ; app:range "x_personal_health_record", "x_personal_finance_record" .
+p:hasSkill a owl:ObjectProperty ; app:kind "relations" ; app:key "X_PERSONAL_HAS_SKILL" ; app:source "personal" ; app:mapping "local" ; app:label "具有技能" ; app:domain "person" ; app:range "x_personal_skill" .
+p:hasHabit a owl:ObjectProperty ; app:kind "relations" ; app:key "X_PERSONAL_HAS_HABIT" ; app:source "personal" ; app:mapping "local" ; app:label "具有习惯" ; app:domain "person" ; app:range "x_personal_habit" .
+p:hasEvent a owl:ObjectProperty ; app:kind "relations" ; app:key "X_PERSONAL_HAS_EVENT" ; app:source "personal" ; app:mapping "local" ; app:label "关联活动" ; app:domain "x_personal_project", "x_personal_task", "x_personal_habit" ; app:range "event" .
+p:locatedAt a owl:ObjectProperty ; app:kind "relations" ; app:key "X_PERSONAL_LOCATED_AT" ; app:source "personal" ; app:mapping "local" ; app:label "实物或组织位于" ; app:domain "x_personal_organization", "x_personal_item" ; app:range "location" .
+
+# Existing property/edge projections: never add input aliases or reverse stored edges.
+p:storedName app:kind "properties" ; app:key "hermes_name" ; app:install false ; app:term schema:name ; app:source "schema" ; app:mapping "projection" ; app:note "非人物记录的显示名称。" .
+p:personName app:kind "properties" ; app:key "foaf_name" ; app:install false ; app:term schema:name ; app:source "schema" ; app:mapping "projection" ; app:note "旧 foaf_name 是存储键，不据此声明全局 FOAF 等价。" .
+p:description app:kind "properties" ; app:key "hermes_description" ; app:install false ; app:term schema:description ; app:source "schema" ; app:mapping "projection" .
+p:eventTime app:kind "properties" ; app:key "hermes_eventTime" ; app:install false ; app:term schema:startDate ; app:source "schema" ; app:mapping "projection" ; app:note "保留原文时间精度；日期边界不代表精确发生时刻。" .
+p:knows app:kind "relations" ; app:key "HERMES_knows" ; app:install false ; app:term schema:knows ; app:source "schema" ; app:mapping "projection" .
+p:participant app:kind "relations" ; app:key "HERMES_participant" ; app:install false ; app:term schema:attendee ; app:source "schema" ; app:mapping "projection" ; app:direction "reverse" ; app:note "Person→Event 在临时标准投影中变为 Event→Person，不改存储边，也不新增事实。" .
+p:eventLocation app:kind "relations" ; app:key "HERMES_locatedAt" ; app:install false ; app:term schema:location ; app:source "schema" ; app:mapping "annotation" ; app:note "仅为相关参考。旧关系允许 Person/Event，而锁定的 Schema.org 30.1 location 不含 Person 候选域；不强行投影，也不修改旧事实。" .
+
+# Provenance describes records and extraction, not all real-world business objects.
+p:MemoryRecord a owl:Class ; rdfs:subClassOf prov:Entity ; app:provenanceKey "record_class" .
+p:SourceMessage a owl:Class ; rdfs:subClassOf prov:Entity ; app:provenanceKey "source_class" .
+p:Snapshot a owl:Class ; rdfs:subClassOf prov:Entity ; app:provenanceKey "snapshot_class" .
+p:Extraction a owl:Class ; rdfs:subClassOf prov:Activity ; app:provenanceKey "activity_class" .
+prov:wasDerivedFrom app:provenanceKey "derived_from" .
+prov:wasGeneratedBy app:provenanceKey "generated_by" .
+prov:wasAssociatedWith app:provenanceKey "associated_with" .
+prov:Agent app:provenanceKey "agent_class" .
+dct:source app:provenanceKey "source_metadata" .
+dct:license app:provenanceKey "license_metadata" .
+dct:conformsTo app:provenanceKey "conforms_to" .

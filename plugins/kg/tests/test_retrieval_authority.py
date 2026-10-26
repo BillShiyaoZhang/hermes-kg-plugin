@@ -162,6 +162,16 @@ class RetrievalAuthorityTests(unittest.TestCase):
         authority.schema['entity_types'][0]['label'] = 'new definition'
         self.assertEqual(authority.validate(cards(), context()).documents, ())
 
+    def test_profile_or_semantic_change_without_ontology_version_withholds_old_cards(self):
+        for change in ('digest', 'binding'):
+            authority = MemoryAuthority()
+            if change == 'digest':
+                authority.schema['profile_digest'] = 'new-profile-digest'
+            else:
+                authority.schema['entity_types'][0]['semantic'] = {'iri': 'https://schema.org/Person'}
+            with self.subTest(change=change):
+                self.assertEqual(authority.validate(cards(), context()).documents, ())
+
     def test_change_between_source_reads_is_withheld(self):
         authority = MemoryAuthority()
         def mutate():

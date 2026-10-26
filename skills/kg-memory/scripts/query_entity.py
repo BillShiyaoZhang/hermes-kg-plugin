@@ -3,14 +3,14 @@ import argparse
 import json
 import _kg_import
 from kg.queries import query_entities
-from kg.schema import ENTITY_LABELS
 
 
 def main(argv=None):
     _kg_import.configure_output()
     parser = argparse.ArgumentParser(description="Search KG entities")
     parser.add_argument("--query", default="")
-    parser.add_argument("--type", dest="entity_type", choices=[*ENTITY_LABELS, *ENTITY_LABELS.values()])
+    parser.add_argument("--type", dest="entity_type",
+                        help="Built-in or published namespace type key; validated against the current ontology")
     parser.add_argument("--owner")
     parser.add_argument("--limit", type=int, default=20)
     args = parser.parse_args(argv)

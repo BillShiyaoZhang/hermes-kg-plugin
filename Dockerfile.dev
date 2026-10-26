@@ -3,6 +3,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app/plugins:/app:/o
 WORKDIR /app
 COPY requirements-console.txt ./
 COPY requirements-console.lock ./
+COPY requirements-ontology.lock ./
 COPY plugins/kg/requirements.in plugins/kg/requirements.in
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements-console.lock jsonschema
+RUN --mount=type=cache,target=/root/.cache/pip pip install --require-hashes -r requirements-ontology.lock
 CMD ["python", "-m", "unittest", "discover", "-s", "plugins/kg/tests", "-v"]

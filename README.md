@@ -82,7 +82,26 @@ Hermes exposes a `MemoryProvider` interface and an ecosystem of external memory 
 
 ### Memory model
 
-Six business types — `Person`, `Event`, `Preference`, `Decision`, `Location`, `Concept` — each as a `KGEntity` plus exactly one typed label, with canonical URIs of the form `urn:hermes:kg:<type>-<id>`.
+Six compatible core types — `Person`, `Event`, `Preference`, `Decision`, `Location`, `Concept` — plus published namespace extensions, each as a `KGEntity` with exactly one business label and a canonical URI of the form `<namespace><type>-<id>`.
+
+New workspaces also receive a **personal ontology preset**, based on pinned
+Schema.org 30.1, SKOS, PROV-O and Dublin Core definitions. It covers organizations,
+projects, tasks, goals, resources, skills, physical items, habits, personal health
+and finance records, and knowledge topics. Standards are reused through explicit
+semantic bindings; existing URIs, labels and facts stay compatible. Legacy
+`Concept` records are not automatically reclassified as SKOS topics.
+
+Existing workspaces opt in explicitly:
+
+```text
+hermes-kg --home <profile> ontology install-preset personal --dry-run
+hermes-kg --home <profile> ontology install-preset personal
+```
+
+The preset installs definitions atomically, with no example memories. Runtime
+reads use bundled resources without network imports or inferred facts. See the
+[personal ontology and maintenance guide](docs/personal-ontology.md) for the
+mapping boundaries, licenses, validation and upgrade workflow.
 
 Design rules that the implementation enforces rather than assumes:
 

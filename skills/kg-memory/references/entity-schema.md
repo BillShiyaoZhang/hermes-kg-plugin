@@ -3,6 +3,14 @@
 The implementation in `plugins/kg/schema.py` is the shared runtime contract.
 `ontology/core.ttl` describes its RDF mappings. All scripts use these modules.
 
+The table below describes the compatible core, not the full active registry.
+Published namespace extensions are read through `schema_for_store()` and use
+`x_*` type keys with server-derived labels. New workspaces include the personal
+preset; existing workspaces install it explicitly. Its source RDF, fixed public
+vocabulary snapshots, generated manifest and SHACL are in `ontology/personal/`.
+Standard semantic IRIs do not replace URNs or automatically become tool aliases.
+Legacy Concept records are not automatically mapped to SKOS Concept.
+
 | Entity | Labels | Display field | Required content |
 |---|---|---|---|
 | Person | KGEntity, Person | foaf_name | name |

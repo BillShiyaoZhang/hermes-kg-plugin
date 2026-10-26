@@ -68,8 +68,15 @@ def setup(home,*,name='我',skip_user=False,seed_history=True):
     config=load_config(home=home)
     from .store import KGStore
     from .maintenance import migrate
+    from .ontology_presets import initialize_personal_preset
     from .search import HybridSearch
     with KGStore(config) as store:
+        # Pure database DDL precedes namespace claiming. migrate() itself is a
+        # namespace writer, so default preset installation must happen first.
+        store.ensure_schema()
+        preset_result=initialize_personal_preset(store)
+        ontology_preset={key:preset_result[key] for key in ('status','installed','preset','version','idempotent')
+                         if key in preset_result}
         preview=migrate(store)
         if not skip_user:
             exists=store.run_read('MATCH (n:Person {uri:$uri}) RETURN n.uri AS uri',{'uri':config.user_person_urn})
@@ -88,6 +95,7 @@ def setup(home,*,name='我',skip_user=False,seed_history=True):
     onboarding['ready']=True
     save_marker()
     return {'ok':True,'profile':str(home),'fresh':fresh,'migration':preview,'indexes':indexes,'seeded_sessions':seeded,
+            'ontology_preset':ontology_preset,
             'next':'Set memory.provider: kg in Hermes config.yaml, restart the gateway, and run serve.'}
 
 
@@ -120,6 +128,11 @@ def main(argv=None):
         sub.add_parser(name).add_argument('path')
     sub.add_parser('prepare-model')
     backfill=sub.add_parser('backfill');backfill.add_argument('session_ids',nargs='+')
+    ontology=sub.add_parser('ontology')
+    ontology_commands=ontology.add_subparsers(dest='ontology_command',required=True)
+    preset=ontology_commands.add_parser('install-preset')
+    preset.add_argument('preset',choices=['personal'])
+    preset.add_argument('--dry-run',action='store_true')
     args=parser.parse_args(argv)
     home=resolve_home(args.home)
     os.environ['KG_HOME']=str(home)
@@ -161,6 +174,11 @@ def main(argv=None):
         elif args.command=='backfill':
             from .sync_state import SyncState
             result=SyncState(home).request_backfill(args.session_ids)
+        elif args.command=='ontology':
+            from .store import KGStore
+            from .ontology_presets import install_preset
+            with KGStore(load_config(home=home)) as store:
+                result=install_preset(store,args.preset,dry_run=args.dry_run)
         else:
             from .store import KGStore
             from .maintenance import backup,restore,migrate,migration_preview

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { ConsoleApi } from "./api";
 import OntologyEditor from "./OntologyEditor";
+import OntologySemantic from "./OntologySemantic";
 import {
   ontologyEditableFields,
   type OntologyEditTarget,
@@ -257,7 +258,9 @@ export default function OntologyInspector({
         <h2>{title}</h2>
         {(definition.custom || definition.active === false) && (
           <div className="ov3-definition-state">
-            {definition.custom && <span>自定义定义</span>}
+            {definition.custom && (
+              <span>{definition.semantic ? "个人预制定义" : "自定义定义"}</span>
+            )}
             {definition.active === false && (
               <span className="is-disabled">已停用</span>
             )}
@@ -321,6 +324,7 @@ export default function OntologyInspector({
             <p className="ov3-rule-note">
               规则说明允许记录什么、怎样连接；不表示某条事实已经发生。
             </p>
+            <OntologySemantic semantic={definition.semantic} showDirection={relation} />
             <dl className="ov3-metrics">
               <div>
                 <dt>当前空间 · 有效{relation ? "关系" : "实例"}</dt>
@@ -530,6 +534,7 @@ export default function OntologyInspector({
                   <p>
                     {ontologyPropertyDescription(property) || "未提供说明。"}
                   </p>
+                  <OntologySemantic semantic={property.semantic} />
                   <div className="ov3-value-type">
                     {property.range.join(" / ") || "未声明值类型"}
                     {property.value_shape === "array" ? " · 多个值" : ""}

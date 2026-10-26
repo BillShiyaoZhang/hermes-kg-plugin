@@ -12,6 +12,42 @@ from kg.query_planner import interpret_query,validate_plan
 
 
 class QueryPlannerTests(unittest.TestCase):
+    def registry(self):
+        return {'namespace': KGConfig().urn_prefix, 'entity_types': [
+            {'key': 'event', 'label': '事件', 'active': True},
+            {'key': 'x_personal_task', 'label': '待办任务', 'active': True,
+             'storage_label': 'KGCustom_x_personal_task',
+             'semantic': {'iri': 'urn:hermes:personal:Task', 'mapping': 'local'}},
+            {'key': 'x_personal_goal', 'active': False,
+             'storage_label': 'KGCustom_x_personal_goal'}]}
+
+    def test_published_active_types_are_used_in_prompt_and_validation(self):
+        ontology = self.registry()
+        def model(**request):
+            prompt = request['messages'][0]['content']
+            self.assertIn('x_personal_task', prompt)
+            self.assertIn('待办任务', prompt)
+            self.assertIn('urn:hermes:personal:Task', prompt)
+            self.assertNotIn('x_personal_goal', prompt)
+            return json.dumps({'text': '下周待办', 'entity_type': 'x_personal_task', 'from': None, 'to': None})
+        result = interpret_query('下周待办', KGConfig(), ontology=ontology, llm=model)
+        self.assertEqual(result['filters'], {'entity_type': 'x_personal_task'})
+        for kind in ('x_personal_goal', 'x_unknown', 'person'):
+            with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, 'Unsupported entity type'):
+                validate_plan({'text': 'x', 'entity_type': kind, 'from': None, 'to': None}, KGConfig(), ontology)
+
+    def test_record_dates_and_task_deadlines_are_not_event_occurrence_filters(self):
+        with self.assertRaisesRegex(ValueError, 'occurrence time'):
+            validate_plan({'text': '任务', 'entity_type': 'x_personal_task',
+                           'from': '2026-10-26', 'to': None}, KGConfig(), self.registry())
+
+    def test_foreign_registry_is_rejected_before_model_call(self):
+        ontology = self.registry()
+        ontology['namespace'] = 'urn:foreign:kg:'
+        with self.assertRaisesRegex(ValueError, 'namespace'):
+            interpret_query('任务', KGConfig(), ontology=ontology,
+                            llm=lambda **_: self.fail('Must not call model for a foreign ontology'))
+
     def test_only_constrained_read_filters_are_returned(self):
         result=interpret_query('上个月和 Ada 的会面',KGConfig(),llm=lambda **kwargs:json.dumps({'text':'Ada 会面','entity_type':'event','from':'2026-09-01','to':'2026-10-01'}))
         self.assertEqual(result['filters']['entity_type'],'event')

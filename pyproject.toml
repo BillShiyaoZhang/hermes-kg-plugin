@@ -12,6 +12,7 @@ dependencies = ["neo4j==5.28.1", "rdflib==7.1.4", "tzdata==2025.2"]
 [project.optional-dependencies]
 console = ["fastapi>=0.115,<1", "pydantic>=2,<3", "uvicorn>=0.30,<1", "httpx>=0.27,<1", "fastembed==0.9.0", "onnxruntime==1.23.2", "openai>=2,<4", "PyYAML>=6,<7", "rich>=14,<16", "python-dotenv==1.2.2"]
 test = ["jsonschema>=4.23,<5", "httpx>=0.27,<1", "openai>=2,<4", "setuptools>=75", "ruamel.yaml==0.18.16"]
+ontology = ["pyshacl==0.30.1", "owlrl==7.1.4"]
 research = ["torch==2.8.0", "sentence-transformers==5.1.2", "transformers==4.56.2", "huggingface-hub==0.35.3", "tokenizers==0.22.1", "safetensors==0.6.2", "sentencepiece==0.2.1", "numpy==2.2.6", "fastembed==0.9.0", "onnxruntime==1.23.2"]
 
 [project.scripts]

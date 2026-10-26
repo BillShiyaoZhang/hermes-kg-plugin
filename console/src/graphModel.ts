@@ -158,7 +158,12 @@ export function graphEdgeGeometry(
   const dx = target.x - source.x;
   const dy = target.y - source.y;
   const length = Math.max(1, Math.hypot(dx, dy));
-  const ux = dx / length,
+  // Before an async layout finishes, distinct nodes can share the origin.
+  // Give that temporary edge a finite direction: 0 * an infinite rectangular
+  // clearance otherwise produces NaN paths and labels on the first paint.
+  const ux = dx === 0 && dy === 0
+      ? (source.id.localeCompare(target.id, "en") <= 0 ? 1 : -1)
+      : dx / length,
     uy = dy / length;
   const clearance = (node: GraphNode) =>
     node.layer === "schema"
@@ -174,12 +179,12 @@ export function graphEdgeGeometry(
   const sy = source.y + uy * sourceClearance;
   const tx = target.x - ux * targetClearance;
   const ty = target.y - uy * targetClearance;
-  const mx = (sx + tx) / 2 - (dy / length) * canonicalBend;
-  const my = (sy + ty) / 2 + (dx / length) * canonicalBend;
+  const mx = (sx + tx) / 2 - uy * canonicalBend;
+  const my = (sy + ty) / 2 + ux * canonicalBend;
   return {
     d: `M ${sx} ${sy} Q ${mx} ${my} ${tx} ${ty}`,
-    x: (sx + tx) / 2 - ((dy / length) * canonicalBend) / 2,
-    y: (sy + ty) / 2 + ((dx / length) * canonicalBend) / 2,
+    x: (sx + tx) / 2 - (uy * canonicalBend) / 2,
+    y: (sy + ty) / 2 + (ux * canonicalBend) / 2,
   };
 }
 

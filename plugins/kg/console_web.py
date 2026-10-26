@@ -527,8 +527,9 @@ def create_app(config=None, *, token=None, memory=None, search=None, background=
         question,filters=body.question,dict(body.filters)
         if body.interpret:
             from .query_planner import interpret_query
+            from .schema import schema_for_store
             try:
-                plan=interpret_query(question,config)
+                plan=interpret_query(question,config,ontology=schema_for_store(memory.store))
                 question=plan['text']
                 filters={**plan['filters'],**filters}
             except Exception:

@@ -48,7 +48,7 @@ _PROPERTY_LABELS = {
 }
 _DEFINITION_FIELDS = ('key', 'label', 'description', 'aliases', 'domain', 'range',
                       'required_for', 'active', 'managed', 'value_shape',
-                      'allowed_values', 'required_condition', 'storage_label', 'storage_type')
+                      'allowed_values', 'required_condition', 'storage_label', 'storage_type', 'semantic')
 _SET_FIELDS = {'aliases', 'domain', 'range', 'required_for', 'allowed_values'}
 
 
@@ -125,9 +125,12 @@ def _definition_projection(definition):
 
 
 def _schema_fingerprint(schema):
-    return _hash({collection: [_definition_projection(value) for _, value in
+    projection = {collection: [_definition_projection(value) for _, value in
                               sorted(_definitions(schema, collection).items())]
-                  for collection in ('entity_types', 'properties', 'relations')})
+                  for collection in ('entity_types', 'properties', 'relations')}
+    if (schema or {}).get('profile_digest') is not None:
+        projection['profile_digest'] = schema['profile_digest']
+    return _hash(projection)
 
 
 def _namespace(namespace, schema=None, data=None):
@@ -449,6 +452,13 @@ def ontology_cards(schema, *, namespace=None):
                      f'状态: {"启用" if definition.get("active", True) else "停用；保留历史含义"}']
             if definition.get('description'):
                 lines.append('说明: ' + str(definition['description']))
+            semantic = projection.get('semantic')
+            if isinstance(semantic, Mapping):
+                for field, label in (('iri', '语义标识'), ('source', '定义来源'),
+                                     ('source_version', '来源版本'), ('mapping', '对齐方式'),
+                                     ('direction', '对齐方向'), ('note', '对齐说明')):
+                    if semantic.get(field):
+                        lines.append(f'{label}: {_display(semantic[field])}')
             for field, label in (('aliases', '别名'), ('domain', '适用来源类型'),
                                  ('range', '允许目标类型' if collection == 'relations' else '值类型'),
                                  ('required_for', '必填类型'), ('allowed_values', '允许值')):
@@ -458,8 +468,11 @@ def ontology_cards(schema, *, namespace=None):
                 lines.append('必填条件: ' + str(projection['required_condition']))
             ref = namespace + 'schema:' + collection + ':' + key
             source_key = 'ontology-source-' + _hash([namespace, collection, key])
+            dependencies = {'definition': projection, 'schema_version': schema.get('version', 0)}
+            if schema.get('profile_digest') is not None:
+                dependencies['profile_digest'] = schema['profile_digest']
             result.append(_document('ontology', namespace, source_key, '\n'.join(lines), [ref],
-                                    {'definition': projection, 'schema_version': schema.get('version', 0)},
+                                    dependencies,
                                     {'is_rule': True, 'definition_kind': collection, 'definition_key': key,
                                      'active': definition.get('active', True),
                                      'schema_version': schema.get('version', 0)}))

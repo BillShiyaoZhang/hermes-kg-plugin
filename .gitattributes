@@ -1,0 +1,8 @@
+# Publisher snapshots are checksum-locked, byte-for-byte resources.
+skills/kg-memory/ontology/personal/upstream/** -text -whitespace
+# The profile digest and deterministic generated artifacts must survive checkout.
+skills/kg-memory/ontology/personal/profile.ttl text eol=lf
+skills/kg-memory/ontology/personal/manifest.json text eol=lf
+skills/kg-memory/ontology/personal/shapes.ttl text eol=lf
+skills/kg-memory/ontology/personal/selected.ttl text eol=lf
+skills/kg-memory/ontology/personal/sources.lock.json text eol=lf

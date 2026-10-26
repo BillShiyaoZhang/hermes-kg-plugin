@@ -1,0 +1,65 @@
+{
+  "format": 1,
+  "sources": [
+    {
+      "id": "schema",
+      "version": "30.1",
+      "iri": "https://schema.org/",
+      "file": "upstream/schemaorg-30.1.ttl",
+      "format": "turtle",
+      "url": "https://raw.githubusercontent.com/schemaorg/schemaorg/main/data/releases/30.1/schemaorg-current-https.ttl",
+      "sha256": "7f15ca89398c4f235f478a4b3b8d1f975d63c5a860b77c8a8fce01f791b7ae2f",
+      "license": "CC-BY-SA-3.0",
+      "license_url": "https://schema.org/docs/terms.html",
+      "modified": false
+    },
+    {
+      "id": "skos",
+      "version": "2009-08-18",
+      "iri": "http://www.w3.org/2004/02/skos/core#",
+      "file": "upstream/skos-2009.rdf",
+      "format": "xml",
+      "url": "https://www.w3.org/2009/08/skos-reference/skos.rdf",
+      "sha256": "e79633b8d0564816cee8a99f5c9acf9a0e6fc7257c7209acd684ecad53a89dd6",
+      "license": "W3C Document License",
+      "license_url": "https://www.w3.org/Consortium/Legal/2002/copyright-documents-20021231",
+      "modified": false
+    },
+    {
+      "id": "prov",
+      "version": "2013-04-30",
+      "iri": "http://www.w3.org/ns/prov#",
+      "file": "upstream/prov-o-2013.ttl",
+      "format": "turtle",
+      "url": "https://www.w3.org/ns/prov-o-20130430.ttl",
+      "sha256": "3d03c8e15753178541fb8cd59fbefecaf1861f9c37ef75190c6e938b85fb0c3d",
+      "license": "W3C Document License",
+      "license_url": "https://www.w3.org/Consortium/Legal/2002/copyright-documents-20021231",
+      "modified": false
+    },
+    {
+      "id": "dcterms",
+      "version": "2020-01-20",
+      "iri": "http://purl.org/dc/terms/",
+      "file": "upstream/dcmi-terms-2020.ttl",
+      "format": "turtle",
+      "url": "https://www.dublincore.org/2020/01/20/dublin_core_terms.ttl",
+      "sha256": "075287f7774f59bf450d0d464bf5e4d3c101358da36b061ab7a45140d96feaf8",
+      "license": "CC-BY-4.0",
+      "license_url": "https://www.dublincore.org/about/copyright/",
+      "modified": false
+    },
+    {
+      "id": "dcmitype",
+      "version": "2020-01-20",
+      "iri": "http://purl.org/dc/dcmitype/",
+      "file": "upstream/dcmi-type-2020.ttl",
+      "format": "turtle",
+      "url": "https://www.dublincore.org/2020/01/20/dublin_core_type.ttl",
+      "sha256": "f987b11d556e556fef95d7e9410c1c561fc1b7ac05ccd457128dc8962641b01e",
+      "license": "CC-BY-4.0",
+      "license_url": "https://www.dublincore.org/about/copyright/",
+      "modified": false
+    }
+  ]
+}

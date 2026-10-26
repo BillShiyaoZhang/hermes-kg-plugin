@@ -19,7 +19,7 @@ FIELDS = {'entity_types': {'label', 'description'},
           'properties': {'label', 'description', 'aliases', 'required_for', 'domain', 'range'},
           'relations': {'label', 'description', 'aliases', 'domain', 'range'}}
 STATE_QUERY = '''MATCH (s:KGOntologySchema {namespace:$namespace})
-    RETURN s.version AS version,s.patch_json AS patch_json'''
+    RETURN s.version AS version,s.patch_json AS patch_json,s.presets_json AS presets_json'''
 
 
 class OntologyEditError(ValueError):
@@ -34,6 +34,7 @@ class OntologyEditError(ValueError):
                     'ontology_namespace_conflict': '工作空间已变化，未提交本体修改。',
                     'ontology_confirmation_conflict': '影响或确认内容已变化，请重新预览并确认。',
                     'ontology_stats_unavailable': '完整引用统计暂不可用，未执行变更，请稍后重试。',
+                    'ontology_semantic_conflict': '修改超出已绑定标准的语义范围，请保留兼容约束或创建本地定义。',
                     'ontology_invalid_patch': '本体修改未通过校验，请检查可编辑字段和运行时约束。'}
         return {'detail': messages.get(self.code, '本体修改未完成。'), 'code': self.code,
                 **({'version': self.version} if self.version is not None else {}),
@@ -46,7 +47,11 @@ def state_from_rows(rows):
         return {'version': 0, 'patch': {}}
     if len(rows) != 1:
         raise RuntimeError('Duplicate ontology state requires maintenance')
-    return {'version': int(rows[0]['version']), 'patch': json.loads(rows[0].get('patch_json') or '{}')}
+    state = {'version': int(rows[0]['version']), 'patch': json.loads(rows[0].get('patch_json') or '{}')}
+    if rows[0].get('presets_json') is not None:
+        from .ontology_presets import validate_presets
+        state['presets'] = validate_presets(json.loads(rows[0]['presets_json']))
+    return state
 
 
 def capabilities(base):
@@ -85,6 +90,8 @@ def capabilities(base):
 def _definitions(state):
     from .ontology import _schema
     result = deepcopy(_schema())
+    from .ontology_presets import semantic_bindings
+    bindings = semantic_bindings(state.get('presets', {}))
     for collection in COLLECTIONS:
         known = {item['key']: item for item in result[collection]}
         for key, custom in state['patch'].get(collection, {}).items():
@@ -102,11 +109,15 @@ def _definitions(state):
             item['customized_fields'] = sorted(state['patch'].get(collection, {}).get(item['key'], {}))
             item['count'] = None
             item['allowed_actions'] = [] if item.get('managed') else ['update', 'deactivate' if item['active'] else 'restore'] + (['delete'] if item['custom'] else [])
+            if item['key'] in bindings.get(collection, {}):
+                item['semantic'] = deepcopy(bindings[collection][item['key']])
     return result
 
 
 def effective_schema(config, state):
     from .ontology import _schema, SCOPE
+    from .ontology_presets import validate_semantic_constraints
+    validate_semantic_constraints(state)
     result = _definitions(state)
     extra_types = [item['key'] for item in result['entity_types'] if item['custom']]
     for item in result['properties']:
@@ -120,6 +131,11 @@ def effective_schema(config, state):
     result.update(namespace=config.urn_prefix, scope=SCOPE, version=state['version'], read_only=False,
                   editing=capabilities(result), stats_available=False, stats_error=None,
                   stats={'entities': None, 'relationships': None, 'unmapped_relationships': None})
+    if state.get('presets'):
+        from .ontology_presets import preset_digest
+        result['profile_digest'] = preset_digest(state['presets'])
+        result['presets'] = [{key: value for key, value in item.items() if key in {'id', 'version', 'digest', 'sources'}}
+                             for _, item in sorted(state['presets'].items())]
     return result
 
 
@@ -188,7 +204,7 @@ def merge_patch(config, state, patch, operations=None):
         if operation['action'] == 'create':
             fields = {key: value for key, value in merged[operation['kind']][operation['key']].items() if key in FIELDS[operation['kind']]}
             patch.setdefault(operation['kind'], {})[operation['key']] = fields
-    working = {'version': state['version'], 'patch': merged}
+    working = {**state, 'patch': merged}
     all_definitions = _definitions(working)
     type_keys = {item['key'] for item in all_definitions['entity_types']}
     for collection, definitions in patch.items():
@@ -248,9 +264,11 @@ def merge_patch(config, state, patch, operations=None):
                 merged.setdefault(collection, {}).setdefault(key, {}).update({field: normalized[field] for field in actual})
                 if not any(item['kind'] == collection and item['key'] == key for item in changes):
                     changes.append({'kind': collection, 'key': key, 'fields': actual, 'action': 'update'})
-    candidate = {'version': state['version'], 'patch': merged}
+    candidate = {**state, 'patch': merged}
     # Validate all custom aliases together, including previously published ones.
     aliases_for(candidate)
+    from .ontology_presets import validate_semantic_constraints
+    validate_semantic_constraints(candidate)
     return candidate, changes
 
 
@@ -724,6 +742,16 @@ class OntologyEditor:
         if state['version'] != expected_version:
             raise OntologyEditError('ontology_version_conflict', version=state['version'])
         candidate, changes = merge_patch(self.config, state, patch, operations)
+        return self._preview_candidate(tx, state, candidate, changes, expected_namespace,
+                                       expected_version, patch, operations)
+
+    def _preview_candidate(self, tx, state, candidate, changes, expected_namespace,
+                           expected_version, patch, operations=None):
+        """Validate an assembled candidate, including a trusted packaged preset.
+
+        Public requests still pass through merge_patch's 32-definition budget.
+        A preset may compose bounded chunks in memory before this one check.
+        """
         structural = any(item['action'] in {'create', 'restore'} or set(item['fields']) & {'domain', 'range', 'required_for'} for item in changes)
         try:
             impact = self._impact(tx, candidate, structural)
@@ -804,11 +832,12 @@ class OntologyEditor:
                       'operation_id': operation_id, 'idempotent': False, 'schema': schema}
             params = {'namespace': self.config.urn_prefix, 'version': candidate['version'], 'operation_id': operation_id,
                       'patch_json': json.dumps(candidate['patch'], ensure_ascii=False), 'request_hash': digest,
-                      'result_json': json.dumps(result, ensure_ascii=False), 'reason': reason}
+                      'result_json': json.dumps(result, ensure_ascii=False), 'reason': reason,
+                      'presets_json': json.dumps(candidate['presets'], ensure_ascii=False) if 'presets' in candidate else None}
             tx.run('''MERGE (s:KGOntologySchema {namespace:$namespace})
-                SET s.version=$version,s.patch_json=$patch_json,s.updated_at=datetime()
+                SET s.version=$version,s.patch_json=$patch_json,s.presets_json=$presets_json,s.updated_at=datetime()
                 CREATE (:KGOntologyRevision {namespace:$namespace,version:$version,patch_json:$patch_json,
-                    operation_id:$operation_id,reason:$reason,created_at:datetime()})
+                    presets_json:$presets_json,operation_id:$operation_id,reason:$reason,created_at:datetime()})
                 CREATE (:KGOntologyReceipt {namespace:$namespace,operation_id:$operation_id,
                     request_hash:$request_hash,result_json:$result_json,created_at:datetime()})''', params).consume()
             return result
