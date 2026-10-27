@@ -576,11 +576,20 @@ def _projection_literal(value, datatype, timezone='Asia/Shanghai'):
                        and type(value).__name__ in {'Date', 'DateTime'})
     if driver_temporal:
         expected = XSD.date if type(value).__name__ == 'Date' else XSD.dateTime
+        if expected == XSD.dateTime:
+            from datetime import timezone as fixed_timezone
+            from zoneinfo import ZoneInfo
+            # ZoneInfo's C callbacks require a stdlib datetime and may crash
+            # when the driver's iso_format() passes its custom DateTime. Resolve
+            # the offset on a native copy, then retain the driver's nanoseconds
+            # using a fixed-offset copy, even for already-aware ZoneInfo input.
+            native = value.to_native()
+            if native.tzinfo is None:
+                native = native.replace(tzinfo=ZoneInfo(timezone))
+            offset = native.utcoffset()
+            value = value.replace(tzinfo=fixed_timezone(offset) if offset is not None else None)
         if datatype != expected:
             return Literal(value)
-        if expected == XSD.dateTime and value.tzinfo is None:
-            from zoneinfo import ZoneInfo
-            value = value.replace(tzinfo=ZoneInfo(timezone))
         return Literal(value.iso_format(), datatype=expected, normalize=False)
     if datatype in {XSD.double, XSD.integer}:
         numeric = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)

@@ -253,7 +253,12 @@ class PersonalOntologyDataTests(unittest.TestCase):
         task = self.entity('x_personal_task', 'apply', {'x_personal_due_date': due_date, 'x_personal_due_at': due_at})
         entities = [event, task]
         before = deepcopy(entities)
-        graph = project_personal_entities(entities, manifest=self.manifest)
+        original_iso_format = DateTime.iso_format
+        def checked_iso_format(value):
+            self.assertIsInstance(value.tzinfo, timezone)
+            return original_iso_format(value)
+        with patch.object(DateTime, 'iso_format', checked_iso_format):
+            graph = project_personal_entities(entities, manifest=self.manifest)
         fields = {**self.manifest['bindings']['properties'], **self.manifest['core_contract']['properties']}
         for entity, key, expected_type, expected_text in (
             (event, 'hermes_eventTime', XSD.dateTime, start.iso_format()),
@@ -285,6 +290,69 @@ class PersonalOntologyDataTests(unittest.TestCase):
                 before = deepcopy(entity)
                 self.assertFalse(self.validate([entity])['conforms'])
                 self.assertEqual(entity, before)
+
+    def test_driver_zoneinfo_and_configured_zone_use_native_offset_callbacks(self):
+        from datetime import timezone
+        from neo4j.time import DateTime
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo('Europe/Paris')
+        aware = DateTime(2026, 7, 1, 12, 0, 0, 123456789, tzinfo=zone)
+        naive = DateTime(2026, 7, 1, 12, 0, 0, 987654321)
+        entities = [self.entity('x_personal_task', 'aware', {'x_personal_due_at': aware}),
+                    self.entity('x_personal_task', 'naive', {'x_personal_due_at': naive})]
+        original_iso_format = DateTime.iso_format
+        formatted = []
+        def checked_iso_format(value):
+            self.assertIsInstance(value.tzinfo, timezone)
+            formatted.append(value)
+            return original_iso_format(value)
+        # Fail before the unsafe callback if a regression hands ZoneInfo to the
+        # driver formatter; this is deterministic even on platforms that crash.
+        with patch.object(DateTime, 'iso_format', checked_iso_format):
+            graph = project_personal_entities(entities, manifest=self.manifest, timezone='America/New_York')
+        self.assertEqual(len(formatted), 2)
+        predicate = URIRef(self.manifest['bindings']['properties']['x_personal_due_at']['iri'])
+        for entity, expected in zip(entities, ('2026-07-01T12:00:00.123456789+02:00',
+                                               '2026-07-01T12:00:00.987654321-04:00')):
+            literal = graph.value(URIRef(entity['uri']), predicate)
+            self.assertEqual(literal.datatype, XSD.dateTime)
+            self.assertEqual(str(literal), expected)
+        self.assertIs(entities[0]['props']['x_personal_due_at'], aware)
+        self.assertIs(aware.tzinfo, zone)
+        self.assertEqual(aware.nanosecond, 123456789)
+        self.assertIs(entities[1]['props']['x_personal_due_at'], naive)
+        self.assertIsNone(naive.tzinfo)
+        self.assertEqual(naive.nanosecond, 987654321)
+        # An invalid date field must fail safely for ZoneInfo-aware input too.
+        wrong = self.entity('x_personal_task', 'wrong', {'x_personal_due_date': aware})
+        with patch.object(DateTime, 'iso_format', checked_iso_format):
+            self.assertFalse(self.validate([wrong])['conforms'])
+
+    def test_dst_fold_instants_keep_distinct_offsets_for_native_and_driver_values(self):
+        from datetime import datetime, timezone
+        from neo4j.time import DateTime
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo('America/New_York')
+        predicate = URIRef(self.manifest['bindings']['properties']['x_personal_due_at']['iri'])
+        instants = []
+        for fold, suffix in ((0, '-04:00'), (1, '-05:00')):
+            native = datetime(2026, 11, 1, 1, 30, 0, 123456, tzinfo=zone, fold=fold)
+            # The driver has no fold field: represent each actual instant with
+            # its resolved offset, just as the store's temporal boundary does.
+            driver = DateTime(2026, 11, 1, 1, 30, 0, 123456789, tzinfo=timezone(native.utcoffset()))
+            for value, fraction in ((native, '123456'), (driver, '123456789')):
+                with self.subTest(fold=fold, representation=type(value).__name__):
+                    entity = self.entity('x_personal_task', 'fold', {'x_personal_due_at': value})
+                    graph = project_personal_entities([entity], manifest=self.manifest)
+                    literal = graph.value(URIRef(entity['uri']), predicate)
+                    self.assertEqual(str(literal), '2026-11-01T01:30:00.' + fraction + suffix)
+                    self.assertEqual(literal.toPython().timestamp(), native.timestamp())
+                    self.assertIs(entity['props']['x_personal_due_at'], value)
+            instants.append(native.timestamp())
+            self.assertEqual(native.fold, fold)
+            self.assertIs(native.tzinfo, zone)
+            self.assertEqual(driver.nanosecond, 123456789)
+        self.assertEqual(instants[1] - instants[0], 3600)
 
     def test_wrong_types_missing_names_and_direction_fail(self):
         for entity in (
