@@ -135,6 +135,15 @@
   max-width: 12em;
   border-color: transparent;
 }
+.gw-top-actions .gw-directory-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.gw-directory-toggle[aria-expanded="true"] {
+  background: #edf3e9;
+}
 .gw-scopebar {
   display: flex;
   align-items: center;
@@ -266,6 +275,12 @@
   overflow: auto;
   padding: 0 13px 16px;
 }
+.gw-directory > .gw-panel-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fafcf9;
+}
 .gw-panel-heading {
   display: flex;
   align-items: center;
@@ -302,10 +317,62 @@
   padding: 3px 0;
   cursor: pointer;
 }
-.gw-directory label > span {
+.gw-directory label > span:not(.gw-directory-copy) {
   margin-left: auto;
   color: var(--gw-muted);
   font-variant-numeric: tabular-nums;
+}
+.gw-directory .gw-directory-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 5px;
+  font-size: 0.6875rem;
+  color: var(--gw-muted);
+}
+.gw-directory-actions > span {
+  margin-right: auto;
+}
+.gw-directory-actions > button {
+  padding: 3px 6px;
+  min-height: 30px;
+  font-size: 0.6875rem;
+}
+.gw-directory label.gw-directory-definition {
+  align-items: flex-start;
+  gap: 7px;
+  padding: 9px 0;
+  border-bottom: 1px solid #e9eee7;
+}
+.gw-directory-definition > input {
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.gw-directory-definition > i {
+  margin-top: 8px;
+}
+.gw-directory-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+.gw-directory-copy strong {
+  font-weight: 500;
+}
+.gw-directory-copy small {
+  font-size: 0.625rem;
+  line-height: 1.55;
+  color: var(--gw-muted);
+}
+.gw-directory-definition .gw-directory-count {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  line-height: 1.6;
+}
+.gw-directory-copy .gw-directory-empty {
+  color: #69776b;
 }
 .gw-directory i,
 .gw-list-row i,
@@ -836,6 +903,7 @@
     bottom: 0;
     z-index: 7;
     width: 228px;
+    max-width: calc(100% - 48px);
     box-shadow: 6px 0 18px #24412413;
   }
 }

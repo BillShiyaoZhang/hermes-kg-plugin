@@ -1,5 +1,6 @@
 import type { GraphBounds, GraphEdge, GraphNode } from "./graphModel";
 import { layoutGraph } from "./graphModel";
+import { relationGraphLayout } from "./graphPhysics";
 
 export type GraphLayoutMode = "relation" | "direction" | "type" | "center";
 export interface GraphPoint {
@@ -193,6 +194,7 @@ export async function computeGraphLayout(
   edges: GraphEdge[],
   mode: GraphLayoutMode,
   center?: string | null,
+  signal?: AbortSignal,
 ): Promise<GraphPositions> {
   const sorted = [
     ...new Map(nodes.map((node) => [node.id, node])).values(),
@@ -201,6 +203,7 @@ export async function computeGraphLayout(
     return Object.fromEntries(
       layoutGraph(sorted).nodes.map(({ id, x, y }) => [id, { x, y }]),
     );
+  if (mode === "relation") return relationGraphLayout(sorted, edges, signal);
   const ids = new Set(sorted.map((node) => node.id));
   const layoutEdges = (
     mode === "center" ? radialLayoutTree(sorted, edges, center) : edges

@@ -61,6 +61,16 @@ import {
 } from "./ontologyV3";
 import OntologyInspector from "./OntologyInspector";
 import OntologyManager from "./OntologyManager";
+import OntologyDirectory from "./OntologyDirectory";
+import {
+  allDirectoryTypesSelected,
+  currentDirectoryRelations,
+  DIRECTORY_STATE_VERSION,
+  directoryDefinitions,
+  directoryGraphKey,
+  directoryGraphQuery,
+  restoreDirectoryState,
+} from "./graphDirectory";
 import EventTimeline from "./EventTimeline";
 import ReviewImpact from "./ReviewImpact";
 import {
@@ -97,6 +107,7 @@ interface ViewState {
   end: string;
   includeUnknown: boolean;
   sidebar: boolean;
+  directoryVersion?: number;
   inspector: boolean;
   width: number;
   reviewPage: number;
@@ -147,7 +158,8 @@ const initialView = (lens: GraphLens): ViewState => ({
   start: "",
   end: "",
   includeUnknown: true,
-  sidebar: lens !== "explore",
+  sidebar: true,
+  directoryVersion: DIRECTORY_STATE_VERSION,
   inspector: false,
   width: 370,
   reviewPage: 0,
@@ -195,6 +207,9 @@ function validView(value: unknown): value is ViewState {
     }) &&
     Array.isArray(v.selected) &&
     Array.isArray(v.groups) &&
+    typeof v.sidebar === "boolean" &&
+    (v.directoryVersion === undefined ||
+      v.directoryVersion === DIRECTORY_STATE_VERSION) &&
     typeof v.width === "number"
   );
 }
@@ -206,18 +221,14 @@ function currentDefinitionView(
   if (!schema) return view;
   const types = view.types.filter((key) =>
     schema.entity_types.some(
-      (item) => item.key === key && item.runtime_supported,
+      (item) =>
+        item.key === key && item.runtime_supported && item.active !== false,
     ),
   );
-  const relations = view.relations.filter(
-    (key) =>
-      key === "__none__" ||
-      schema.relations.some(
-        (item) => item.key === key && item.runtime_supported,
-      ),
-  );
+  const relations = currentDirectoryRelations(view.relations, schema);
   return types.length === view.types.length &&
-    relations.length === view.relations.length
+    relations.length === view.relations.length &&
+    relations.every((key, index) => key === view.relations[index])
     ? view
     : { ...view, types, relations };
 }
@@ -292,15 +303,13 @@ export default function GraphExplorer({
   const schemaReadGeneration = useRef(0);
   const typeKeys = useMemo(
     () =>
-      schema?.entity_types
-        .filter((item) => item.runtime_supported)
-        .map((item) => item.key) ?? [...TYPE_KEYS],
+      schema
+        ? directoryDefinitions(schema).types.map((item) => item.key)
+        : [...TYPE_KEYS],
     [schema],
   );
   const previousTypeKeys = useRef<string[]>([...TYPE_KEYS]);
-  const allTypesVisible =
-    typeKeys.length === v.types.length &&
-    typeKeys.every((type) => v.types.includes(type));
+  const allTypesVisible = allDirectoryTypesSelected(v.types, typeKeys);
   useEffect(() => {
     if (!schema) return;
     const definitions = ontologyGraph(schema);
@@ -319,8 +328,15 @@ export default function GraphExplorer({
         const types = all
           ? [...typeKeys]
           : selected.filter((type) => typeKeys.includes(type));
-        if (types.join("\u0000") !== selected.join("\u0000")) {
-          next[key] = { ...current[key], types };
+        const relations = currentDirectoryRelations(
+          current[key].relations,
+          schema,
+        );
+        if (
+          types.join("\u0000") !== selected.join("\u0000") ||
+          relations.join("\u0000") !== current[key].relations.join("\u0000")
+        ) {
+          next[key] = { ...current[key], types, relations };
           changed = true;
         }
       }
@@ -419,7 +435,15 @@ export default function GraphExplorer({
     [groupName, setGroupName] = useState("分组");
   const [command, setCommand] = useState<{
     id: number;
-    type: "fit" | "fit-selection" | "export-svg" | "export-png";
+    type:
+      | "fit"
+      | "fit-selection"
+      | "export-svg"
+      | "export-png"
+      | "undo"
+      | "redo"
+      | "pin"
+      | "hide";
     label?: string;
   }>();
   const [, forceHistory] = useState(0);
@@ -445,17 +469,10 @@ export default function GraphExplorer({
   const seeds = useRef<Partial<Record<GraphLens, NeighborQuery[]>>>({});
   const restoringReview = useRef<string | null>(null);
   const query = useMemo(
-    () => ({
-      q: v.filterQuery,
-      types: allTypesVisible ? [] : v.types,
-      relation_types: v.relations.filter((r) => r !== "__none__"),
-      focus_uri: v.focusUri,
-      node_limit: 200,
-      edge_limit: 500,
-    }),
-    [v.filterQuery, v.types, v.relations, v.focusUri, allTypesVisible],
+    () => directoryGraphQuery(v, typeKeys, schema ?? undefined),
+    [v.filterQuery, v.types, v.relations, v.focusUri, typeKeys, schema],
   );
-  const key = JSON.stringify([schema?.namespace ?? "", query]);
+  const key = directoryGraphKey(schema?.namespace ?? "", query, v.relations);
   const previousEntries = useRef<Partial<Record<GraphLens, Entry>>>({});
   const requestedEntry = data[key],
     base = requestedEntry ?? previousEntries.current[lens];
@@ -675,7 +692,7 @@ export default function GraphExplorer({
     if (!enabled || lens === "ontology") return;
     const controller = new AbortController();
     setLoading(true);
-    if (!v.types.length) {
+    if (!query) {
       setData((all) => ({
         ...all,
         [key]: {
@@ -871,7 +888,10 @@ export default function GraphExplorer({
           Object.fromEntries(
             Object.entries(saved.views as Views).map(([key, view]) => [
               key,
-              currentDefinitionView(view, schema),
+              currentDefinitionView(
+                restoreDirectoryState(view, key as GraphLens),
+                schema,
+              ),
             ]),
           ) as Views,
         );
@@ -1023,6 +1043,13 @@ export default function GraphExplorer({
         omittedCandidates: 0,
       };
     }
+    if (lens === "explore" && !v.types.length)
+      return {
+        nodes: [],
+        edges: [],
+        definitions: new Map(),
+        omittedCandidates: 0,
+      };
     if (
       lens === "explore" &&
       displayMode === "aggregate" &&
@@ -1446,6 +1473,14 @@ export default function GraphExplorer({
     if (v.representation !== "graph") update({ representation: "graph" });
     setCommand({ id: Date.now() + Math.random(), type, label: description });
   };
+  const runViewAction = (type: "undo" | "redo" | "pin" | "hide") => {
+    // The canvas finalizes a settling drag before starting another transaction.
+    // Its callbacks below still call the raw actions to avoid command loops.
+    if (v.representation === "graph") issue(type);
+    else if (type === "undo" || type === "redo") undoView(type === "redo");
+    else if (type === "pin") pin(v.selected);
+    else hide(v.selected);
+  };
   const connect = async () => {
     if (selectedSaved.length !== 2 || busy || !enabled) return;
     const controller = new AbortController();
@@ -1568,10 +1603,10 @@ export default function GraphExplorer({
           representation: v.representation === "list" ? "graph" : "list",
         }),
     },
-    { label: "撤销画布操作", run: () => undoView() },
-    { label: "重做画布操作", run: () => undoView(true) },
-    { label: "固定当前选择", run: () => pin(v.selected) },
-    { label: "隐藏当前选择", run: () => hide(v.selected) },
+    { label: "撤销画布操作", run: () => runViewAction("undo") },
+    { label: "重做画布操作", run: () => runViewAction("redo") },
+    { label: "固定当前选择", run: () => runViewAction("pin") },
+    { label: "隐藏当前选择", run: () => runViewAction("hide") },
     {
       label: "展开当前对象",
       run: () => {
@@ -1630,7 +1665,7 @@ export default function GraphExplorer({
         stage.current?.contains(e.target as Node)
       ) {
         e.preventDefault();
-        undoView(e.shiftKey);
+        runViewAction(e.shiftKey ? "redo" : "undo");
       }
     };
     document.addEventListener("keydown", keydown);
@@ -1756,11 +1791,15 @@ export default function GraphExplorer({
         </form>
         <div className="gw-top-actions">
           <button
+            className="gw-directory-toggle"
             aria-label="切换目录与筛选"
             aria-expanded={v.sidebar}
+            aria-controls="gw-ontology-directory"
+            title="按本体概念筛选"
             onClick={() => update({ sidebar: !v.sidebar })}
           >
             <Filter size={17} />
+            <span>目录与筛选</span>
           </button>
           <select
             aria-label="图谱布局"
@@ -1951,6 +1990,7 @@ export default function GraphExplorer({
       <div className="gw-body">
         {v.sidebar && (
           <aside
+            id="gw-ontology-directory"
             className="gw-directory"
             aria-label="图谱目录与筛选"
             inert={interactionLocked || undefined}
@@ -2017,66 +2057,13 @@ export default function GraphExplorer({
                 </div>
               </>
             )}
-            <fieldset>
-              <legend>实体类型</legend>
-              {typeKeys.map((type) => (
-                <label key={type}>
-                  <input
-                    type="checkbox"
-                    checked={v.types.includes(type)}
-                    onChange={() =>
-                      navigate(lens, {
-                        types: v.types.includes(type)
-                          ? v.types.filter((t) => t !== type)
-                          : [...v.types, type],
-                      })
-                    }
-                  />
-                  <i style={{ background: GRAPH_TYPE_COLORS[type]?.stroke }} />
-                  {typeName(type)}
-                  <span>
-                    {schema?.entity_types.find((t) => t.key === type)?.count ??
-                      "—"}
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-            <details open={v.relations.length > 0}>
-              <summary>
-                业务关系{v.relations.length ? ` · ${v.relations.length}` : ""}
-              </summary>
-              <p className="gw-muted">只控制关系显示，保留孤立实体。</p>
-              {schema?.relations.map((relation) => (
-                <label key={relation.key}>
-                  <input
-                    type="checkbox"
-                    checked={
-                      !v.relations.length || v.relations.includes(relation.key)
-                    }
-                    onChange={() => {
-                      const selected = v.relations.length
-                        ? v.relations
-                        : schema.relations.map((r) => r.key);
-                      const next = selected.includes(relation.key)
-                        ? selected.filter(
-                            (r) => r !== relation.key && r !== "__none__",
-                          )
-                        : [
-                            ...selected.filter((r) => r !== "__none__"),
-                            relation.key,
-                          ];
-                      navigate(lens, {
-                        relations: next.length ? next : ["__none__"],
-                      });
-                    }}
-                  />
-                  {relationName(relation)}
-                </label>
-              ))}
-              <button onClick={() => navigate(lens, { relations: [] })}>
-                显示全部关系
-              </button>
-            </details>
+            <OntologyDirectory
+              schema={schema}
+              types={v.types}
+              relations={v.relations}
+              onTypesChange={(types) => navigate(lens, { types })}
+              onRelationsChange={(relations) => navigate(lens, { relations })}
+            />
             <details>
               <summary>显示与工具</summary>
               <button onClick={() => setTimeOpen(!timeOpen)}>
@@ -2872,16 +2859,20 @@ export default function GraphExplorer({
         </div>
         <div>
           <button
-            disabled={!undo.current[lens].past.length}
+            disabled={
+              !undo.current[lens].past.length &&
+              (!interaction.current ||
+                interaction.current.canvases[v.layout] === c)
+            }
             aria-label="撤销画布操作"
-            onClick={() => undoView()}
+            onClick={() => runViewAction("undo")}
           >
             <RotateCcw size={15} />
           </button>
           <button
             disabled={!undo.current[lens].future.length}
             aria-label="重做画布操作"
-            onClick={() => undoView(true)}
+            onClick={() => runViewAction("redo")}
           >
             <RotateCw size={15} />
           </button>
@@ -2896,7 +2887,7 @@ export default function GraphExplorer({
             title="本布局内固定"
             disabled={!v.selected.length}
             aria-label="固定所选对象"
-            onClick={() => pin(v.selected)}
+            onClick={() => runViewAction("pin")}
           >
             <Pin size={14} />
           </button>
@@ -3150,11 +3141,12 @@ export default function GraphExplorer({
             }
             seeds.current[target as GraphLens] = queries as NeighborQuery[];
             setSeedRevision((t) => t + 1);
-            const restored = currentDefinitionView(value, schema);
+            const migrated = restoreDirectoryState(value, target as GraphLens);
+            const restored = currentDefinitionView(migrated, schema);
             navigate(target as GraphLens, restored);
             setSavedOpen(false);
             setNotice(
-              restored !== value
+              restored !== migrated
                 ? "已恢复视图；本体定义已变化，已移除失效筛选。永久删除的定义不会被视图恢复。"
                 : "已恢复视图，记录按当前权限重新读取。",
             );

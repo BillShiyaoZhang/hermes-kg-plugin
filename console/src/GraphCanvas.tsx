@@ -59,6 +59,8 @@ import type {
   GraphPositions,
   GraphView,
 } from "./graphLayout";
+import { createGraphDragSimulation, relationGraphLayout } from "./graphPhysics";
+import type { GraphDragSimulation } from "./graphPhysics";
 import "./graph.css";
 
 export interface CanvasState {
@@ -245,7 +247,7 @@ const GraphEdgeGlyph = memo(function GraphEdgeGlyph({
 });
 
 interface NodeArtworkProps {
-  node: PositionedGraphNode;
+  node: GraphNode;
   selected: boolean;
   focused: boolean;
   pinned: boolean;
@@ -506,6 +508,11 @@ export default function GraphCanvas(props: GraphCanvasProps) {
   const awaitingEchoes = useRef<CanvasState[]>([]);
   const gesture = useRef<Gesture | null>(null),
     touches = useRef(new Map<number, GraphPoint>());
+  const physics = useRef<GraphDragSimulation | null>(null),
+    physicsFrame = useRef(0),
+    physicsLastFrame = useRef(0),
+    reducedMotion = useRef(false);
+  const regrouping = useRef<AbortController | null>(null);
   const pinch = useRef<{
     distance: number;
     midpoint: GraphPoint;
@@ -565,8 +572,18 @@ export default function GraphCanvas(props: GraphCanvasProps) {
         ?.focus();
   }, [menu]);
   const sourceNodes = layoutNodes ?? nodes;
+  const artworkNodes = useMemo(
+    () => new Map(nodes.map((node) => [node.id, node])),
+    [nodes],
+  );
   const sourceKey = sourceNodes
     .map((node) => node.id)
+    .sort()
+    .join("\u0000");
+  const edgeKey = edges
+    .map((edge) =>
+      JSON.stringify([edge.id, edge.source, edge.target, edge.count ?? 1]),
+    )
     .sort()
     .join("\u0000");
   const paintCamera = useCallback((view: GraphView) => {
@@ -675,6 +692,71 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     },
     [update],
   );
+  const stopPhysics = useCallback(
+    (commit = false) => {
+      if (physicsFrame.current) cancelAnimationFrame(physicsFrame.current);
+      physicsFrame.current = 0;
+      if (!physics.current) return;
+      physics.current.stop();
+      physics.current = null;
+      if (commit) update(live.current, true);
+    },
+    [update],
+  );
+  const historyAction = (redo = false) => {
+    regrouping.current?.abort();
+    stopPhysics(true);
+    gesture.current = null;
+    setDragging(false);
+    if (redo) onRedo?.();
+    else onUndo?.();
+  };
+  const runPhysics = useCallback(() => {
+    if (physicsFrame.current || !physics.current || document.hidden) return;
+    const step = (time: number) => {
+      physicsFrame.current = 0;
+      const engine = physics.current;
+      if (!engine || document.hidden) return;
+      // Render at most 30 snapshots/sec, independently of pointer event rate.
+      if (time - physicsLastFrame.current >= 32) {
+        physicsLastFrame.current = time;
+        update({
+          ...live.current,
+          positions: { ...live.current.positions, ...engine.tick(2) },
+        });
+      }
+      if (engine.done) {
+        if (gesture.current?.kind !== "node") stopPhysics(true);
+      } else physicsFrame.current = requestAnimationFrame(step);
+    };
+    physicsFrame.current = requestAnimationFrame(step);
+  }, [update, stopPhysics]);
+  useEffect(() => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    reducedMotion.current = preference.matches;
+    const finish = () => {
+      if (!physics.current) return;
+      stopPhysics(true);
+      if (gesture.current?.kind === "node") {
+        gesture.current = null;
+        setDragging(false);
+      }
+    };
+    const change = () => {
+      reducedMotion.current = preference.matches;
+      if (preference.matches) finish();
+    };
+    const visibility = () => {
+      if (document.hidden) finish();
+    };
+    preference.addEventListener("change", change);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      preference.removeEventListener("change", change);
+      document.removeEventListener("visibilitychange", visibility);
+      stopPhysics();
+    };
+  }, [stopPhysics]);
   useEffect(() => {
     const outside = (event: globalThis.PointerEvent) => {
       if (
@@ -708,6 +790,14 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       }
     }
     if (state && state !== live.current) {
+      // A parent action can batch away one of our snapshots (e.g. settle then
+      // pin). Once an external state supersedes it, that old reference may be
+      // an intentional undo target rather than a delayed acknowledgement.
+      awaitingEchoes.current = [];
+      regrouping.current?.abort();
+      stopPhysics();
+      gesture.current = null;
+      setDragging(false);
       if (Object.keys(state.positions).length) autoFit.current = false;
       if (cameraTimer.current) clearTimeout(cameraTimer.current);
       if (frame.current) cancelAnimationFrame(frame.current);
@@ -722,6 +812,8 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     }
   }, [state]);
   useEffect(() => {
+    regrouping.current?.abort();
+    stopPhysics();
     gesture.current = null;
     autoFit.current = !state || Object.keys(state.positions).length === 0;
     touches.current.clear();
@@ -731,11 +823,20 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     setTooltip(null);
     setBox(null);
   }, [scope]);
+  useEffect(() => {
+    regrouping.current?.abort();
+    if (physics.current) {
+      stopPhysics(true);
+      gesture.current = null;
+      setDragging(false);
+    }
+  }, [sourceKey, edgeKey, stopPhysics]);
   useEffect(
     () => () => {
       if (frame.current) cancelAnimationFrame(frame.current);
       if (cameraTimer.current) clearTimeout(cameraTimer.current);
       if (hoverTimer.current) clearTimeout(hoverTimer.current);
+      regrouping.current?.abort();
     },
     [],
   );
@@ -775,10 +876,15 @@ export default function GraphCanvas(props: GraphCanvasProps) {
   }, []);
   useEffect(() => {
     let stopped = false;
+    const controller = new AbortController();
     const ticket = ++layoutTicket.current,
       current = state ?? live.current;
-    if (!sourceNodes.some((node) => !current.positions[node.id])) return;
+    if (!sourceNodes.some((node) => !current.positions[node.id])) {
+      setLayingOut(false);
+      return;
+    }
     if (Object.keys(current.positions).length > 0) {
+      setLayingOut(false);
       update({
         ...current,
         positions: insertGraphNodes(
@@ -807,6 +913,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
             edges,
             layoutMode,
             focusId ?? selectedId,
+            controller.signal,
           );
     initial
       .catch(() => {
@@ -838,9 +945,10 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       });
     return () => {
       stopped = true;
+      controller.abort();
     };
     // External state stores coordinates per layout. New members only get local cells.
-  }, [scope, sourceKey]);
+  }, [scope, sourceKey, edgeKey]);
   const chosen =
     selectedIds ??
     (localIds.length ? localIds : selectedId ? [selectedId] : []);
@@ -865,6 +973,48 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       edges.filter((edge) => byId.has(edge.source) && byId.has(edge.target)),
     [edges, byId],
   );
+  const regroup = async () => {
+    if (regrouping.current) {
+      regrouping.current.abort();
+      return;
+    }
+    stopPhysics(true);
+    onBeginInteraction?.();
+    const controller = new AbortController();
+    regrouping.current = controller;
+    setLayingOut(true);
+    try {
+      const positions = await relationGraphLayout(
+        visible,
+        validEdges,
+        controller.signal,
+        {
+          positions: live.current.positions,
+          pinnedIds: live.current.pinnedIds,
+        },
+      );
+      if (!controller.signal.aborted)
+        update(
+          {
+            ...live.current,
+            positions: { ...live.current.positions, ...positions },
+          },
+          true,
+        );
+      setAnnouncement(
+        controller.signal.aborted
+          ? "已取消重新聚集，保留原有位置。"
+          : "已按关联重新聚集，固定位置与视角保持。可撤销此次调整。",
+      );
+    } catch {
+      setAnnouncement("重新聚集暂不可用，已保留原有位置。可重试或手动调整。");
+    } finally {
+      if (regrouping.current === controller) {
+        regrouping.current = null;
+        setLayingOut(false);
+      }
+    }
+  };
   const nodeBounds = useMemo(() => graphBounds(visible), [visible]);
   const degree = useMemo(() => {
     const result = new Map<string, number>();
@@ -925,6 +1075,8 @@ export default function GraphCanvas(props: GraphCanvasProps) {
   };
   const pinNodes = () => {
     if (!chosen.length) return;
+    if (regrouping.current) return;
+    stopPhysics(true);
     const allPinned = chosen.every((id) => live.current.pinnedIds.includes(id));
     if (onPinNodes) onPinNodes(chosen, !allPinned);
     else {
@@ -943,6 +1095,8 @@ export default function GraphCanvas(props: GraphCanvasProps) {
   };
   const hideNodes = () => {
     if (!chosen.length) return;
+    if (regrouping.current) return;
+    stopPhysics(true);
     if (onHideNodes) onHideNodes(chosen);
     else {
       onBeginInteraction?.();
@@ -1023,6 +1177,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     return () => host.removeEventListener("wheel", wheel);
   }, [schedule]);
   const pointerDown = (event: PointerEvent<SVGSVGElement | HTMLDivElement>) => {
+    if (regrouping.current) return;
     if (event.button !== 0 && event.button !== 1) return;
     if (
       (event.target as Element).closest(
@@ -1030,6 +1185,8 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       )
     )
       return;
+    // Finish a previous settling drag before beginning a new undo transaction.
+    stopPhysics(true);
     if (cameraDirty.current) flush();
     canvasRef.current?.focus({ preventScroll: true });
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
@@ -1064,14 +1221,17 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     else if (id && byId.has(id)) {
       onBeginInteraction?.();
       const node = byId.get(id)!,
-        ids = chosenSet.has(id) ? chosen : [id];
+        ids = (chosenSet.has(id) ? chosen : [id]).filter(
+          (key) => !live.current.pinnedIds.includes(key),
+        );
       gesture.current = {
         kind: "node",
         start: point,
         originals: Object.fromEntries(
-          ids
-            .filter((key) => live.current.positions[key])
-            .map((key) => [key, { ...live.current.positions[key] }]),
+          Object.entries(live.current.positions).map(([key, point]) => [
+            key,
+            { ...point },
+          ]),
         ),
         ids,
         node,
@@ -1133,8 +1293,9 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     const dx = point.x - action.start.x,
       dy = point.y - action.start.y;
     if (!action.moved && Math.hypot(dx, dy) <= 5) return;
+    if (action.kind === "node" && !action.ids.length) return;
     action.moved = true;
-    if (action.kind === "pan") autoFit.current = false;
+    autoFit.current = false;
     setDragging(true);
     if (action.kind === "pan")
       schedule({
@@ -1145,22 +1306,40 @@ export default function GraphCanvas(props: GraphCanvasProps) {
           y: action.original.y + dy,
         },
       });
-    else
-      schedule({
-        ...live.current,
-        positions: {
-          ...live.current.positions,
-          ...Object.fromEntries(
-            Object.entries(action.originals).map(([id, origin]) => [
-              id,
-              {
-                x: origin.x + dx / live.current.view.zoom,
-                y: origin.y + dy / live.current.view.zoom,
-              },
-            ]),
-          ),
-        },
-      });
+    else {
+      const targets = Object.fromEntries(
+        action.ids
+          .filter((id) => action.originals[id])
+          .map((id) => [
+            id,
+            {
+              x: action.originals[id].x + dx / live.current.view.zoom,
+              y: action.originals[id].y + dy / live.current.view.zoom,
+            },
+          ]),
+      );
+      if (layoutMode === "relation") {
+        physics.current ??= createGraphDragSimulation(
+          visible,
+          validEdges,
+          live.current.positions,
+          action.ids,
+          live.current.pinnedIds,
+        );
+        physics.current.move(targets);
+        // Reduced motion still adjusts related nodes without a running animation.
+        const positions = physics.current.tick(reducedMotion.current ? 12 : 1);
+        schedule({
+          ...live.current,
+          positions: { ...live.current.positions, ...positions },
+        });
+        if (!reducedMotion.current) runPhysics();
+      } else
+        schedule({
+          ...live.current,
+          positions: { ...live.current.positions, ...targets },
+        });
+    }
   };
   const pointerUp = (event: PointerEvent<SVGSVGElement | HTMLDivElement>) => {
     touches.current.delete(event.pointerId);
@@ -1200,7 +1379,22 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       if (action.moved) {
         lastNodeClick.current = null;
         if (!chosenSet.has(action.node.id)) select(action.ids);
-        flush(true);
+        if (physics.current && !reducedMotion.current && !document.hidden) {
+          flush();
+          runPhysics();
+          if (physics.current.done) stopPhysics(true);
+        } else {
+          if (physics.current && reducedMotion.current)
+            live.current = {
+              ...live.current,
+              positions: {
+                ...live.current.positions,
+                ...physics.current.tick(84),
+              },
+            };
+          stopPhysics();
+          flush(true);
+        }
       } else if (action.additive) {
         lastNodeClick.current = null;
         select(
@@ -1304,6 +1498,11 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     )
       return;
     const key = event.key.toLowerCase();
+    if (regrouping.current) {
+      if (key === "escape") regrouping.current.abort();
+      event.preventDefault();
+      return;
+    }
     if (key === " " && event.target === event.currentTarget) {
       event.preventDefault();
       setSpace(true);
@@ -1343,8 +1542,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       zoom(0.8);
     } else if ((event.ctrlKey || event.metaKey) && key === "z") {
       event.preventDefault();
-      if (event.shiftKey) onRedo?.();
-      else onUndo?.();
+      historyAction(event.shiftKey);
     } else if ((event.ctrlKey || event.metaKey) && key === "a") {
       event.preventDefault();
       select(visible.map((node) => node.id));
@@ -1359,7 +1557,14 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       window.removeEventListener("blur", release);
     };
   }, []);
+  const drawingCache = useRef(
+    new Map<string, { geometry: string; drawing: EdgeDrawing }>(),
+  );
   const drawings = useMemo(() => {
+    const nextCache = new Map<
+      string,
+      { geometry: string; drawing: EdgeDrawing }
+    >();
     const groups = new Map<string, GraphEdge[]>(),
       geometricSiblings = new Map<string, GraphEdge[]>();
     validEdges.forEach((edge) => {
@@ -1402,20 +1607,46 @@ export default function GraphCanvas(props: GraphCanvasProps) {
         const bend =
           (slot - (siblings.length - 1) / 2) * 48 +
           (edge.kind === "definition" ? 18 : 0);
-        result.push({
+        const source = byId.get(edge.source)!,
+          target = byId.get(edge.target)!;
+        const geometry = JSON.stringify([
+          source.id,
+          source.layer,
+          source.x,
+          source.y,
+          target.id,
+          target.layer,
+          target.x,
+          target.y,
+          bend,
+          index,
+          collapsed,
+        ]);
+        const previous = drawingCache.current.get(edge.id);
+        if (
+          previous?.geometry === geometry &&
+          previous.drawing.edge === edge &&
+          previous.drawing.members.length === members.length &&
+          previous.drawing.members.every(
+            (member, offset) => member === members[offset],
+          )
+        ) {
+          nextCache.set(edge.id, previous);
+          result.push(previous.drawing);
+          return;
+        }
+        const drawing: EdgeDrawing = {
           edge,
-          path: graphEdgeGeometry(
-            byId.get(edge.source)!,
-            byId.get(edge.target)!,
-            bend,
-            index,
-          ),
+          path: graphEdgeGeometry(source, target, bend, index),
           members,
           bundleKey,
           collapsed,
-        });
+        };
+        nextCache.set(edge.id, { geometry, drawing });
+        result.push(drawing);
       });
     });
+    drawingCache.current = nextCache;
     return result;
   }, [validEdges, byId, expandedBundles, selectedEdgeId]);
   const edgeActions = useRef({
@@ -1613,8 +1844,8 @@ export default function GraphCanvas(props: GraphCanvasProps) {
     else if (command.type === "fit-selection") fit(true);
     else if (command.type === "pin") pinNodes();
     else if (command.type === "hide") hideNodes();
-    else if (command.type === "undo") onUndo?.();
-    else if (command.type === "redo") onRedo?.();
+    else if (command.type === "undo") historyAction();
+    else if (command.type === "redo") historyAction(true);
     else void exportGraph(command.type === "export-png" ? "png" : "svg");
   }, [command]);
   const miniScale = Math.min(
@@ -1674,7 +1905,8 @@ export default function GraphCanvas(props: GraphCanvasProps) {
         >
           {onUndo && (
             <button
-              onClick={onUndo}
+              onClick={() => historyAction()}
+              disabled={!!regrouping.current}
               aria-label="撤销图谱操作"
               title="撤销 Ctrl+Z"
             >
@@ -1683,11 +1915,28 @@ export default function GraphCanvas(props: GraphCanvasProps) {
           )}
           {onRedo && (
             <button
-              onClick={onRedo}
+              onClick={() => historyAction(true)}
+              disabled={!!regrouping.current}
               aria-label="重做图谱操作"
               title="重做 Ctrl+Shift+Z"
             >
               <Redo2 size={16} />
+            </button>
+          )}
+          {layoutMode === "relation" && (
+            <button
+              onClick={() => void regroup()}
+              disabled={!visible.length || (layingOut && !regrouping.current)}
+              aria-label={
+                regrouping.current ? "取消重新聚集" : "重新聚集关联节点"
+              }
+              title={
+                regrouping.current
+                  ? "取消重新聚集 Escape"
+                  : "按关联重新聚集，保留固定位置和视角；可撤销"
+              }
+            >
+              {regrouping.current ? <X size={17} /> : <Group size={17} />}
             </button>
           )}
           <button
@@ -1796,7 +2045,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
         id={`${uid}-instructions`}
         className={showHelp ? "graph-canvas-help" : "sr-only"}
       >
-        滚轮在指针处缩放；拖动空白或按住空格平移；触屏双指缩放。拖动节点调整位置，Shift
+        滚轮在指针处缩放；拖动空白或按住空格平移；触屏双指缩放。关系布局按连接聚集，拖动节点时邻近关联对象随之调整，固定节点保持不动。位置接近不代表新增事实。Shift
         点击或 Shift 拖动空白框选。F 适应所选，Shift+F 适应全图，E 展开所选，P
         固定，Escape 取消。方向键移动焦点，Enter 选择，R
         进入关联边，边上左右切换、Escape
@@ -1813,6 +2062,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
           touches.current.delete(event.pointerId);
           pinch.current = null;
           const action = gesture.current;
+          stopPhysics();
           if (action?.kind === "node" && action.moved)
             live.current = {
               ...live.current,
@@ -1986,7 +2236,7 @@ export default function GraphCanvas(props: GraphCanvasProps) {
                       onPointerLeave={leaveHover}
                     >
                       <GraphNodeArtwork
-                        node={node}
+                        node={artworkNodes.get(node.id) ?? node}
                         selected={selected}
                         focused={focused}
                         pinned={pinned}

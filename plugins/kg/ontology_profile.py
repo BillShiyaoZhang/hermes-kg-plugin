@@ -569,6 +569,19 @@ def _projection_literal(value, datatype, timezone='Asia/Shanghai'):
     A string containing digits must not pass a numeric constraint just because
     an RDF literal was forcibly assigned a numeric datatype.
     """
+    # The driver returns its own immutable temporal classes. Keep their date /
+    # dateTime distinction and nanosecond lexical precision in this projection.
+    # Do not make the offline compiler depend on importing the optional driver.
+    driver_temporal = (type(value).__module__.startswith('neo4j.time')
+                       and type(value).__name__ in {'Date', 'DateTime'})
+    if driver_temporal:
+        expected = XSD.date if type(value).__name__ == 'Date' else XSD.dateTime
+        if datatype != expected:
+            return Literal(value)
+        if expected == XSD.dateTime and value.tzinfo is None:
+            from zoneinfo import ZoneInfo
+            value = value.replace(tzinfo=ZoneInfo(timezone))
+        return Literal(value.iso_format(), datatype=expected, normalize=False)
     if datatype in {XSD.double, XSD.integer}:
         numeric = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
         if datatype == XSD.double and numeric:

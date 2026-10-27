@@ -133,6 +133,10 @@ def main(argv=None):
     preset=ontology_commands.add_parser('install-preset')
     preset.add_argument('preset',choices=['personal'])
     preset.add_argument('--dry-run',action='store_true')
+    reclassification=ontology_commands.add_parser('reclassify',help='Validate a private evidence-bound classification plan')
+    reclassification.add_argument('--plan',required=True)
+    reclassification.add_argument('--apply',action='store_true')
+    reclassification.add_argument('--backup',help='New backup archive path; required when applying')
     args=parser.parse_args(argv)
     home=resolve_home(args.home)
     os.environ['KG_HOME']=str(home)
@@ -178,7 +182,19 @@ def main(argv=None):
             from .store import KGStore
             from .ontology_presets import install_preset
             with KGStore(load_config(home=home)) as store:
-                result=install_preset(store,args.preset,dry_run=args.dry_run)
+                if args.ontology_command=='install-preset':
+                    result=install_preset(store,args.preset,dry_run=args.dry_run)
+                else:
+                    from .reclassification import reclassify_memories
+                    plan=json.loads(Path(args.plan).read_text(encoding='utf-8-sig'))
+                    result=reclassify_memories(store,plan,dry_run=True)
+                    if args.apply:
+                        if not args.backup:
+                            raise ValueError('--backup is required when applying a classification plan')
+                        if not result['idempotent']:
+                            from .maintenance import backup
+                            backup(store,args.backup)
+                        result=reclassify_memories(store,plan,dry_run=False)
         else:
             from .store import KGStore
             from .maintenance import backup,restore,migrate,migration_preview

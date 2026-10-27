@@ -241,6 +241,51 @@ class PersonalOntologyDataTests(unittest.TestCase):
                 self.assertEqual(runtime_accepts, expected)
                 self.assertEqual(self.validate([entity])['conforms'], runtime_accepts)
 
+    def test_driver_temporals_project_without_mutating_saved_values(self):
+        from datetime import timedelta, timezone
+        from neo4j.time import Date, DateTime
+        zone = timezone(timedelta(hours=8))
+        start = DateTime(2026, 10, 27, 10, 0, 0, 123456789, tzinfo=zone)
+        end = DateTime(2026, 10, 27, 11, 0, 0, 987654321, tzinfo=zone)
+        due_date = Date(2026, 10, 28)
+        due_at = DateTime(2026, 10, 28, 12, 0, 0, 123456789)
+        event = self.entity('event', 'meeting', {'hermes_eventTime': start, 'hermes_eventEndTime': end})
+        task = self.entity('x_personal_task', 'apply', {'x_personal_due_date': due_date, 'x_personal_due_at': due_at})
+        entities = [event, task]
+        before = deepcopy(entities)
+        graph = project_personal_entities(entities, manifest=self.manifest)
+        fields = {**self.manifest['bindings']['properties'], **self.manifest['core_contract']['properties']}
+        for entity, key, expected_type, expected_text in (
+            (event, 'hermes_eventTime', XSD.dateTime, start.iso_format()),
+            (event, 'hermes_eventEndTime', XSD.dateTime, end.iso_format()),
+            (task, 'x_personal_due_date', XSD.date, due_date.iso_format()),
+            (task, 'x_personal_due_at', XSD.dateTime, due_at.iso_format() + '+08:00'),
+        ):
+            with self.subTest(property=key):
+                literal = graph.value(URIRef(entity['uri']), URIRef(fields[key]['iri']))
+                self.assertEqual(literal.datatype, expected_type)
+                self.assertEqual(str(literal), expected_text)
+        result = validate_personal_graph(graph)
+        self.assertTrue(result['conforms'], result['report'])
+        self.assertEqual(entities, before)
+        self.assertIs(event['props']['hermes_eventTime'], start)
+        self.assertIs(task['props']['x_personal_due_at'], due_at)
+        self.assertIsNone(due_at.tzinfo)
+
+    def test_driver_date_and_datetime_do_not_satisfy_each_others_datatypes(self):
+        from neo4j.time import Date, DateTime
+        cases = [
+            ('x_personal_task', 'x_personal_due_date', DateTime(2026, 10, 28, 12)),
+            ('x_personal_task', 'x_personal_due_at', Date(2026, 10, 28)),
+            ('event', 'hermes_eventTime', Date(2026, 10, 28)),
+        ]
+        for kind, key, value in cases:
+            with self.subTest(property=key):
+                entity = self.entity(kind, 'record', {key: value})
+                before = deepcopy(entity)
+                self.assertFalse(self.validate([entity])['conforms'])
+                self.assertEqual(entity, before)
+
     def test_wrong_types_missing_names_and_direction_fail(self):
         for entity in (
             self.entity('x_personal_health_record', 'record', {'x_personal_value': '120'}),
